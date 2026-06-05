@@ -255,13 +255,11 @@ pub enum OutputMatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
+#[serde(tag = "event", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventMatch {
     TabCreated {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tab_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        workspace_id: Option<String>,
     },
     TabClosed {
         tab_id: String,
@@ -277,8 +275,6 @@ pub enum EventMatch {
     PaneCreated {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pane_id: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        workspace_id: Option<String>,
     },
     PaneClosed {
         pane_id: String,
@@ -911,5 +907,26 @@ mod tests {
                 agent_status: AgentStatus::Done,
             }
         );
+    }
+
+    #[test]
+    fn event_wait_rejects_workspace_filters() {
+        let json = r#"
+        {
+            "id": "req_10",
+            "method": "events.wait",
+            "params": {
+                "match_event": {
+                    "event": "tab_created",
+                    "workspace_id": "1"
+                }
+            }
+        }
+        "#;
+
+        let err = serde_json::from_str::<Request>(json)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("workspace_id"), "error: {err}");
     }
 }
