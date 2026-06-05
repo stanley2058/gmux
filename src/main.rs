@@ -386,9 +386,17 @@ fn main() -> io::Result<()> {
         println!("gmux — terminal multiplexer and session manager");
         println!();
         println!("Usage: gmux [options]");
+        println!("       gmux new [-s name]");
+        println!("       gmux attach [-t name]");
         println!("       gmux --session <name> [options]");
         println!("       gmux --remote <ssh-target> [--session <name>]");
-        println!("       gmux session attach <name>");
+        println!("       gmux ls [--json]");
+        println!("       gmux kill-session [-t name] [--json]");
+        println!("       gmux detach");
+        println!("       gmux new-tab [--cwd PATH] [--label TEXT]");
+        println!("       gmux rename-tab <tab_id> <label>");
+        println!("       gmux split-pane <pane_id> [-h|-v]");
+        println!("       gmux kill-pane <pane_id>");
         println!("       gmux update [--handoff]");
         println!("       gmux channel set <stable|preview>");
         println!("       gmux server stop");
@@ -402,6 +410,14 @@ fn main() -> io::Result<()> {
         println!("Common commands:");
         for (command, description) in [
             ("gmux", "Launch or attach to the persistent session"),
+            ("gmux new [-s name]", "Create or attach to a named session"),
+            ("gmux attach [-t name]", "Attach to a named session"),
+            ("gmux ls", "List persistent sessions"),
+            ("gmux kill-session", "Stop the default or targeted session"),
+            ("gmux detach", "Show the detach keybinding"),
+            ("gmux new-tab", "Create and focus a tab"),
+            ("gmux split-pane <pane_id>", "Split a pane"),
+            ("gmux kill-pane <pane_id>", "Close a pane"),
             (
                 "gmux status [server|client]",
                 "Show local client and running server status",
@@ -426,11 +442,6 @@ fn main() -> io::Result<()> {
             (
                 "gmux channel <subcommand>",
                 "Manage the stable or preview update channel",
-            ),
-            ("gmux tab <subcommand>", "Tab helpers over the socket API"),
-            (
-                "gmux pane <subcommand>",
-                "Pane control helpers over the socket API",
             ),
             (
                 "gmux session <subcommand>",
@@ -495,6 +506,15 @@ fn main() -> io::Result<()> {
                 "server",
                 "client",
                 "remote-client-bridge",
+                "new",
+                "attach",
+                "ls",
+                "kill-session",
+                "detach",
+                "new-tab",
+                "rename-tab",
+                "split-pane",
+                "kill-pane",
                 "update",
                 "status",
                 "config",

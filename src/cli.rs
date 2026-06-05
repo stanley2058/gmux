@@ -37,6 +37,13 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "status" => status::run_status_command(&args[2..])?,
         "config" => run_config_command(&args[2..])?,
         "channel" => run_channel_command(&args[2..])?,
+        "ls" => session_list(&args[2..], "usage: gmux ls [--json]")?,
+        "kill-session" => kill_session_alias(&args[2..])?,
+        "new-tab" => new_tab_alias(&args[2..])?,
+        "rename-tab" => rename_tab_alias(&args[2..])?,
+        "split-pane" => split_pane_alias(&args[2..])?,
+        "kill-pane" => kill_pane_alias(&args[2..])?,
+        "detach" => detach_alias(&args[2..])?,
         "workspace" => workspace::run_workspace_command(&args[2..])?,
         "worktree" => worktree::run_worktree_command(&args[2..])?,
         "tab" => tab::run_tab_command(&args[2..])?,
@@ -50,6 +57,147 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
     };
 
     Ok(CommandOutcome::Handled(exit_code))
+}
+
+fn kill_session_alias(args: &[String]) -> std::io::Result<i32> {
+    let mut name = None;
+    let mut json = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-t" | "--target" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                name = Some(value.clone());
+                index += 2;
+            }
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "help" | "--help" | "-h" => {
+                eprintln!("usage: gmux kill-session [-t name] [--json]");
+                return Ok(0);
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+
+    let mut session_args = vec![name.unwrap_or_else(|| "default".to_string())];
+    if json {
+        session_args.push("--json".to_string());
+    }
+    session_stop(&session_args)
+}
+
+fn new_tab_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux new-tab [--cwd PATH] [--label TEXT] [--focus|--no-focus]");
+        return Ok(0);
+    }
+
+    let mut tab_args = vec!["create".to_string(), "--focus".to_string()];
+    tab_args.extend(args.iter().cloned());
+    tab::run_tab_command(&tab_args)
+}
+
+fn rename_tab_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux rename-tab <tab_id> <label>");
+        return Ok(0);
+    }
+    let mut tab_args = vec!["rename".to_string()];
+    tab_args.extend(args.iter().cloned());
+    tab::run_tab_command(&tab_args)
+}
+
+fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux split-pane <pane_id> [-h|-v|--direction right|down] [--cwd PATH] [--focus|--no-focus]");
+        return Ok(0);
+    }
+
+    let Some(pane_id) = args.first() else {
+        eprintln!("usage: gmux split-pane <pane_id> [-h|-v|--direction right|down] [--cwd PATH] [--focus|--no-focus]");
+        return Ok(2);
+    };
+
+    let mut pane_args = vec!["split".to_string(), pane_id.clone()];
+    let mut has_direction = false;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-h" | "--horizontal" => {
+                pane_args.extend(["--direction".to_string(), "right".to_string()]);
+                has_direction = true;
+                index += 1;
+            }
+            "-v" | "--vertical" => {
+                pane_args.extend(["--direction".to_string(), "down".to_string()]);
+                has_direction = true;
+                index += 1;
+            }
+            "--direction" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --direction");
+                    return Ok(2);
+                };
+                pane_args.extend(["--direction".to_string(), value.clone()]);
+                has_direction = true;
+                index += 2;
+            }
+            other => {
+                pane_args.push(other.to_string());
+                index += 1;
+            }
+        }
+    }
+    if !has_direction {
+        pane_args.extend(["--direction".to_string(), "down".to_string()]);
+    }
+
+    pane::run_pane_command(&pane_args)
+}
+
+fn kill_pane_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux kill-pane <pane_id>");
+        return Ok(0);
+    }
+    let mut pane_args = vec!["close".to_string()];
+    pane_args.extend(args.iter().cloned());
+    pane::run_pane_command(&pane_args)
+}
+
+fn detach_alias(args: &[String]) -> std::io::Result<i32> {
+    if !args.is_empty()
+        && !matches!(
+            args.first().map(String::as_str),
+            Some("help" | "--help" | "-h")
+        )
+    {
+        eprintln!("usage: gmux detach");
+        return Ok(2);
+    }
+    eprintln!("Use the detach keybinding inside gmux: prefix+d.");
+    Ok(0)
 }
 
 fn run_channel_command(args: &[String]) -> std::io::Result<i32> {
@@ -333,7 +481,7 @@ fn run_session_command(args: &[String]) -> std::io::Result<i32> {
     };
 
     match subcommand {
-        "list" => session_list(&args[1..]),
+        "list" => session_list(&args[1..], "usage: gmux session list [--json]"),
         "attach" => session_attach_help(&args[1..]),
         "stop" => session_stop(&args[1..]),
         "delete" => session_delete(&args[1..]),
@@ -360,8 +508,16 @@ fn session_attach_help(args: &[String]) -> std::io::Result<i32> {
     Ok(2)
 }
 
-fn session_list(args: &[String]) -> std::io::Result<i32> {
-    let json = match parse_session_json_only(args, "usage: gmux session list [--json]") {
+fn session_list(args: &[String], usage: &str) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("{usage}");
+        return Ok(0);
+    }
+
+    let json = match parse_session_json_only(args, usage) {
         Ok(json) => json,
         Err(code) => return Ok(code),
     };
@@ -863,6 +1019,10 @@ fn print_wait_help() {
 
 fn print_session_help() {
     eprintln!("gmux session commands:");
+    eprintln!("  gmux ls [--json]");
+    eprintln!("  gmux new [-s name]");
+    eprintln!("  gmux attach [-t name]");
+    eprintln!("  gmux kill-session [-t name] [--json]");
     eprintln!("  gmux session list [--json]");
     eprintln!("  gmux session attach <name>");
     eprintln!("  gmux session stop <name> [--json]");

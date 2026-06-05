@@ -47,19 +47,19 @@ Start Gmux in the directory where the work lives:
 gmux
 ```
 
-Gmux starts or attaches to one background session server. When a session has no workspaces, Gmux opens one automatically. Use the root pane like a normal shell. Press `ctrl+b`, then `shift+n` to create another workspace, `ctrl+b`, then `%` or `"` to split panes, `ctrl+b`, then `c` to create a tab, and `ctrl+b`, then `w` to switch workspaces.
+Gmux starts or attaches to one background session server. Use the root pane like a normal shell. Press `ctrl+b`, then `%` or `"` to split panes, and `ctrl+b`, then `c` to create a tab.
 
 Press `ctrl+b d` to detach the client. The server and pane processes keep running. Open another terminal and run `gmux` again to reattach.
 
 ## core concepts
 
-**Server and client.** By default, `gmux` attaches to a background server. Detaching closes only the client. `gmux server stop` stops the default server and kills its panes. Named sessions are separate server namespaces: use `gmux session attach work`, `gmux session stop work`, and `gmux session list` when you want fully separate runtime state.
+**Server and client.** By default, `gmux` attaches to a background server. Detaching closes only the client. `gmux kill-session` stops the default server and kills its panes. Named sessions are separate server namespaces: use `gmux new -s work`, `gmux attach -t work`, `gmux kill-session -t work`, and `gmux ls` when you want fully separate runtime state.
 
-**Workspaces, tabs, panes.** A workspace is the project-level container. Tabs group panes inside a workspace. Panes are real terminal processes, not rewritten agent views.
+**Sessions, tabs, panes.** A session owns tabs, and tabs group panes. Panes are real terminal processes, not rewritten agent views.
 
 **Copy.** Gmux copies pane text, not the sidebar. Drag-select inside a pane, double-click a word or token, or press `prefix+[` for keyboard copy mode. In copy mode, move with `h/j/k/l`, `w/b/e`, and `{`/`}`, start selection with `v` or Space, copy with `y` or Enter, and leave with `q` or Esc. In PuTTY and some SSH terminals, hold `Shift` while dragging to use the terminal's own selection, and `Shift` + right click to paste.
 
-**Update and restore.** `gmux update` installs a new binary, but a running server keeps using the old process until it is stopped or handed off. Stop the old server to use the new version. Stopping exits pane processes. Run `gmux server stop`, then run `gmux` again for the default session. For a named session, run `gmux session stop <name>`, then run `gmux session attach <name>` again. `gmux update --handoff` is experimental and tries to move live panes, including foreground processes such as dev servers, from the old server to the new one. With current official integrations installed, supported agent panes can restart from their native agent sessions after a server restart or update.
+**Update and restore.** `gmux update` installs a new binary, but a running server keeps using the old process until it is stopped or handed off. Stop the old server to use the new version. Stopping exits pane processes. Run `gmux kill-session`, then run `gmux` again for the default session. For a named session, run `gmux kill-session -t <name>`, then run `gmux attach -t <name>` again. `gmux update --handoff` is experimental and tries to move live panes, including foreground processes such as dev servers, from the old server to the new one. With current official integrations installed, supported agent panes can restart from their native agent sessions after a server restart or update.
 
 **Keybindings.** Gmux uses explicit keybinding strings. `prefix+n` means press the configured prefix, then `n`. `ctrl+alt+n`, `cmd+k`, `alt+1`, and function-key chords are direct terminal-mode shortcuts and do not need the prefix. Plain direct printable keys such as `n` steal normal typing, so use `prefix+n` unless you intentionally want a modifier-gated direct binding.
 

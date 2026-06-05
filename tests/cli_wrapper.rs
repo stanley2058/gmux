@@ -994,6 +994,15 @@ fn help_commands_exit_successfully() {
         &["wait", "-h"],
         &["session", "-h"],
         &["session", "attach", "-h"],
+        &["new", "-h"],
+        &["attach", "-h"],
+        &["ls", "-h"],
+        &["kill-session", "-h"],
+        &["new-tab", "-h"],
+        &["rename-tab", "-h"],
+        &["split-pane", "-h"],
+        &["kill-pane", "-h"],
+        &["detach", "-h"],
         &["integration", "-h"],
     ];
 
@@ -2090,6 +2099,77 @@ fn tab_management_commands_work() {
     assert!(closed_tab.status.success());
     let closed_tab_json: serde_json::Value = serde_json::from_slice(&closed_tab.stdout).unwrap();
     assert_eq!(closed_tab_json["result"]["type"], "ok");
+
+    cleanup_spawned_gmux(gmux, base);
+}
+
+#[test]
+fn top_level_tab_and_pane_aliases_work() {
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("gmux.sock");
+
+    let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let created = run_cli(
+        &socket_path,
+        &["workspace", "create", "--cwd", base.to_str().unwrap()],
+    );
+    assert!(created.status.success());
+
+    let listed_sessions = run_cli(&socket_path, &["ls", "--json"]);
+    assert!(listed_sessions.status.success());
+    let listed_sessions_json: serde_json::Value =
+        serde_json::from_slice(&listed_sessions.stdout).unwrap();
+    assert!(listed_sessions_json["sessions"].as_array().unwrap().len() >= 1);
+
+    let created_tab = run_cli(&socket_path, &["new-tab", "--label", "logs"]);
+    assert!(
+        created_tab.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&created_tab.stderr)
+    );
+    let created_tab_json: serde_json::Value = serde_json::from_slice(&created_tab.stdout).unwrap();
+    let tab_id = created_tab_json["result"]["tab"]["tab_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let root_pane_id = created_tab_json["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(created_tab_json["result"]["tab"]["label"], "logs");
+
+    let renamed = run_cli(&socket_path, &["rename-tab", &tab_id, "renamed"]);
+    assert!(renamed.status.success());
+    let renamed_json: serde_json::Value = serde_json::from_slice(&renamed.stdout).unwrap();
+    assert_eq!(renamed_json["result"]["tab"]["label"], "renamed");
+
+    let split = run_cli(
+        &socket_path,
+        &["split-pane", &root_pane_id, "-h", "--focus"],
+    );
+    assert!(
+        split.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&split.stderr)
+    );
+    let split_json: serde_json::Value = serde_json::from_slice(&split.stdout).unwrap();
+    let split_pane_id = split_json["result"]["pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let closed = run_cli(&socket_path, &["kill-pane", &split_pane_id]);
+    assert!(closed.status.success());
+    let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
+    assert_eq!(closed_json["result"]["type"], "ok");
+
+    let detach = run_cli(&socket_path, &["detach"]);
+    assert!(detach.status.success());
+    assert!(String::from_utf8_lossy(&detach.stderr).contains("prefix+d"));
 
     cleanup_spawned_gmux(gmux, base);
 }

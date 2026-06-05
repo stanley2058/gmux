@@ -29,6 +29,22 @@ pub fn configure_from_args(args: &[String]) -> Result<Vec<String>, String> {
         cleaned.push(program.clone());
     }
 
+    if matches!(args.get(1).map(String::as_str), Some("new" | "attach")) {
+        let command = args.get(1).map(String::as_str).unwrap_or("attach");
+        if args[2..]
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "help" | "--help" | "-h"))
+        {
+            return Ok(args.to_vec());
+        }
+        let session_flag = if command == "new" { "-s" } else { "-t" };
+        let session = parse_launch_session_arg(&args[2..], session_flag, command)?;
+        if let Some(name) = session {
+            apply_explicit_name(&name)?;
+        }
+        return Ok(cleaned);
+    }
+
     if args.get(1).map(String::as_str) == Some("session")
         && args.get(2).map(String::as_str) == Some("attach")
     {
@@ -88,6 +104,51 @@ pub fn configure_from_args(args: &[String]) -> Result<Vec<String>, String> {
     }
 
     Ok(cleaned)
+}
+
+fn parse_launch_session_arg(
+    args: &[String],
+    short_flag: &str,
+    command: &str,
+) -> Result<Option<String>, String> {
+    let usage = format!("usage: gmux {command} [{short_flag} name]");
+    let mut session = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            flag if flag == short_flag || flag == "--session" || flag == "--target" => {
+                let Some(value) = args.get(index + 1) else {
+                    return Err(format!("missing value for {flag}"));
+                };
+                if session.replace(value.clone()).is_some() {
+                    return Err(usage);
+                }
+                index += 2;
+            }
+            value if value.starts_with(&format!("{short_flag}=")) => {
+                let value = value
+                    .split_once('=')
+                    .map(|(_, value)| value.to_string())
+                    .unwrap_or_default();
+                if session.replace(value).is_some() {
+                    return Err(usage);
+                }
+                index += 1;
+            }
+            value if value.starts_with("--session=") || value.starts_with("--target=") => {
+                let value = value
+                    .split_once('=')
+                    .map(|(_, value)| value.to_string())
+                    .unwrap_or_default();
+                if session.replace(value).is_some() {
+                    return Err(usage);
+                }
+                index += 1;
+            }
+            _ => return Err(usage),
+        }
+    }
+    Ok(session)
 }
 
 pub fn active_name() -> Option<String> {
@@ -638,6 +699,64 @@ mod tests {
         std::env::remove_var(SESSION_ENV_VAR);
         std::env::remove_var(crate::api::SOCKET_PATH_ENV_VAR);
         clear_explicit_session_for_test();
+    }
+
+    #[test]
+    fn configure_from_args_rewrites_new_alias_to_default_launch() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::remove_var(SESSION_ENV_VAR);
+        std::env::set_var(crate::api::SOCKET_PATH_ENV_VAR, "/tmp/inherited.sock");
+        clear_explicit_session_for_test();
+        let args = vec![
+            "gmux".to_string(),
+            "new".to_string(),
+            "-s".to_string(),
+            "work".to_string(),
+        ];
+
+        let cleaned = configure_from_args(&args).unwrap();
+
+        assert_eq!(std::env::var(SESSION_ENV_VAR).as_deref(), Ok("work"));
+        assert!(explicit_session_requested());
+        assert_eq!(cleaned, vec!["gmux"]);
+        std::env::remove_var(SESSION_ENV_VAR);
+        std::env::remove_var(crate::api::SOCKET_PATH_ENV_VAR);
+        clear_explicit_session_for_test();
+    }
+
+    #[test]
+    fn configure_from_args_rewrites_attach_alias_to_default_launch() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::remove_var(SESSION_ENV_VAR);
+        std::env::set_var(crate::api::SOCKET_PATH_ENV_VAR, "/tmp/inherited.sock");
+        clear_explicit_session_for_test();
+        let args = vec![
+            "gmux".to_string(),
+            "attach".to_string(),
+            "--target=work".to_string(),
+        ];
+
+        let cleaned = configure_from_args(&args).unwrap();
+
+        assert_eq!(std::env::var(SESSION_ENV_VAR).as_deref(), Ok("work"));
+        assert!(explicit_session_requested());
+        assert_eq!(cleaned, vec!["gmux"]);
+        std::env::remove_var(SESSION_ENV_VAR);
+        std::env::remove_var(crate::api::SOCKET_PATH_ENV_VAR);
+        clear_explicit_session_for_test();
+    }
+
+    #[test]
+    fn configure_from_args_leaves_launch_alias_help_for_cli_dispatch() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::remove_var(SESSION_ENV_VAR);
+        clear_explicit_session_for_test();
+        let args = vec!["gmux".to_string(), "new".to_string(), "-h".to_string()];
+
+        let cleaned = configure_from_args(&args).unwrap();
+
+        assert_eq!(cleaned, args);
+        assert!(!explicit_session_requested());
     }
 
     #[test]
