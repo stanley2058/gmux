@@ -2126,7 +2126,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_agent_toast_focuses_target_pane() {
+    fn agent_state_change_does_not_create_clickable_toast() {
         let mut app = app_for_mouse_test();
         let active = Workspace::test_new("active");
         let mut background = Workspace::test_new("background");
@@ -2165,24 +2165,16 @@ mod tests {
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         let hit = app.state.view.toast_hit_area;
+        assert!(app.state.toast.is_none());
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             hit.x + 1,
             hit.y + 1,
         ));
 
-        assert_eq!(app.state.active, Some(1));
-        assert_eq!(app.state.workspaces[1].focused_pane_id(), Some(target_pane));
-        assert!(app.state.toast.is_none());
-        assert_eq!(app.state.mode, Mode::Terminal);
-
-        app.state.last_pane();
-
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(
-            app.state.workspaces[0].focused_pane_id(),
-            Some(app.state.workspaces[0].tabs[0].root_pane)
-        );
+        assert_eq!(app.state.workspaces[1].focused_pane_id(), Some(first_pane));
+        assert_eq!(app.state.mode, Mode::Terminal);
     }
 
     #[test]

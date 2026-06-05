@@ -1038,8 +1038,8 @@ fn client_receives_notify_on_agent_state_change() {
         .unwrap_or("p_1_1")
         .to_string();
 
-    // Report agent as Blocked via the API — this should trigger a
-    // ServerMessage::Notify with kind=Sound (Request sound).
+    // Legacy report calls are accepted for compatibility, but they no longer
+    // update authoritative agent state or emit client notifications.
     let mut report_stream = UnixStream::connect(&api_socket).expect("connect to API");
     let report_request = format!(
         r#"{{"id":"3","method":"pane.report_agent","params":{{"pane_id":"{pane_id}","agent":"pi","state":"blocked","source":"test"}}}}"#
@@ -1049,22 +1049,18 @@ fn client_receives_notify_on_agent_state_change() {
     let mut report_response = String::new();
     report_reader.read_line(&mut report_response).unwrap();
 
-    // Read messages from the client stream and look for Notify (variant 5).
-    // Notify = ServerMessage variant index 5.
     stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
+        .set_read_timeout(Some(Duration::from_millis(500)))
         .unwrap();
     let mut found_notify = false;
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_millis(500);
     while Instant::now() < deadline {
         match read_server_message(&mut stream) {
             Ok((variant, _payload)) => {
                 if variant == 5 {
-                    // ServerMessage::Notify — found it!
                     found_notify = true;
                     break;
                 }
-                // Continue reading — Frame messages (variant 1) will come first.
             }
             Err(_) => {
                 break;
@@ -1073,96 +1069,8 @@ fn client_receives_notify_on_agent_state_change() {
     }
 
     assert!(
-        found_notify,
-        "client should receive a ServerMessage::Notify after pane.report_agent"
-    );
-
-    // Now report Idle from Working — this should trigger a Done sound
-    // if the pane is in a background workspace.
-    // First, create a second workspace to make the first one "background".
-    let mut ws2_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let ws2_request = r#"{"id":"4","method":"workspace.create","params":{}}"#;
-    writeln!(ws2_stream, "{}", ws2_request).unwrap();
-    let mut ws2_reader = BufReader::new(ws2_stream);
-    let mut ws2_response = String::new();
-    ws2_reader.read_line(&mut ws2_response).unwrap();
-
-    // Focus the new workspace (making the first one background).
-    let ws2_id = ws2_response
-        .split('"')
-        .find(|s| s.starts_with("w_"))
-        .unwrap_or("w_2")
-        .to_string();
-    let mut focus_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let focus_request = format!(
-        r#"{{"id":"5","method":"workspace.focus","params":{{"workspace_id":"{ws2_id}"}}}}"#
-    );
-    writeln!(focus_stream, "{}", focus_request).unwrap();
-    let mut focus_reader = BufReader::new(focus_stream);
-    let mut focus_response = String::new();
-    focus_reader.read_line(&mut focus_response).unwrap();
-
-    assert!(
-        wait_until(Duration::from_secs(2), Duration::from_millis(25), || {
-            ping_socket(&api_socket).contains("pong")
-        }),
-        "server should stay responsive after workspace focus"
-    );
-
-    // Report agent as Working first, then Idle — this transition in a
-    // background workspace should trigger a Done sound notification.
-    let mut work_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let work_request = format!(
-        r#"{{"id":"6","method":"pane.report_agent","params":{{"pane_id":"{pane_id}","agent":"pi","state":"working","source":"test"}}}}"#
-    );
-    writeln!(work_stream, "{}", work_request).unwrap();
-    let mut work_reader = BufReader::new(work_stream);
-    let mut work_response = String::new();
-    work_reader.read_line(&mut work_response).unwrap();
-
-    assert!(
-        wait_until(Duration::from_secs(2), Duration::from_millis(25), || {
-            ping_socket(&api_socket).contains("pong")
-        }),
-        "server should stay responsive after working state report"
-    );
-
-    let mut idle_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let idle_request = format!(
-        r#"{{"id":"7","method":"pane.report_agent","params":{{"pane_id":"{pane_id}","agent":"pi","state":"idle","source":"test"}}}}"#
-    );
-    writeln!(idle_stream, "{}", idle_request).unwrap();
-    let mut idle_reader = BufReader::new(idle_stream);
-    let mut idle_response = String::new();
-    idle_reader.read_line(&mut idle_response).unwrap();
-
-    // Read messages and look for Done sound notify.
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let mut found_done_notify = false;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while Instant::now() < deadline {
-        match read_server_message(&mut stream) {
-            Ok((variant, _payload)) => {
-                if variant == 5 {
-                    // Found a Notify message — that's good enough.
-                    // The test already verified the Blocked→Notify path above.
-                    found_done_notify = true;
-                    break;
-                }
-                // Continue reading — Frame messages will come first.
-            }
-            Err(e) => {
-                eprintln!("read error while looking for Done Notify: {e}");
-                break;
-            }
-        }
-    }
-
-    assert!(
-        found_done_notify,
-        "client should receive a Sound Notify with 'agent done' when background pane transitions Working→Idle"
+        !found_notify,
+        "client should not receive a ServerMessage::Notify after inert pane.report_agent"
     );
 
     cleanup_spawned_gmux(spawned, base);

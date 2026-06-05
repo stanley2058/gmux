@@ -706,7 +706,7 @@ fn pane_info_reports_foreground_cwd_without_changing_pane_cwd() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn agent_start_creates_named_terminal_over_socket() {
+fn agent_start_returns_removed_error_over_socket() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -723,45 +723,20 @@ fn agent_start_creates_named_terminal_over_socket() {
             base.display()
         ),
     );
-    assert_eq!(started["result"]["type"], "agent_started");
-    assert_eq!(started["result"]["agent"]["name"], "main");
-    assert_eq!(
-        started["result"]["agent"]["cwd"],
-        base.display().to_string()
-    );
-    assert_eq!(started["result"]["argv"][0], "/bin/sh");
-    let terminal_id = started["result"]["agent"]["terminal_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    assert_eq!(started["error"]["code"], "agent_api_removed");
 
     let listed = send_request(
         &socket_path,
         r#"{"id":"agent_start_list","method":"agent.list","params":{}}"#,
     );
     let agents = listed["result"]["agents"].as_array().unwrap();
-    assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0]["terminal_id"], terminal_id);
-    assert_eq!(agents[0]["name"], "main");
-
-    let duplicate = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"agent_start_duplicate","method":"agent.start","params":{{"name":"main","cwd":"{}","argv":["/bin/sh","-c","true"]}}}}"#,
-            base.display()
-        ),
-    );
-    assert_eq!(duplicate["error"]["code"], "agent_name_taken");
-    assert!(duplicate["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains(&terminal_id));
+    assert!(agents.is_empty());
 
     cleanup_spawned_gmux(child, base);
 }
 
 #[test]
-fn agent_methods_round_trip_over_socket() {
+fn agent_methods_are_removed_over_socket() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -778,15 +753,7 @@ fn agent_methods_round_trip_over_socket() {
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
     let pane_id = created["result"]["root_pane"]["pane_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let terminal_id = created["result"]["root_pane"]["terminal_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -814,112 +781,40 @@ fn agent_methods_round_trip_over_socket() {
         r#"{"id":"agent_list","method":"agent.list","params":{}}"#,
     );
     let agents = listed["result"]["agents"].as_array().unwrap();
-    assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0]["terminal_id"], terminal_id);
-    assert!(agents[0].get("name").is_none());
-    assert_eq!(agents[0]["agent"], "pi");
-    assert_eq!(agents[0]["agent_status"], "working");
-    assert_eq!(agents[0]["pane_id"], pane_id);
+    assert!(agents.is_empty());
 
     let fetched_by_detected_agent = send_request(
         &socket_path,
         r#"{"id":"agent_get_detected","method":"agent.get","params":{"target":"pi"}}"#,
     );
     assert_eq!(
-        fetched_by_detected_agent["result"]["agent"]["terminal_id"],
-        terminal_id
+        fetched_by_detected_agent["error"]["code"],
+        "agent_api_removed"
     );
 
     let renamed_first_agent = send_request(
         &socket_path,
         r#"{"id":"agent_rename_first","method":"agent.rename","params":{"target":"pi","name":"worker"}}"#,
     );
-    assert_eq!(renamed_first_agent["result"]["agent"]["name"], "worker");
-
-    let fetched_by_terminal = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"agent_get_terminal","method":"agent.get","params":{{"target":"{}"}}}}"#,
-            terminal_id
-        ),
-    );
-    assert_eq!(fetched_by_terminal["result"]["agent"]["name"], "worker");
+    assert_eq!(renamed_first_agent["error"]["code"], "agent_api_removed");
 
     let read = send_request(
         &socket_path,
         r#"{"id":"agent_read","method":"agent.read","params":{"target":"worker","source":"visible"}}"#,
     );
-    assert_eq!(read["result"]["type"], "pane_read");
-    assert_eq!(read["result"]["read"]["pane_id"], pane_id);
+    assert_eq!(read["error"]["code"], "agent_api_removed");
 
     let sent = send_request(
         &socket_path,
-        &format!(
-            r#"{{"id":"agent_send","method":"agent.send","params":{{"target":"{}","text":"echo agent-send-ok\n"}}}}"#,
-            terminal_id
-        ),
+        r#"{"id":"agent_send","method":"agent.send","params":{"target":"worker","text":"echo agent-send-ok\n"}}"#,
     );
-    assert_eq!(sent["result"]["type"], "ok");
-
-    let tab_created = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"agent_tab","method":"tab.create","params":{{"workspace_id":"{}","focus":false}}}}"#,
-            workspace_id
-        ),
-    );
-    let second_tab_id = tab_created["result"]["tab"]["tab_id"].as_str().unwrap();
-    let second_pane_id = tab_created["result"]["root_pane"]["pane_id"]
-        .as_str()
-        .unwrap();
-    let second_terminal_id = tab_created["result"]["root_pane"]["terminal_id"]
-        .as_str()
-        .unwrap();
-
-    let second_reported = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"agent_second_report","method":"pane.report_agent","params":{{"pane_id":"{}","source":"test","agent":"codex","state":"idle"}}}}"#,
-            second_pane_id
-        ),
-    );
-    assert_eq!(second_reported["result"]["type"], "ok");
-
-    let second_renamed = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"agent_second_rename","method":"agent.rename","params":{{"target":"{}","name":"reviewer"}}}}"#,
-            second_terminal_id
-        ),
-    );
-    assert_eq!(second_renamed["result"]["agent"]["name"], "reviewer");
-
-    let duplicate = send_request(
-        &socket_path,
-        r#"{"id":"agent_duplicate","method":"agent.rename","params":{"target":"reviewer","name":"worker"}}"#,
-    );
-    assert_eq!(duplicate["error"]["code"], "agent_name_taken");
-    assert!(duplicate["error"]["message"]
-        .as_str()
-        .unwrap()
-        .contains(&terminal_id));
-
-    let agent_renamed = send_request(
-        &socket_path,
-        r#"{"id":"agent_rename","method":"agent.rename","params":{"target":"reviewer","name":"qa"}}"#,
-    );
-    assert_eq!(agent_renamed["result"]["agent"]["name"], "qa");
+    assert_eq!(sent["error"]["code"], "agent_api_removed");
 
     let focused = send_request(
         &socket_path,
-        r#"{"id":"agent_focus","method":"agent.focus","params":{"target":"qa"}}"#,
+        r#"{"id":"agent_focus","method":"agent.focus","params":{"target":"worker"}}"#,
     );
-    assert_eq!(
-        focused["result"]["agent"]["terminal_id"],
-        second_terminal_id
-    );
-    assert_eq!(focused["result"]["agent"]["tab_id"], second_tab_id);
-    assert_eq!(focused["result"]["agent"]["focused"], true);
+    assert_eq!(focused["error"]["code"], "agent_api_removed");
 
     cleanup_spawned_gmux(child, base);
 }
@@ -1405,12 +1300,7 @@ fn pane_report_agent_updates_effective_state() {
         &socket_path,
         r#"{"id":"req_hook_metadata_agent","method":"agent.get","params":{"target":"pi"}}"#,
     );
-    assert_eq!(agent["result"]["agent"]["agent"], "pi");
-    assert!(agent["result"]["agent"]["agent_session"].is_null());
-    assert!(agent["result"]["agent"]["title"].is_null());
-    assert!(agent["result"]["agent"]["display_agent"].is_null());
-    assert!(agent["result"]["agent"]["custom_status"].is_null());
-    assert!(agent["result"]["agent"]["state_labels"]["working"].is_null());
+    assert_eq!(agent["error"]["code"], "agent_api_removed");
 
     let invalid_metadata = send_request(
         &socket_path,
@@ -1870,7 +1760,7 @@ fn events_subscribe_streams_output_and_agent_status_events() {
 }
 
 #[test]
-fn pane_info_and_subscriptions_expose_done_agent_status() {
+fn pane_info_and_subscriptions_expose_idle_agent_status() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -1932,7 +1822,7 @@ fn pane_info_and_subscriptions_expose_done_agent_status() {
     let mut reader = open_subscription(
         &socket_path,
         &format!(
-            r#"{{"id":"sub_status","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"done"}}]}}}}"#,
+            r#"{{"id":"sub_status","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"idle"}}]}}}}"#,
             background_pane_id,
         ),
     );
@@ -1960,7 +1850,7 @@ fn pane_info_and_subscriptions_expose_done_agent_status() {
     let status_event = reader.read_json_line(Duration::from_secs(8));
     assert_eq!(status_event["event"], "pane.agent_status_changed");
     assert_eq!(status_event["data"]["pane_id"], background_pane_id);
-    assert_eq!(status_event["data"]["agent_status"], "done");
+    assert_eq!(status_event["data"]["agent_status"], "idle");
     assert_eq!(status_event["data"]["agent"], "pi");
 
     let pane = send_request(
@@ -1970,23 +1860,23 @@ fn pane_info_and_subscriptions_expose_done_agent_status() {
             background_pane_id
         ),
     );
-    assert_eq!(pane["result"]["pane"]["agent_status"], "done");
+    assert_eq!(pane["result"]["pane"]["agent_status"], "idle");
 
-    let mut already_done_reader = open_subscription(
+    let mut already_idle_reader = open_subscription(
         &socket_path,
         &format!(
-            r#"{{"id":"sub_status_already_done","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"done"}}]}}}}"#,
+            r#"{{"id":"sub_status_already_idle","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"idle"}}]}}}}"#,
             background_pane_id,
         ),
     );
-    let ack = already_done_reader.read_json_line(Duration::from_secs(2));
-    assert_eq!(ack["id"], "sub_status_already_done");
+    let ack = already_idle_reader.read_json_line(Duration::from_secs(2));
+    assert_eq!(ack["id"], "sub_status_already_idle");
     assert_eq!(ack["result"]["type"], "subscription_started");
 
-    let initial_status_event = already_done_reader.read_json_line(Duration::from_secs(2));
+    let initial_status_event = already_idle_reader.read_json_line(Duration::from_secs(2));
     assert_eq!(initial_status_event["event"], "pane.agent_status_changed");
     assert_eq!(initial_status_event["data"]["pane_id"], background_pane_id);
-    assert_eq!(initial_status_event["data"]["agent_status"], "done");
+    assert_eq!(initial_status_event["data"]["agent_status"], "idle");
     assert_eq!(initial_status_event["data"]["agent"], "pi");
 
     let focused_tab_id = created["result"]["workspace"]["active_tab_id"]

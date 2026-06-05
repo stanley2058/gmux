@@ -953,18 +953,7 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
         &api_socket,
         serde_json::json!({"id":"test:agent-list","method":"agent.list","params":{}}),
     );
-    let found = agents["result"]["agents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|agent| {
-            agent["agent"].as_str() == Some("pi")
-                && agent["agent_status"].as_str() == Some("working")
-        });
-    assert!(
-        found,
-        "old pane id report did not update restored pane: {agents}"
-    );
+    assert_eq!(agents["result"]["agents"].as_array().unwrap().len(), 0);
 
     let _ = request(
         &api_socket,
@@ -974,25 +963,17 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
 }
 
 #[test]
-fn live_handoff_keeps_agent_started_pane_after_agent_exits() {
+fn live_handoff_agent_start_returns_removed_error() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let api_socket = runtime_dir.join("gmux.sock");
-    let started_marker = base.join("agent-started");
-    let exited_marker = base.join("agent-exited");
-    let shell_marker = base.join("shell-after-agent");
 
     let spawned = spawn_server(&config_home, &runtime_dir, &api_socket);
     wait_for_socket(&api_socket, Duration::from_secs(10));
     register_runtime_dir(&runtime_dir);
 
-    let command = format!(
-        "echo started > {}; sleep 1; echo exited > {}",
-        started_marker.display(),
-        exited_marker.display()
-    );
     let started = request(
         &api_socket,
         serde_json::json!({
@@ -1002,40 +983,17 @@ fn live_handoff_keeps_agent_started_pane_after_agent_exits() {
                 "name": "handoff-agent",
                 "cwd": "/tmp",
                 "focus": true,
-                "argv": ["/bin/sh", "-c", command]
+                "argv": ["/bin/sh", "-c", "true"]
             }
         }),
     );
-    assert_ok(started.clone());
-    let pane_id = started["result"]["agent"]["pane_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    support::wait_for_file(&started_marker, Duration::from_secs(5));
-
-    assert_ok(request(
-        &api_socket,
-        serde_json::json!({"id":"test:handoff","method":"server.live_handoff","params":{}}),
-    ));
-    drop(spawned);
-    wait_for_api(&api_socket, Duration::from_secs(10));
-    support::wait_for_file(&exited_marker, Duration::from_secs(5));
-    thread::sleep(Duration::from_millis(300));
-
-    assert_ok(request(
-        &api_socket,
-        serde_json::json!({
-            "id": "test:pane:shell-after-agent",
-            "method": "pane.send_input",
-            "params": {"pane_id": pane_id, "text": format!("echo alive > {}", shell_marker.display()), "keys": ["Enter"]}
-        }),
-    ));
-    support::wait_for_file(&shell_marker, Duration::from_secs(5));
+    assert_eq!(started["error"]["code"], "agent_api_removed");
 
     let _ = request(
         &api_socket,
         serde_json::json!({"id":"test:stop","method":"server.stop","params":{}}),
     );
+    drop(spawned);
     cleanup_test_base(&base);
 }
 

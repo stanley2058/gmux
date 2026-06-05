@@ -4,9 +4,8 @@ use serde::Serialize;
 
 use crate::api::client::{ApiClient, ApiClientError};
 use crate::api::schema::{
-    AgentStatus, Method, OutputMatch, PaneAgentState, PaneListParams, PaneSendInputParams,
-    PaneSplitParams, PaneWaitForOutputParams, ReadFormat, ReadSource, Request, SplitDirection,
-    Subscription,
+    Method, OutputMatch, PaneAgentState, PaneListParams, PaneSendInputParams, PaneSplitParams,
+    PaneWaitForOutputParams, ReadFormat, ReadSource, Request, SplitDirection,
 };
 
 mod agent;
@@ -1199,60 +1198,11 @@ fn wait_output(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
-fn wait_agent_status(args: &[String]) -> std::io::Result<i32> {
-    let Some(raw_pane_id) = args.first() else {
-        eprintln!("usage: gmux wait agent-status <pane_id> --status <idle|working|blocked|done|unknown> [--timeout MS]");
-        return Ok(2);
-    };
-
-    let pane_id = normalize_pane_id(raw_pane_id);
-    let mut timeout_ms = None;
-    let mut desired_status = None;
-
-    let mut index = 1;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--status" => {
-                let Some(value) = args.get(index + 1) else {
-                    eprintln!("missing value for --status");
-                    return Ok(2);
-                };
-                desired_status = Some(parse_agent_status(value)?);
-                index += 2;
-            }
-            "--timeout" => {
-                let Some(value) = args.get(index + 1) else {
-                    eprintln!("missing value for --timeout");
-                    return Ok(2);
-                };
-                timeout_ms = Some(parse_u64_flag("--timeout", value)?);
-                index += 2;
-            }
-            other => {
-                eprintln!("unknown option: {other}");
-                return Ok(2);
-            }
-        }
-    }
-
-    let Some(agent_status) = desired_status else {
-        eprintln!("missing required --status");
-        return Ok(2);
-    };
-
-    wait_for_agent_change(
-        Request {
-            id: "cli:wait:agent-status".into(),
-            method: Method::EventsSubscribe(crate::api::schema::EventsSubscribeParams {
-                subscriptions: vec![Subscription::PaneAgentStatusChanged {
-                    pane_id,
-                    agent_status: Some(agent_status),
-                }],
-            }),
-        },
-        timeout_ms,
-        "timed out waiting for agent status change",
-    )
+fn wait_agent_status(_args: &[String]) -> std::io::Result<i32> {
+    eprintln!(
+        r#"{{"error":{{"code":"agent_api_removed","message":"agent status waits are no longer available; use pane output waits instead"}},"id":"cli:wait:agent-status"}}"#
+    );
+    Ok(1)
 }
 
 pub(super) fn wait_for_agent_change(
@@ -1372,19 +1322,6 @@ pub(super) fn parse_read_format(value: &str) -> std::io::Result<ReadFormat> {
         "ansi" => Ok(ReadFormat::Ansi),
         _ => Err(std::io::Error::other(format!(
             "invalid read format: {value}"
-        ))),
-    }
-}
-
-fn parse_agent_status(value: &str) -> std::io::Result<AgentStatus> {
-    match value {
-        "idle" => Ok(AgentStatus::Idle),
-        "working" => Ok(AgentStatus::Working),
-        "blocked" => Ok(AgentStatus::Blocked),
-        "done" => Ok(AgentStatus::Done),
-        "unknown" => Ok(AgentStatus::Unknown),
-        _ => Err(std::io::Error::other(format!(
-            "invalid agent status: {value} (expected idle, working, blocked, done, or unknown)"
         ))),
     }
 }

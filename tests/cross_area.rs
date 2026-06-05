@@ -336,22 +336,6 @@ fn pane_agent_status(socket_path: &Path, pane_id: &str) -> Option<String> {
         .map(|status| status.to_string())
 }
 
-fn wait_for_agent_status(
-    socket_path: &Path,
-    pane_id: &str,
-    expected: &str,
-    timeout: Duration,
-) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if pane_agent_status(socket_path, pane_id).as_deref() == Some(expected) {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    false
-}
-
 // ---------------------------------------------------------------------------
 // Minimal protocol helpers (bincode v2 varint + framing)
 // ---------------------------------------------------------------------------
@@ -752,7 +736,7 @@ fn cross_area_detach_and_reattach_preserves_state() {
 }
 
 #[test]
-fn cross_area_agent_status_survives_detach_and_reattach() {
+fn cross_area_inert_agent_report_survives_detach_and_reattach() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -774,25 +758,26 @@ fn cross_area_agent_status_survives_detach_and_reattach() {
         .expect("root pane id")
         .to_string();
 
-    // Use agent status surfaces directly; process detection has its own
-    // arbitration rules and can mask hook-reported idle while a command runs.
+    let initial_status = pane_agent_status(&api_socket, &pane_id);
+
+    // Legacy report calls are still accepted while attached, but no longer
+    // update authoritative pane agent status.
     pane_report_agent(&api_socket, &pane_id, "pi", "working", "cross-area-test");
-    assert!(
-        wait_for_agent_status(&api_socket, &pane_id, "working", Duration::from_secs(3)),
-        "pane agent status should become working before detach"
+    assert_eq!(
+        pane_agent_status(&api_socket, &pane_id),
+        initial_status,
+        "pane.report_agent should not change pane status before detach"
     );
 
-    // Detach and ensure status persists through API while detached.
     send_client_detach(&mut client_a);
     drop(client_a);
 
-    assert!(
-        wait_for_agent_status(&api_socket, &pane_id, "working", Duration::from_secs(3)),
-        "agent status should remain working while detached"
+    assert_eq!(
+        pane_agent_status(&api_socket, &pane_id),
+        initial_status,
+        "inert report state should remain unchanged while detached"
     );
 
-    // Reattach and ensure the client renders the restored session while the API
-    // remains the source of truth for legacy agent status.
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
     client_handshake(&mut client_b, 12, 80, 24);
     let saw_session_on_client =
@@ -805,11 +790,11 @@ fn cross_area_agent_status_survives_detach_and_reattach() {
         "reattached client frame should show the restored session"
     );
 
-    // Transition to idle and verify the API observes it.
     pane_report_agent(&api_socket, &pane_id, "pi", "idle", "cross-area-test");
-    assert!(
-        wait_for_agent_status(&api_socket, &pane_id, "idle", Duration::from_secs(3)),
-        "pane agent status should transition to idle"
+    assert_eq!(
+        pane_agent_status(&api_socket, &pane_id),
+        initial_status,
+        "pane.report_agent should remain inert after reattach"
     );
 
     cleanup_spawned_gmux(server, base);

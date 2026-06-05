@@ -153,10 +153,6 @@ impl TerminalState {
         self.respawn_shell_on_exit = false;
     }
 
-    pub fn is_agent_terminal(&self) -> bool {
-        self.effective_agent_label().is_some() || self.launch_argv.is_some()
-    }
-
     pub fn border_label(&self) -> Option<String> {
         self.effective_title().or_else(|| self.manual_label.clone())
     }

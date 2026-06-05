@@ -73,33 +73,6 @@ impl Tab {
         )
     }
 
-    pub fn new_argv_command(
-        number: usize,
-        initial_cwd: PathBuf,
-        rows: u16,
-        cols: u16,
-        argv: &[String],
-        scrollback_limit_bytes: usize,
-        host_terminal_theme: crate::terminal_theme::TerminalTheme,
-        events: mpsc::Sender<AppEvent>,
-        render_notify: Arc<Notify>,
-        render_dirty: Arc<AtomicBool>,
-    ) -> std::io::Result<(Self, TerminalState, TerminalRuntime)> {
-        Self::new_with_runtime(
-            number,
-            initial_cwd,
-            rows,
-            cols,
-            scrollback_limit_bytes,
-            host_terminal_theme,
-            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin),
-            events,
-            render_notify,
-            render_dirty,
-            Some(argv),
-        )
-    }
-
     #[allow(clippy::too_many_arguments)]
     fn new_with_runtime(
         number: usize,

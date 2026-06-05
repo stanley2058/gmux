@@ -145,32 +145,6 @@ impl Workspace {
             events,
             render_notify,
             render_dirty,
-            None,
-        )
-    }
-
-    pub fn new_argv_command(
-        initial_cwd: PathBuf,
-        rows: u16,
-        cols: u16,
-        argv: &[String],
-        scrollback_limit_bytes: usize,
-        host_terminal_theme: crate::terminal_theme::TerminalTheme,
-        events: mpsc::Sender<AppEvent>,
-        render_notify: Arc<Notify>,
-        render_dirty: Arc<AtomicBool>,
-    ) -> std::io::Result<(Self, TerminalState, TerminalRuntime)> {
-        Self::new_with_tab(
-            initial_cwd,
-            rows,
-            cols,
-            scrollback_limit_bytes,
-            host_terminal_theme,
-            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin),
-            events,
-            render_notify,
-            render_dirty,
-            Some(argv),
         )
     }
 
@@ -185,35 +159,19 @@ impl Workspace {
         events: mpsc::Sender<AppEvent>,
         render_notify: Arc<Notify>,
         render_dirty: Arc<AtomicBool>,
-        argv: Option<&[String]>,
     ) -> std::io::Result<(Self, TerminalState, TerminalRuntime)> {
-        let (tab, terminal, runtime) = if let Some(argv) = argv {
-            Tab::new_argv_command(
-                1,
-                initial_cwd.clone(),
-                rows,
-                cols,
-                argv,
-                scrollback_limit_bytes,
-                host_terminal_theme,
-                events,
-                render_notify,
-                render_dirty,
-            )?
-        } else {
-            Tab::new(
-                1,
-                initial_cwd.clone(),
-                rows,
-                cols,
-                scrollback_limit_bytes,
-                host_terminal_theme,
-                shell_config,
-                events,
-                render_notify,
-                render_dirty,
-            )?
-        };
+        let (tab, terminal, runtime) = Tab::new(
+            1,
+            initial_cwd.clone(),
+            rows,
+            cols,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            shell_config,
+            events,
+            render_notify,
+            render_dirty,
+        )?;
         let mut public_pane_numbers = HashMap::new();
         public_pane_numbers.insert(tab.root_pane, 1);
         Ok((
@@ -280,10 +238,10 @@ impl Workspace {
             scrollback_limit_bytes,
             host_terminal_theme,
             shell_config,
-            None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn create_tab_with_runtime(
         &mut self,
         rows: u16,
@@ -292,7 +250,6 @@ impl Workspace {
         scrollback_limit_bytes: usize,
         host_terminal_theme: crate::terminal_theme::TerminalTheme,
         shell_config: crate::pane::PaneShellConfig<'_>,
-        argv: Option<&[String]>,
     ) -> std::io::Result<(usize, TerminalState, TerminalRuntime)> {
         let number = self.tabs.len() + 1;
         let events = self
@@ -308,33 +265,18 @@ impl Workspace {
             .map(|tab| tab.render_dirty.clone())
             .expect("workspace must always have at least one tab");
 
-        let (tab, terminal, runtime) = if let Some(argv) = argv {
-            Tab::new_argv_command(
-                number,
-                cwd,
-                rows,
-                cols,
-                argv,
-                scrollback_limit_bytes,
-                host_terminal_theme,
-                events,
-                render_notify,
-                render_dirty,
-            )?
-        } else {
-            Tab::new(
-                number,
-                cwd,
-                rows,
-                cols,
-                scrollback_limit_bytes,
-                host_terminal_theme,
-                shell_config,
-                events,
-                render_notify,
-                render_dirty,
-            )?
-        };
+        let (tab, terminal, runtime) = Tab::new(
+            number,
+            cwd,
+            rows,
+            cols,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            shell_config,
+            events,
+            render_notify,
+            render_dirty,
+        )?;
         self.register_new_pane(tab.root_pane);
         self.tabs.push(tab);
         Ok((self.tabs.len() - 1, terminal, runtime))
@@ -436,33 +378,6 @@ impl Workspace {
             shell_config,
             focus_new_pane,
             None,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn split_pane_argv_command(
-        &mut self,
-        pane_id: PaneId,
-        direction: Direction,
-        rows: u16,
-        cols: u16,
-        cwd: Option<PathBuf>,
-        argv: &[String],
-        scrollback_limit_bytes: usize,
-        host_terminal_theme: crate::terminal_theme::TerminalTheme,
-        focus_new_pane: bool,
-    ) -> Option<std::io::Result<(usize, crate::workspace::tab::NewPane)>> {
-        self.split_pane_with_runtime(
-            pane_id,
-            direction,
-            rows,
-            cols,
-            cwd,
-            scrollback_limit_bytes,
-            host_terminal_theme,
-            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin),
-            focus_new_pane,
-            Some(argv),
         )
     }
 

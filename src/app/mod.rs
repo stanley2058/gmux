@@ -5,7 +5,6 @@
 //! - `input.rs` — key/mouse → action translation
 
 pub(crate) mod actions;
-mod agents;
 mod api;
 mod api_helpers;
 mod config_io;
@@ -15,7 +14,6 @@ mod input;
 mod runtime;
 mod session;
 pub mod state;
-mod terminal_targets;
 mod theme_sync;
 mod worktrees;
 
@@ -2692,132 +2690,6 @@ mod tests {
             .is_none());
     }
 
-    #[test]
-    fn terminal_target_resolves_terminal_id() {
-        let mut app = test_app();
-        let workspace = Workspace::test_new("terminal-target-id");
-        let pane = workspace.tabs[0].root_pane;
-        let terminal_id = workspace.terminal_id(pane).unwrap().to_string();
-        app.state.workspaces = vec![workspace];
-        app.state.active = Some(0);
-        app.state.selected = 0;
-
-        let resolved = app.resolve_terminal_target(&terminal_id).unwrap();
-
-        assert_eq!(resolved.ws_idx, 0);
-        assert_eq!(resolved.pane_id, pane);
-        assert_eq!(resolved.terminal_id, terminal_id);
-    }
-
-    #[test]
-    fn terminal_target_resolves_legacy_pane_id() {
-        let mut app = test_app();
-        let workspace = Workspace::test_new("terminal-target-pane");
-        let pane = workspace.tabs[0].root_pane;
-        let terminal_id = workspace.terminal_id(pane).unwrap().to_string();
-        app.state.workspaces = vec![workspace];
-        app.state.active = Some(0);
-        app.state.selected = 0;
-        let pane_id = app.public_pane_id(0, pane).unwrap();
-
-        let resolved = app.resolve_terminal_target(&pane_id).unwrap();
-
-        assert_eq!(resolved.pane_id, pane);
-        assert_eq!(resolved.terminal_id, terminal_id);
-    }
-
-    #[test]
-    fn terminal_target_resolves_unique_agent_name() {
-        let mut app = test_app();
-        let workspace = Workspace::test_new("terminal-target-name");
-        let pane = workspace.tabs[0].root_pane;
-        let terminal_id = workspace.terminal_id(pane).unwrap().to_string();
-        app.state.workspaces = vec![workspace];
-        app.state.ensure_test_terminals();
-        let attached_terminal_id = app.state.workspaces[0]
-            .pane_state(pane)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&attached_terminal_id)
-            .unwrap()
-            .set_manual_label("reviewer".into());
-        app.state.active = Some(0);
-        app.state.selected = 0;
-
-        let resolved = app.resolve_terminal_target("reviewer").unwrap();
-
-        assert_eq!(resolved.pane_id, pane);
-        assert_eq!(resolved.terminal_id, terminal_id);
-    }
-
-    #[test]
-    fn terminal_target_reports_missing_target() {
-        let mut app = test_app();
-        app.state.workspaces = vec![Workspace::test_new("terminal-target-missing")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
-
-        let err = app.resolve_terminal_target("missing-agent").unwrap_err();
-
-        assert_eq!(
-            err,
-            crate::app::terminal_targets::TerminalTargetError::NotFound {
-                target: "missing-agent".into()
-            }
-        );
-    }
-
-    #[test]
-    fn terminal_target_reports_ambiguous_duplicate_agent_name() {
-        let mut app = test_app();
-        let mut workspace = Workspace::test_new("terminal-target-ambiguous");
-        let first = workspace.tabs[0].root_pane;
-        let second = workspace.test_split(ratatui::layout::Direction::Horizontal);
-        app.state.workspaces = vec![workspace];
-        app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0]
-            .pane_state(first)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .set_manual_label("worker".into());
-        let second_terminal_id = app.state.workspaces[0]
-            .pane_state(second)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .set_manual_label("worker".into());
-        app.state.active = Some(0);
-        app.state.selected = 0;
-
-        let err = app.resolve_terminal_target("worker").unwrap_err();
-
-        let crate::app::terminal_targets::TerminalTargetError::Ambiguous { target, candidates } =
-            err
-        else {
-            panic!("expected ambiguous terminal target");
-        };
-        assert_eq!(target, "worker");
-        assert_eq!(candidates.len(), 2);
-        assert!(candidates.iter().all(|candidate| {
-            candidate.terminal_id.starts_with("term_")
-                && candidate.pane_id.starts_with(&app.state.workspaces[0].id)
-                && candidate.workspace_id == app.state.workspaces[0].id
-                && candidate.cwd.is_some()
-        }));
-    }
-
     #[tokio::test]
     async fn pane_split_request_targets_pane_in_background_tab() {
         let _guard = config_env_lock().lock().unwrap();
@@ -2962,10 +2834,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn focused_agent_start_records_previous_pane() {
+    async fn agent_start_returns_removed_error() {
         let mut app = test_app();
         let workspace = Workspace::test_new("agent-start-focus");
-        let root = workspace.tabs[0].root_pane;
         app.state.workspaces = vec![workspace];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
@@ -2985,18 +2856,8 @@ mod tests {
         });
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
-        assert_eq!(response["result"]["type"], "agent_started");
-        assert_ne!(app.state.workspaces[0].focused_pane_id(), Some(root));
-
-        app.state.last_pane();
-
-        assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.workspaces[0].focused_pane_id(), Some(root));
-
-        let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
-        for (_terminal_id, runtime) in runtimes {
-            runtime.shutdown();
-        }
+        assert_eq!(response["error"]["code"], "agent_api_removed");
+        assert_eq!(app.state.workspaces[0].tabs[0].panes.len(), 1);
     }
 
     #[test]
