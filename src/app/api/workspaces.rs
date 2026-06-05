@@ -173,7 +173,7 @@ mod tests {
     use super::*;
     use crate::{api::schema::SuccessResponse, config::Config, workspace::Workspace};
 
-    fn app_with_linked_worktree() -> App {
+    fn app_with_workspace() -> App {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &Config::default(),
@@ -183,19 +183,12 @@ mod tests {
             crate::api::EventHub::default(),
         );
         app.state.workspaces = vec![Workspace::test_new("issue")];
-        app.state.workspaces[0].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux-issue".into(),
-            is_linked_worktree: true,
-        });
         app
     }
 
     #[test]
-    fn api_workspace_close_closes_linked_worktree_workspace_only() {
-        let mut app = app_with_linked_worktree();
+    fn api_workspace_close_closes_workspace() {
+        let mut app = app_with_workspace();
 
         let response = app.handle_workspace_close(
             "req".into(),

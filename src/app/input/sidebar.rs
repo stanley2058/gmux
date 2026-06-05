@@ -399,12 +399,12 @@ impl AppState {
             let card_group = self
                 .workspaces
                 .get(card.ws_idx)
-                .and_then(|ws| ws.worktree_space())
+                .and_then(|ws| ws.git_space())
                 .map(|space| space.key.as_str());
             let previous_group = idx.checked_sub(1).and_then(|prev_idx| {
                 self.workspaces
                     .get(cards[prev_idx].ws_idx)
-                    .and_then(|ws| ws.worktree_space())
+                    .and_then(|ws| ws.git_space())
                     .map(|space| space.key.as_str())
             });
             let inside_group_gap = card_group.is_some() && card_group == previous_group;
@@ -1014,18 +1014,17 @@ mod tests {
     }
 
     #[test]
-    fn clicking_worktree_parent_row_focuses_workspace_without_toggling() {
+    fn clicking_git_group_parent_row_focuses_workspace_without_toggling() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![Workspace::test_new("main"), Workspace::test_new("issue")];
-        for (idx, checkout_path) in ["/repo/gmux", "/repo/gmux-issue"].into_iter().enumerate() {
-            app.state.workspaces[idx].worktree_space =
-                Some(crate::workspace::WorktreeSpaceMembership {
-                    key: "repo-key".into(),
-                    label: "gmux".into(),
-                    repo_root: "/repo/gmux".into(),
-                    checkout_path: checkout_path.into(),
-                    is_linked_worktree: idx > 0,
-                });
+        for idx in 0..2 {
+            app.state.workspaces[idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
+                key: "repo-key".into(),
+                checkout_key: format!("/repo/checkout-{idx}"),
+                label: "gmux".into(),
+                repo_root: "/repo/gmux".into(),
+                is_linked_worktree: idx > 0,
+            });
         }
         app.state.active = None;
         app.state.mode = Mode::Terminal;
@@ -1048,18 +1047,17 @@ mod tests {
     }
 
     #[test]
-    fn clicking_worktree_parent_chevron_toggles_group_only() {
+    fn clicking_git_group_parent_chevron_toggles_group_only() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![Workspace::test_new("main"), Workspace::test_new("issue")];
-        for (idx, checkout_path) in ["/repo/gmux", "/repo/gmux-issue"].into_iter().enumerate() {
-            app.state.workspaces[idx].worktree_space =
-                Some(crate::workspace::WorktreeSpaceMembership {
-                    key: "repo-key".into(),
-                    label: "gmux".into(),
-                    repo_root: "/repo/gmux".into(),
-                    checkout_path: checkout_path.into(),
-                    is_linked_worktree: idx > 0,
-                });
+        for idx in 0..2 {
+            app.state.workspaces[idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
+                key: "repo-key".into(),
+                checkout_key: format!("/repo/checkout-{idx}"),
+                label: "gmux".into(),
+                repo_root: "/repo/gmux".into(),
+                is_linked_worktree: idx > 0,
+            });
         }
         app.state.active = None;
         app.state.mode = Mode::Terminal;
@@ -1093,15 +1091,14 @@ mod tests {
             Workspace::test_new("normal"),
             Workspace::test_new("issue"),
         ];
-        for (idx, checkout_path) in [(0, "/repo/gmux"), (2, "/repo/gmux-issue")] {
-            app.state.workspaces[idx].worktree_space =
-                Some(crate::workspace::WorktreeSpaceMembership {
-                    key: "repo-key".into(),
-                    label: "gmux".into(),
-                    repo_root: "/repo/gmux".into(),
-                    checkout_path: checkout_path.into(),
-                    is_linked_worktree: idx != 0,
-                });
+        for idx in [0, 2] {
+            app.state.workspaces[idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
+                key: "repo-key".into(),
+                checkout_key: format!("/repo/checkout-{idx}"),
+                label: "gmux".into(),
+                repo_root: "/repo/gmux".into(),
+                is_linked_worktree: idx != 0,
+            });
         }
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -1316,11 +1313,11 @@ mod tests {
 
     fn workspace_with_space(name: &str, key: &str) -> Workspace {
         let mut ws = Workspace::test_new(name);
-        ws.worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
+        ws.cached_git_space = Some(crate::workspace::GitSpaceMetadata {
             key: key.into(),
+            checkout_key: format!("/repo/{name}"),
             label: "gmux".into(),
             repo_root: "/repo/gmux".into(),
-            checkout_path: format!("/repo/{name}").into(),
             is_linked_worktree: name != "main",
         });
         ws
@@ -1416,7 +1413,7 @@ mod tests {
     }
 
     #[test]
-    fn dragging_worktree_space_member_does_not_reorder_workspaces() {
+    fn dragging_git_space_member_does_not_reorder_workspaces() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![
             workspace_with_space("main", "repo-key"),

@@ -115,59 +115,19 @@ fn confirm_close_overlay_text(app: &AppState) -> (String, String) {
         .get(app.selected)
         .map(|ws| ws.display_name())
         .unwrap_or_else(|| "?".to_string());
-    let selected_space = app
+    let pane_count = app
         .workspaces
         .get(app.selected)
-        .and_then(|ws| ws.worktree_space());
-    let group_member_indices = selected_space
-        .filter(|space| !space.is_linked_worktree)
-        .map(|space| {
-            app.workspaces
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, ws)| {
-                    ws.worktree_space()
-                        .is_some_and(|member| member.key == space.key)
-                        .then_some(idx)
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let closes_group = group_member_indices.len() > 1;
-    let pane_count = if closes_group {
-        group_member_indices
-            .iter()
-            .filter_map(|idx| app.workspaces.get(*idx))
-            .map(|ws| ws.layout.pane_count())
-            .sum()
-    } else {
-        app.workspaces
-            .get(app.selected)
-            .map(|ws| ws.layout.pane_count())
-            .unwrap_or(0)
-    };
+        .map(|ws| ws.layout.pane_count())
+        .unwrap_or(0);
 
     let pane_text = if pane_count == 1 {
         "1 pane".to_string()
     } else {
         format!("{pane_count} panes")
     };
-    let session_text = if closes_group {
-        let count = group_member_indices.len();
-        if count == 1 {
-            "1 session, ".to_string()
-        } else {
-            format!("{count} sessions, ")
-        }
-    } else {
-        String::new()
-    };
-
-    let title = if closes_group {
-        "Close worktree group?"
-    } else {
-        "Close session?"
-    };
+    let session_text = String::new();
+    let title = "Close session?";
     let detail = format!("{ws_name} — {session_text}{pane_text}");
     (title.to_string(), detail)
 }
@@ -266,39 +226,4 @@ pub(crate) fn confirm_close_button_rects(inner: Rect) -> (Rect, Rect) {
         3,
     );
     (rects[0], rects[1])
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{app::AppState, workspace::Workspace};
-
-    use super::confirm_close_overlay_text;
-
-    #[test]
-    fn confirm_close_text_reports_parent_group_scope() {
-        let mut app = AppState::test_new();
-        let mut parent = Workspace::test_new("main");
-        parent.worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux".into(),
-            is_linked_worktree: false,
-        });
-        let mut child = Workspace::test_new("issue");
-        child.worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux-issue".into(),
-            is_linked_worktree: true,
-        });
-        app.workspaces = vec![parent, child];
-        app.selected = 0;
-
-        let (title, detail) = confirm_close_overlay_text(&app);
-
-        assert_eq!(title, "Close worktree group?");
-        assert_eq!(detail, "main — 2 sessions, 2 panes");
-    }
 }

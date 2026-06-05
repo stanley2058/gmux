@@ -218,15 +218,6 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&target.pane_id) else {
             return pane_not_found(id, &target.pane_id);
         };
-        if self.state.close_pane_would_close_workspace(ws_idx, pane_id)
-            && self.state.confirm_implicit_worktree_group_close(ws_idx)
-        {
-            return encode_error(
-                id,
-                "confirmation_required",
-                "closing this pane would close a worktree group",
-            );
-        }
         let workspace_id = self.state.workspaces[ws_idx].id.clone();
         let terminal_id = self.state.terminal_id_for_pane(ws_idx, pane_id);
         let should_close_workspace = {
@@ -300,7 +291,7 @@ mod tests {
     use super::*;
     use crate::{api::schema::SuccessResponse, config::Config, workspace::Workspace};
 
-    fn app_with_linked_worktree() -> App {
+    fn app_with_workspace() -> App {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &Config::default(),
@@ -310,19 +301,12 @@ mod tests {
             crate::api::EventHub::default(),
         );
         app.state.workspaces = vec![Workspace::test_new("issue")];
-        app.state.workspaces[0].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux-issue".into(),
-            is_linked_worktree: true,
-        });
         app
     }
 
     #[test]
-    fn api_pane_close_closes_linked_worktree_workspace_only() {
-        let mut app = app_with_linked_worktree();
+    fn api_pane_close_closes_single_pane_workspace() {
+        let mut app = app_with_workspace();
         let pane_id = app.state.workspaces[0].tabs[0].root_pane;
         let public_pane_id = app.public_pane_id(0, pane_id).unwrap();
 

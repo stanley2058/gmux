@@ -885,8 +885,6 @@ pub enum ContextMenuKind {
     },
     GitWorkspace {
         ws_idx: usize,
-        is_linked_worktree: bool,
-        has_worktree_children: bool,
         collapsed: bool,
     },
     Tab {
@@ -912,26 +910,11 @@ impl ContextMenuState {
         match self.kind {
             ContextMenuKind::Workspace { .. } => &["Rename", "Close"],
             ContextMenuKind::GitWorkspace {
-                is_linked_worktree: false,
-                has_worktree_children: false,
-                ..
-            } => &["Rename", "Close"],
+                collapsed: true, ..
+            } => &["Rename", "Close", "Expand"],
             ContextMenuKind::GitWorkspace {
-                is_linked_worktree: true,
-                ..
-            } => &["Rename", "Close"],
-            ContextMenuKind::GitWorkspace {
-                is_linked_worktree: false,
-                has_worktree_children: true,
-                collapsed: true,
-                ..
-            } => &["Rename", "Close group", "Expand"],
-            ContextMenuKind::GitWorkspace {
-                is_linked_worktree: false,
-                has_worktree_children: true,
-                collapsed: false,
-                ..
-            } => &["Rename", "Close group", "Collapse"],
+                collapsed: false, ..
+            } => &["Rename", "Close", "Collapse"],
             ContextMenuKind::Tab { .. } => &["New tab", "Rename", "Close"],
             ContextMenuKind::Pane {
                 has_manual_label: true,
@@ -1517,12 +1500,10 @@ mod tests {
     }
 
     #[test]
-    fn linked_worktree_context_menu_uses_plain_workspace_actions() {
+    fn git_workspace_context_menu_includes_collapse_action() {
         let menu = ContextMenuState {
             kind: ContextMenuKind::GitWorkspace {
                 ws_idx: 0,
-                is_linked_worktree: true,
-                has_worktree_children: false,
                 collapsed: false,
             },
             x: 0,
@@ -1530,40 +1511,6 @@ mod tests {
             list: MenuListState::new(0),
         };
 
-        assert_eq!(menu.items(), &["Rename", "Close"]);
-    }
-
-    #[test]
-    fn git_workspace_context_menu_uses_plain_workspace_actions() {
-        let menu = ContextMenuState {
-            kind: ContextMenuKind::GitWorkspace {
-                ws_idx: 0,
-                is_linked_worktree: false,
-                has_worktree_children: false,
-                collapsed: false,
-            },
-            x: 0,
-            y: 0,
-            list: MenuListState::new(0),
-        };
-
-        assert_eq!(menu.items(), &["Rename", "Close"]);
-    }
-
-    #[test]
-    fn parent_worktree_context_menu_keeps_group_actions_only() {
-        let menu = ContextMenuState {
-            kind: ContextMenuKind::GitWorkspace {
-                ws_idx: 0,
-                is_linked_worktree: false,
-                has_worktree_children: true,
-                collapsed: false,
-            },
-            x: 0,
-            y: 0,
-            list: MenuListState::new(0),
-        };
-
-        assert_eq!(menu.items(), &["Rename", "Close group", "Collapse"]);
+        assert_eq!(menu.items(), &["Rename", "Close", "Collapse"]);
     }
 }

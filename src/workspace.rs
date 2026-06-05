@@ -29,15 +29,6 @@ pub use self::{
     tab::Tab,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct WorktreeSpaceMembership {
-    pub key: String,
-    pub label: String,
-    pub repo_root: PathBuf,
-    pub checkout_path: PathBuf,
-    pub is_linked_worktree: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceGitStatus {
     pub workspace_id: String,
@@ -93,10 +84,8 @@ pub struct Workspace {
     pub(crate) cached_git_branch: Option<String>,
     /// Cached ahead/behind counts for the workspace repo's current branch upstream.
     pub(crate) cached_git_ahead_behind: Option<(usize, usize)>,
-    /// Cached derived Git repo metadata for worktree actions and status display.
+    /// Cached derived Git repo metadata for status display.
     pub(crate) cached_git_space: Option<GitSpaceMetadata>,
-    /// Explicit Gmux-managed worktree grouping provenance.
-    pub worktree_space: Option<WorktreeSpaceMembership>,
     /// Stable-ish public pane numbers within this workspace.
     /// New panes append at the end; closing a pane compacts higher numbers down.
     pub public_pane_numbers: HashMap<PaneId, usize>,
@@ -182,7 +171,6 @@ impl Workspace {
                 cached_git_branch: git_branch(&initial_cwd),
                 cached_git_ahead_behind: None,
                 cached_git_space: None,
-                worktree_space: None,
                 public_pane_numbers,
                 next_public_pane_number: 2,
                 tabs: vec![tab],
@@ -538,10 +526,6 @@ impl Workspace {
         self.cached_git_space.as_ref()
     }
 
-    pub fn worktree_space(&self) -> Option<&WorktreeSpaceMembership> {
-        self.worktree_space.as_ref()
-    }
-
     #[cfg(test)]
     pub fn refresh_git_ahead_behind(&mut self) {
         let cwd = self.resolved_identity_cwd();
@@ -667,7 +651,6 @@ impl Workspace {
             cached_git_branch: git_branch(&identity_cwd),
             cached_git_ahead_behind: None,
             cached_git_space: None,
-            worktree_space: None,
             public_pane_numbers,
             next_public_pane_number: 2,
             tabs: vec![tab],

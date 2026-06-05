@@ -466,7 +466,7 @@ impl AppState {
                         let can_reorder = self
                             .workspaces
                             .get(press.ws_idx)
-                            .is_some_and(|ws| ws.worktree_space().is_none());
+                            .is_some_and(|ws| ws.git_space().is_none());
                         if can_reorder && delta_col.max(delta_row) >= WORKSPACE_DRAG_THRESHOLD {
                             self.drag = Some(DragState {
                                 target: DragTarget::WorkspaceReorder {
@@ -749,22 +749,9 @@ impl AppState {
                                     .as_deref()
                                     .and_then(crate::workspace::git_space_metadata)
                             });
-                            let is_linked_worktree = ws.worktree_space().map_or_else(
-                                || {
-                                    git_space
-                                        .as_ref()
-                                        .is_some_and(|space| space.is_linked_worktree)
-                                },
-                                |space| space.is_linked_worktree,
-                            );
-                            let show_git_menu = ws.worktree_space().is_some()
-                                || git_space
-                                    .as_ref()
-                                    .is_some_and(|space| !space.is_linked_worktree);
+                            let show_git_menu = git_space.as_ref().is_some();
                             show_git_menu.then_some(ContextMenuKind::GitWorkspace {
                                 ws_idx: idx,
-                                is_linked_worktree,
-                                has_worktree_children: group_state.is_some(),
                                 collapsed: group_state
                                     .as_ref()
                                     .is_some_and(|(_, collapsed)| *collapsed),

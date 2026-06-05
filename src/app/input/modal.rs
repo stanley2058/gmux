@@ -616,7 +616,7 @@ pub(super) fn apply_context_menu_action(
             if let Some(key) = state
                 .workspaces
                 .get(ws_idx)
-                .and_then(|ws| ws.worktree_space())
+                .and_then(|ws| ws.git_space())
                 .map(|space| space.key.clone())
             {
                 if collapsed {
@@ -636,7 +636,7 @@ pub(super) fn apply_context_menu_action(
         }
         (
             ContextMenuKind::Workspace { ws_idx } | ContextMenuKind::GitWorkspace { ws_idx, .. },
-            Some("Close" | "Close group"),
+            Some("Close"),
         ) => {
             state.selected = ws_idx;
             if state.confirm_close {
@@ -1161,114 +1161,5 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
         assert_eq!(state.workspaces.len(), 1);
-    }
-
-    #[test]
-    fn confirm_close_for_linked_worktree_closes_workspace_only() {
-        let mut state = state_with_workspaces(&["main", "issue"]);
-        state.mode = Mode::ConfirmClose;
-        state.selected = 1;
-        state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux-issue".into(),
-            is_linked_worktree: true,
-        });
-
-        handle_confirm_close_key(
-            &mut state,
-            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
-        );
-
-        assert_eq!(state.workspaces.len(), 1);
-        assert_eq!(state.workspaces[0].display_name(), "main");
-        assert_eq!(state.mode, Mode::Terminal);
-    }
-
-    #[test]
-    fn context_menu_close_group_opens_group_close_confirmation() {
-        let mut state = state_with_workspaces(&["main", "issue"]);
-        state.active = Some(0);
-        state.selected = 1;
-        state.workspaces[0].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux".into(),
-            is_linked_worktree: false,
-        });
-        state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux-issue".into(),
-            is_linked_worktree: true,
-        });
-        let menu = ContextMenuState {
-            kind: ContextMenuKind::GitWorkspace {
-                ws_idx: 0,
-                is_linked_worktree: false,
-                has_worktree_children: true,
-                collapsed: false,
-            },
-            x: 0,
-            y: 0,
-            list: MenuListState::new(0),
-        };
-        let mut terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-
-        apply_context_menu_action(&mut state, &mut terminal_runtimes, menu, 1);
-
-        assert_eq!(state.selected, 0);
-        assert_eq!(state.mode, Mode::ConfirmClose);
-
-        confirm_close_accept(&mut state);
-
-        assert!(state.workspaces.is_empty());
-        assert_eq!(state.mode, Mode::Navigate);
-    }
-
-    #[test]
-    fn context_menu_close_pane_last_parent_group_pane_keeps_confirmation_mode() {
-        let mut state = state_with_workspaces(&["main", "issue"]);
-        state.active = Some(0);
-        state.selected = 1;
-        state.workspaces[0].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux".into(),
-            is_linked_worktree: false,
-        });
-        state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
-            key: "repo-key".into(),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            checkout_path: "/repo/gmux-issue".into(),
-            is_linked_worktree: true,
-        });
-        let pane_id = state.workspaces[0].tabs[0].root_pane;
-        let menu = ContextMenuState {
-            kind: ContextMenuKind::Pane {
-                pane_id,
-                has_manual_label: false,
-            },
-            x: 0,
-            y: 0,
-            list: MenuListState::new(0),
-        };
-        let idx = menu
-            .items()
-            .iter()
-            .position(|item| *item == "Close pane")
-            .expect("close pane item");
-        let mut terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-
-        apply_context_menu_action(&mut state, &mut terminal_runtimes, menu, idx);
-
-        assert_eq!(state.selected, 0);
-        assert_eq!(state.mode, Mode::ConfirmClose);
-        assert_eq!(state.workspaces.len(), 2);
     }
 }

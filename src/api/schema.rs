@@ -482,17 +482,6 @@ pub struct WorkspaceInfo {
     pub tab_count: usize,
     pub active_tab_id: String,
     pub agent_status: AgentStatus,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub worktree: Option<WorkspaceWorktreeInfo>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceWorktreeInfo {
-    pub repo_key: String,
-    pub repo_name: String,
-    pub repo_root: String,
-    pub checkout_path: String,
-    pub is_linked_worktree: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
