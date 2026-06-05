@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: Create your first Gmux workspace and run agents in persistent terminal panes.
+description: Start a Gmux session, split panes, create tabs, and detach safely.
 ---
 
 Start Gmux from any project directory:
@@ -9,25 +9,23 @@ Start Gmux from any project directory:
 gmux
 ```
 
-Gmux launches or attaches to your default background session. You do not manage sockets. If you detach, agents keep running.
+Gmux launches or attaches to your default background session. You do not manage sockets. If you detach, panes keep running.
 
 For the local, SSH, and `gmux --remote` workflows, see [How to work with Gmux](/docs/how-to-work/).
 
-## Create a workspace
+## Work in a session
 
-Press `prefix+shift+n` to create a workspace. A workspace is a project-level container for tabs, panes, and agents.
+The first screen is a shell in your session's first tab. Use it like a normal terminal, then split panes or add tabs as your work grows.
 
-Give each active project its own workspace. This keeps agent state readable in the sidebar.
-
-## Run an agent
-
-Start your agent in the root pane.
+For separate projects or machines, use named sessions:
 
 ```bash
-pi
+gmux new -s work
+gmux attach -t work
+gmux ls
 ```
 
-Gmux detects supported agents automatically. The sidebar shows whether each agent is `working`, `blocked`, `done`, or `idle`.
+Each named session has its own tabs, panes, socket, and persisted runtime state.
 
 ## Keyboard control
 
@@ -41,15 +39,14 @@ Common actions:
 | Split down | `prefix+minus` |
 | New tab | `prefix+c` |
 | Next / previous tab | `prefix+n` / `prefix+p` |
-| Workspace navigation | `prefix+w` |
-| New workspace | `prefix+shift+n` |
-| Detach client | `prefix+q` |
+| Select tab | `prefix+1..9` |
+| Detach client | `prefix+d` |
 
 After detaching, run `gmux` again to reattach to the same session.
 
 ## Use the mouse
 
-Gmux is mouse-native. You can click panes, tabs, workspaces, and agents; drag borders; drag-select text to copy it to your clipboard; double-click a token to copy it directly; and use right-click menus. Copying does not require Ctrl+C.
+Gmux is mouse-native. You can click panes and tabs, drag borders, drag-select text to copy it to your clipboard, double-click a token to copy it directly, and use right-click menus. Copying does not require Ctrl+C.
 
 If you configure `ui.right_click_passthrough_modifier`, that modifier plus right-click sends right-click, hold, and drag gestures to mouse-reporting pane apps.
 
@@ -71,7 +68,7 @@ gmux session stop work
 gmux session delete side-project
 ```
 
-Workspaces are usually enough. Use named sessions when you need isolation between sets of panes, sockets, and persistent state.
+Use named sessions when you need isolation between sets of panes, sockets, and persistent state.
 
 ## Attach from another machine
 

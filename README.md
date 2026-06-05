@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/043ec09f-4bdd-41d5-aee0-8fda6b83e267
 
 **agent multiplexer that lives in your terminal.**
 
-workspaces, tabs, panes. mouse-native: click, drag, split. every agent at a glance: blocked, working, done. detach and reattach, agents keep running. no gui app, no electron, no mac-only native wrapper. you see the agent's own terminal, not someone's interpretation of it.
+sessions, tabs, panes. mouse-native: click, drag, split. every agent at a glance: blocked, working, done. detach and reattach, agents keep running. no gui app, no electron, no mac-only native wrapper. you see the agent's own terminal, not someone's interpretation of it.
 
 ---
 
@@ -97,7 +97,7 @@ Preview is only for direct installs managed by Gmux's updater. Homebrew, mise, a
 |--------------------------|------|--------------|-------|
 | persistent sessions       | ✓    | —            | ✓     |
 | detach / reattach        | ✓    | —            | ✓     |
-| panes, tabs, workspaces  | ✓    | ✓            | ✓     |
+| sessions, tabs, panes    | ✓    | ✓            | ✓     |
 | agent awareness          | —    | ✓            | ✓     |
 | lives in your terminal   | ✓    | —            | ✓     |
 | real terminal views      | ✓    | —            | ✓     |
@@ -136,7 +136,7 @@ See [persistence and remote docs](https://gmux.dev/docs/persistence-remote/) for
 
 ## agent awareness
 
-the sidebar shows which agents are blocked, working, or done. workspaces roll up to their most urgent state so you can scan the full list at a glance.
+the sidebar shows which agents are blocked, working, or done. sessions and tabs keep panes organized while you scan what needs attention.
 
 states:
 
@@ -153,7 +153,7 @@ not a gui window, not a web dashboard, not electron. gmux runs inside whatever t
 
 ## what you get
 
-- **workspaces** — organized around git repos or folder names, each with its own tabs and panes
+- **sessions** — persistent tab and pane groups for projects, machines, or long-running work
 - **tabs** — first-class in the socket api and cli
 - **copy-friendly** — drag-select pane text, double-click tokens, or use keyboard copy mode with `prefix+[`, `h/j/k/l`, `{`/`}`, `v`, and `y`
 - **notifications** — sounds and toasts for background events; tab-aware suppression
@@ -162,7 +162,7 @@ not a gui window, not a web dashboard, not electron. gmux runs inside whatever t
 
 ## agents can use gmux too
 
-The local Unix socket lets agents create workspaces, split panes, spawn helpers, read output, and wait for state changes. Start with the [socket API docs](https://gmux.dev/docs/socket-api/) and [`SKILL.md`](./SKILL.md).
+The local Unix socket lets agents create tabs, split panes, spawn helpers, read output, and wait for state changes. Start with the [socket API docs](https://gmux.dev/docs/socket-api/) and [`SKILL.md`](./SKILL.md).
 
 ## supported agents
 
@@ -188,7 +188,7 @@ automatic detection works out of the box. process name matching plus terminal ou
 
 detected but not fully tested: gemini cli, cline.
 
-for agents outside the built-in list, gmux still works as a terminal multiplexer with workspaces, panes, and tiling. custom integrations can report agent labels over the socket api. see the [socket api docs](https://gmux.dev/docs/socket-api/).
+for agents outside the built-in list, gmux still works as a terminal multiplexer with sessions, tabs, panes, and tiling. custom integrations can report agent labels over the socket api. see the [socket api docs](https://gmux.dev/docs/socket-api/).
 
 ### direct integrations
 
@@ -223,7 +223,7 @@ Press `ctrl+b` to enter prefix mode. Default actions are prefix-first and tmux-l
 | `prefix+b` | toggle sidebar |
 | `prefix+z` | zoom pane |
 | `prefix+r` | resize mode |
-| `prefix+q` | detach |
+| `prefix+d` | detach |
 
 Mouse is supported throughout. Resize mode uses `h`/`l` for width, `j`/`k` for height, and `esc` to exit. Full syntax, optional actions, indexed bindings, and custom command bindings live in the [configuration docs](https://gmux.dev/docs/configuration/).
 

@@ -1,9 +1,9 @@
 ---
 title: CLI reference
-description: Gmux commands for sessions, workspaces, tabs, panes, agents, waits, integrations, and status.
+description: Gmux commands for sessions, tabs, panes, waits, and status.
 ---
 
-Gmux’s CLI talks to the running server over the same local socket API used by integrations and agents.
+Gmux's CLI talks to the running server over the same local socket API used by automation.
 
 Most commands print JSON responses. Use them from scripts when you want deterministic automation.
 
@@ -46,49 +46,28 @@ gmux server reload-config
 ## Sessions
 
 ```bash
+gmux new [-s name]
+gmux attach [-t name]
+gmux ls [--json]
+gmux kill-session [-t name] [--json]
 gmux session list [--json]
 gmux session attach <name>
 gmux session stop <name> [--json]
 gmux session delete <name> [--json]
 ```
 
-Use `default` as the session name when you need to stop the default session explicitly.
-
-## Workspaces
-
-```bash
-gmux workspace list
-gmux workspace create [--cwd PATH] [--label TEXT] [--focus] [--no-focus]
-gmux workspace get <workspace_id>
-gmux workspace focus <workspace_id>
-gmux workspace rename <workspace_id> <label>
-gmux workspace close <workspace_id>
-```
-
-Create a workspace without stealing focus:
-
-```bash
-gmux workspace create --cwd ~/project --label api --no-focus
-```
-
-## Worktrees
-
-```bash
-gmux worktree list [--workspace ID | --cwd PATH] [--json]
-gmux worktree create [--workspace ID | --cwd PATH] [--branch NAME] [--base REF] [--path PATH] [--label TEXT] [--focus] [--no-focus] [--json]
-gmux worktree open [--workspace ID | --cwd PATH] (--path PATH | --branch NAME) [--label TEXT] [--focus] [--no-focus] [--json]
-gmux worktree remove --workspace ID [--force] [--json]
-```
-
-Worktrees are normal Gmux workspaces with Git checkout provenance. `worktree create` creates a Git worktree checkout, opens it as a workspace, and groups it with the parent repo workspace. Without `--path`, Gmux creates the checkout under `<worktrees.directory>/<repo>/<branch-slug>`.
-
-`workspace close` closes Gmux state only. `worktree remove` is the explicit checkout deletion path; it runs `git worktree remove`, never deletes the branch, and requires `--force` when Git refuses a dirty checkout.
+Use `default` as the session name when you need to stop the default session explicitly. The short top-level forms are the normal user interface; the `session ...` forms remain scriptable equivalents.
 
 ## Tabs
 
 ```bash
-gmux tab list [--workspace <workspace_id>]
-gmux tab create [--workspace <workspace_id>] [--cwd PATH] [--label TEXT] [--focus] [--no-focus]
+gmux new-tab [-n NAME] [-c CWD]
+gmux list-tabs
+gmux select-tab -t <index|id>
+gmux rename-tab -t <index|id> <name>
+gmux kill-tab -t <index|id>
+gmux tab list
+gmux tab create [--cwd PATH] [--label TEXT] [--focus] [--no-focus]
 gmux tab get <tab_id>
 gmux tab focus <tab_id>
 gmux tab rename <tab_id> <label>
@@ -98,7 +77,12 @@ gmux tab close <tab_id>
 ## Panes
 
 ```bash
-gmux pane list [--workspace <workspace_id>]
+gmux split-pane [-h|-v] [-c CWD] [command...]
+gmux capture-pane [-t pane] [-S lines] [-e]
+gmux send-text [-t pane] <text>
+gmux send-keys [-t pane] <key> [key ...]
+gmux kill-pane [-t pane]
+gmux pane list
 gmux pane get <pane_id>
 gmux pane rename <pane_id> <label>|--clear
 gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus]
@@ -123,62 +107,6 @@ gmux pane run <pane_id> <command>
 
 `pane run` submits text plus Enter atomically. Prefer it over `send-text` plus `send-keys Enter` for commands.
 
-Report agent state from custom hooks:
-
-```bash
-gmux pane report-agent <pane_id> \
-  --source ID \
-  --agent LABEL \
-  --state idle|working|blocked|unknown \
-  [--message TEXT] \
-  [--custom-status TEXT] \
-  [--seq N] \
-  [--agent-session-id ID] \
-  [--agent-session-path PATH]
-```
-
-`pane get`, `pane list`, `agent get`, and `agent list` include a read-only `agent_session` object when an official integration has reported a native session reference. If no native session reference is stored, the field is omitted.
-
-Those commands include `foreground_cwd` when Gmux can resolve the cwd of the foreground process controlling the pane. The existing `cwd` field remains the pane/workspace cwd used for labels and follow-cwd behavior.
-
-Report display-only pane metadata without taking over semantic state:
-
-```bash
-gmux pane report-metadata <pane_id> \
-  --source ID \
-  [--agent LABEL] \
-  [--applies-to-source ID] \
-  [--title TEXT|--clear-title] \
-  [--display-agent TEXT|--clear-display-agent] \
-  [--custom-status TEXT|--clear-custom-status] \
-  [--state-label STATUS=TEXT] \
-  [--clear-state-labels] \
-  [--seq N] \
-  [--ttl-ms N]
-```
-
-`STATUS` is one of `idle`, `working`, `blocked`, `done`, or `unknown`. `--agent` is a guard for the authoritative agent label. `--applies-to-source` is a guard for the active lifecycle authority source. Use `--display-agent` to change the visible name.
-
-## Agents
-
-```bash
-gmux agent list
-gmux agent get <target>
-gmux agent read <target> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]
-gmux agent send <target> <text>
-gmux agent rename <target> <name>|--clear
-gmux agent focus <target>
-gmux agent wait <target> --status <idle|working|blocked|unknown> [--timeout MS]
-gmux agent attach <target> [--takeover]
-gmux agent start <name> [--cwd PATH] [--workspace ID] [--tab ID] [--split right|down] [--focus|--no-focus] -- <argv...>
-```
-
-Agent targets can be terminal IDs, unique agent names, detected or reported agent labels, or legacy pane IDs. Names and labels are agent identities. Terminal IDs and legacy pane IDs are low-level escape hatches.
-
-`agent read` reads the resolved terminal stream. `agent send` writes literal text to that stream. `agent get`, `agent focus`, `agent wait`, and `agent attach` require the resolved terminal to have agent identity. `agent rename` can assign that identity.
-
-Use `pane send-text`, `pane send-keys`, `pane run`, and `terminal attach` for ordinary terminals, servers, tests, shells, or low-level terminal control. Use `pane run` when you want to submit a command with Enter.
-
 ## Direct terminal attach
 
 ```bash
@@ -195,35 +123,7 @@ Wait for output in a pane:
 gmux wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]
 ```
 
-Wait for pane agent state:
-
-```bash
-gmux wait agent-status <pane_id> --status <idle|working|blocked|done|unknown> [--timeout MS]
-```
-
-Use `wait output` for normal commands and servers. Use `wait agent-status` for coding agents.
-
-## Integrations
-
-```bash
-gmux integration install pi
-gmux integration install omp
-gmux integration install claude
-gmux integration install codex
-gmux integration install copilot
-gmux integration install opencode
-gmux integration install hermes
-gmux integration install qodercli
-gmux integration uninstall pi
-gmux integration uninstall omp
-gmux integration uninstall claude
-gmux integration uninstall codex
-gmux integration uninstall copilot
-gmux integration uninstall opencode
-gmux integration uninstall hermes
-gmux integration uninstall qodercli
-gmux integration status [--outdated-only]
-```
+Use `wait output` for commands, servers, tests, and other pane output.
 
 ## Read sources
 
