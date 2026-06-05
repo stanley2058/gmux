@@ -477,8 +477,12 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    if args.get(1).map(|arg| arg.as_str()) == Some("agent") {
-        eprintln!("unknown command: agent");
+    if matches!(
+        args.get(1).map(|arg| arg.as_str()),
+        Some("agent" | "integration")
+    ) {
+        let command = args.get(1).map(String::as_str).unwrap_or_default();
+        eprintln!("unknown command: {command}");
         eprintln!("run 'gmux --help' for usage");
         std::process::exit(1);
     }
@@ -526,13 +530,11 @@ fn main() -> io::Result<()> {
                 "status",
                 "config",
                 "channel",
-                "agent",
                 "workspace",
                 "worktree",
                 "pane",
                 "wait",
                 "session",
-                "integration",
             ]
             .contains(&arg.as_str())
         {

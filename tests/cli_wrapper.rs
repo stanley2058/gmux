@@ -910,7 +910,6 @@ fn help_commands_exit_successfully() {
         &["split-pane", "-h"],
         &["kill-pane", "-h"],
         &["detach", "-h"],
-        &["integration", "-h"],
     ];
 
     for args in help_cases {
@@ -1172,104 +1171,7 @@ fn named_sessions_use_separate_servers_and_workspace_state() {
 }
 
 #[test]
-fn integration_commands_run_locally_when_server_is_missing() {
-    let base = unique_test_dir();
-    let home_dir = base.join("home");
-    let extensions_dir = home_dir.join(".pi/agent/extensions");
-    fs::create_dir_all(&extensions_dir).unwrap();
-
-    let runtime_dir = base.join("runtime");
-    fs::create_dir_all(&runtime_dir).unwrap();
-    register_runtime_dir(&runtime_dir);
-    let missing_socket = runtime_dir.join("missing.sock");
-
-    let expected_extension = extensions_dir.join("gmux-agent-state.ts");
-    assert!(
-        !expected_extension.exists(),
-        "test setup should start without extension file"
-    );
-
-    let workspace_list = Command::new(env!("CARGO_BIN_EXE_gmux"))
-        .args(["workspace", "list"])
-        .env("GMUX_SOCKET_PATH", &missing_socket)
-        .env("HOME", &home_dir)
-        .output()
-        .unwrap();
-    assert_eq!(workspace_list.status.code(), Some(1));
-
-    let integration_install = Command::new(env!("CARGO_BIN_EXE_gmux"))
-        .args(["integration", "install", "pi"])
-        .env("GMUX_SOCKET_PATH", &missing_socket)
-        .env("HOME", &home_dir)
-        .output()
-        .unwrap();
-    assert_eq!(integration_install.status.code(), Some(0));
-    assert!(
-        expected_extension.exists(),
-        "integration install should write local files without a server"
-    );
-
-    let integration_status = Command::new(env!("CARGO_BIN_EXE_gmux"))
-        .args(["integration", "status"])
-        .env("GMUX_SOCKET_PATH", &missing_socket)
-        .env("HOME", &home_dir)
-        .output()
-        .unwrap();
-    assert_eq!(integration_status.status.code(), Some(0));
-    let status_stdout = String::from_utf8_lossy(&integration_status.stdout);
-    assert!(status_stdout.contains("pi: current (v2)"));
-    assert!(status_stdout.contains("claude: not installed"));
-
-    let integration_uninstall = Command::new(env!("CARGO_BIN_EXE_gmux"))
-        .args(["integration", "uninstall", "pi"])
-        .env("GMUX_SOCKET_PATH", &missing_socket)
-        .env("HOME", &home_dir)
-        .output()
-        .unwrap();
-    assert_eq!(integration_uninstall.status.code(), Some(0));
-    assert!(
-        !expected_extension.exists(),
-        "integration uninstall should remove local files without a server"
-    );
-
-    cleanup_test_base(&base);
-}
-
-#[test]
-fn integration_status_outdated_only_prints_action_for_legacy_install() {
-    let base = unique_test_dir();
-    let home_dir = base.join("home");
-    let extensions_dir = home_dir.join(".pi/agent/extensions");
-    fs::create_dir_all(&extensions_dir).unwrap();
-    fs::write(
-        extensions_dir.join("gmux-agent-state.ts"),
-        "// legacy gmux integration\n",
-    )
-    .unwrap();
-
-    let runtime_dir = base.join("runtime");
-    fs::create_dir_all(&runtime_dir).unwrap();
-    register_runtime_dir(&runtime_dir);
-    let missing_socket = runtime_dir.join("missing.sock");
-
-    let output = Command::new(env!("CARGO_BIN_EXE_gmux"))
-        .args(["integration", "status", "--outdated-only"])
-        .env("GMUX_SOCKET_PATH", &missing_socket)
-        .env("HOME", &home_dir)
-        .output()
-        .unwrap();
-
-    assert_eq!(output.status.code(), Some(0));
-    assert!(output.stdout.is_empty());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("installed gmux integrations need updating"));
-    assert!(stderr.contains("gmux integration install pi"));
-
-    cleanup_test_base(&base);
-}
-
-#[test]
-fn integration_status_rejects_unknown_flags() {
+fn integration_command_is_not_public_cli() {
     let base = unique_test_dir();
     let home_dir = base.join("home");
     fs::create_dir_all(&home_dir).unwrap();
@@ -1279,13 +1181,18 @@ fn integration_status_rejects_unknown_flags() {
     let missing_socket = runtime_dir.join("missing.sock");
 
     let output = Command::new(env!("CARGO_BIN_EXE_gmux"))
-        .args(["integration", "status", "--wat"])
+        .args(["integration", "status"])
         .env("GMUX_SOCKET_PATH", &missing_socket)
         .env("HOME", &home_dir)
         .output()
         .unwrap();
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown command: integration"),
+        "stderr: {stderr}"
+    );
 
     cleanup_test_base(&base);
 }
