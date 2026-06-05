@@ -615,37 +615,10 @@ pub(super) fn apply_context_menu_action(
 ) {
     let item = menu.items().get(idx).copied();
     match (menu.kind, item) {
-        (
-            ContextMenuKind::GitWorkspace {
-                ws_idx, collapsed, ..
-            },
-            Some("Collapse" | "Expand"),
-        ) => {
-            if let Some(key) = state
-                .workspaces
-                .get(ws_idx)
-                .and_then(|ws| ws.git_space())
-                .map(|space| space.key.clone())
-            {
-                if collapsed {
-                    state.collapsed_space_keys.remove(&key);
-                } else {
-                    state.collapsed_space_keys.insert(key);
-                }
-                state.mark_session_dirty();
-            }
-            leave_modal(state);
-        }
-        (
-            ContextMenuKind::Workspace { ws_idx } | ContextMenuKind::GitWorkspace { ws_idx, .. },
-            Some("Rename"),
-        ) => {
+        (ContextMenuKind::Workspace { ws_idx }, Some("Rename")) => {
             open_rename_workspace(state, terminal_runtimes, ws_idx);
         }
-        (
-            ContextMenuKind::Workspace { ws_idx } | ContextMenuKind::GitWorkspace { ws_idx, .. },
-            Some("Close"),
-        ) => {
+        (ContextMenuKind::Workspace { ws_idx }, Some("Close")) => {
             state.selected = ws_idx;
             if state.confirm_close {
                 open_confirm_close(state);

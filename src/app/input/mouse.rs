@@ -341,29 +341,6 @@ impl AppState {
                         return None;
                     }
 
-                    let cards = if self.view.workspace_card_areas.is_empty() {
-                        crate::ui::compute_workspace_card_areas(self, self.view.sidebar_rect)
-                    } else {
-                        self.view.workspace_card_areas.clone()
-                    };
-                    if let Some(card) = cards.iter().find(|card| {
-                        mouse.row == card.rect.y
-                            && mouse.column == card.rect.x
-                            && mouse.column < card.rect.x + card.rect.width
-                    }) {
-                        if let Some((key, collapsed)) =
-                            crate::ui::workspace_parent_group_state(self, card.ws_idx)
-                        {
-                            if collapsed {
-                                self.collapsed_space_keys.remove(&key);
-                            } else {
-                                self.collapsed_space_keys.insert(key);
-                            }
-                            self.mark_session_dirty();
-                            return None;
-                        }
-                    }
-
                     if let Some(idx) = self.workspace_at_row(mouse.row) {
                         self.workspace_press = Some(WorkspacePressState {
                             ws_idx: idx,
@@ -463,11 +440,7 @@ impl AppState {
                     if let Some(press) = &self.workspace_press {
                         let delta_col = mouse.column.abs_diff(press.start_col);
                         let delta_row = mouse.row.abs_diff(press.start_row);
-                        let can_reorder = self
-                            .workspaces
-                            .get(press.ws_idx)
-                            .is_some_and(|ws| ws.git_space().is_none());
-                        if can_reorder && delta_col.max(delta_row) >= WORKSPACE_DRAG_THRESHOLD {
+                        if delta_col.max(delta_row) >= WORKSPACE_DRAG_THRESHOLD {
                             self.drag = Some(DragState {
                                 target: DragTarget::WorkspaceReorder {
                                     source_ws_idx: press.ws_idx,
@@ -741,25 +714,7 @@ impl AppState {
                 }
                 if let Some(idx) = self.workspace_at_row(mouse.row) {
                     self.selected = idx;
-                    let kind = self
-                        .workspaces
-                        .get(idx)
-                        .and_then(|ws| {
-                            let group_state = crate::ui::workspace_parent_group_state(self, idx);
-                            let git_space = ws.git_space().cloned().or_else(|| {
-                                ws.resolved_identity_cwd_from(&self.terminals, terminal_runtimes)
-                                    .as_deref()
-                                    .and_then(crate::workspace::git_space_metadata)
-                            });
-                            let show_git_menu = git_space.as_ref().is_some();
-                            show_git_menu.then_some(ContextMenuKind::GitWorkspace {
-                                ws_idx: idx,
-                                collapsed: group_state
-                                    .as_ref()
-                                    .is_some_and(|(_, collapsed)| *collapsed),
-                            })
-                        })
-                        .unwrap_or(ContextMenuKind::Workspace { ws_idx: idx });
+                    let kind = ContextMenuKind::Workspace { ws_idx: idx };
                     self.context_menu = Some(ContextMenuState {
                         kind,
                         x: mouse.column,

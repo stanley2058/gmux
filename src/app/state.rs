@@ -879,10 +879,6 @@ pub enum ContextMenuKind {
     Workspace {
         ws_idx: usize,
     },
-    GitWorkspace {
-        ws_idx: usize,
-        collapsed: bool,
-    },
     Tab {
         ws_idx: usize,
         tab_idx: usize,
@@ -905,12 +901,6 @@ impl ContextMenuState {
     pub fn items(&self) -> &'static [&'static str] {
         match self.kind {
             ContextMenuKind::Workspace { .. } => &["Rename", "Close"],
-            ContextMenuKind::GitWorkspace {
-                collapsed: true, ..
-            } => &["Rename", "Close", "Expand"],
-            ContextMenuKind::GitWorkspace {
-                collapsed: false, ..
-            } => &["Rename", "Close", "Collapse"],
             ContextMenuKind::Tab { .. } => &["New tab", "Rename", "Close"],
             ContextMenuKind::Pane {
                 has_manual_label: true,
@@ -1482,20 +1472,5 @@ mod tests {
             KeyCode::Char('b'),
             KeyModifiers::SHIFT,
         ));
-    }
-
-    #[test]
-    fn git_workspace_context_menu_includes_collapse_action() {
-        let menu = ContextMenuState {
-            kind: ContextMenuKind::GitWorkspace {
-                ws_idx: 0,
-                collapsed: false,
-            },
-            x: 0,
-            y: 0,
-            list: MenuListState::new(0),
-        };
-
-        assert_eq!(menu.items(), &["Rename", "Close", "Collapse"]);
     }
 }

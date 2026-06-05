@@ -394,24 +394,7 @@ impl AppState {
             return Some(0);
         }
 
-        let mut insert_indices = Vec::with_capacity(cards.len() + 1);
-        for (idx, card) in cards.iter().enumerate() {
-            let card_group = self
-                .workspaces
-                .get(card.ws_idx)
-                .and_then(|ws| ws.git_space())
-                .map(|space| space.key.as_str());
-            let previous_group = idx.checked_sub(1).and_then(|prev_idx| {
-                self.workspaces
-                    .get(cards[prev_idx].ws_idx)
-                    .and_then(|ws| ws.git_space())
-                    .map(|space| space.key.as_str())
-            });
-            let inside_group_gap = card_group.is_some() && card_group == previous_group;
-            if !inside_group_gap {
-                insert_indices.push(card.ws_idx);
-            }
-        }
+        let mut insert_indices = cards.iter().map(|card| card.ws_idx).collect::<Vec<_>>();
         insert_indices.push(cards.last().map(|card| card.ws_idx + 1).unwrap_or(0));
 
         let mut best: Option<(usize, u16)> = None;
@@ -924,92 +907,13 @@ mod tests {
     }
 
     #[test]
-    fn clicking_git_group_parent_row_focuses_workspace_without_toggling() {
-        let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![Workspace::test_new("main"), Workspace::test_new("issue")];
-        for idx in 0..2 {
-            app.state.workspaces[idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-                key: "repo-key".into(),
-                checkout_key: format!("/repo/checkout-{idx}"),
-                label: "gmux".into(),
-                repo_root: "/repo/gmux".into(),
-                is_linked_worktree: idx > 0,
-            });
-        }
-        app.state.active = None;
-        app.state.mode = Mode::Terminal;
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-        let parent = app.state.view.workspace_card_areas[0].rect;
-
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            parent.x + 2,
-            parent.y,
-        ));
-        app.handle_mouse(mouse(
-            MouseEventKind::Up(MouseButton::Left),
-            parent.x + 2,
-            parent.y,
-        ));
-
-        assert_eq!(app.state.active, Some(0));
-        assert!(!app.state.collapsed_space_keys.contains("repo-key"));
-    }
-
-    #[test]
-    fn clicking_git_group_parent_chevron_toggles_group_only() {
-        let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![Workspace::test_new("main"), Workspace::test_new("issue")];
-        for idx in 0..2 {
-            app.state.workspaces[idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-                key: "repo-key".into(),
-                checkout_key: format!("/repo/checkout-{idx}"),
-                label: "gmux".into(),
-                repo_root: "/repo/gmux".into(),
-                is_linked_worktree: idx > 0,
-            });
-        }
-        app.state.active = None;
-        app.state.mode = Mode::Terminal;
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-        let parent = app.state.view.workspace_card_areas[0].rect;
-
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            parent.x,
-            parent.y,
-        ));
-
-        assert_eq!(app.state.active, None);
-        assert!(app.state.workspace_press.is_none());
-        assert!(app.state.collapsed_space_keys.contains("repo-key"));
-
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            parent.x,
-            parent.y,
-        ));
-
-        assert!(!app.state.collapsed_space_keys.contains("repo-key"));
-    }
-
-    #[test]
-    fn wheel_workspace_selection_follows_grouped_visual_order_without_scrollbar() {
+    fn wheel_workspace_selection_follows_visual_order_without_scrollbar() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![
             Workspace::test_new("main"),
             Workspace::test_new("normal"),
             Workspace::test_new("issue"),
         ];
-        for idx in [0, 2] {
-            app.state.workspaces[idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-                key: "repo-key".into(),
-                checkout_key: format!("/repo/checkout-{idx}"),
-                label: "gmux".into(),
-                repo_root: "/repo/gmux".into(),
-                is_linked_worktree: idx != 0,
-            });
-        }
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
@@ -1021,7 +925,7 @@ mod tests {
 
         app.handle_mouse(mouse(MouseEventKind::ScrollDown, list.x + 1, list.y + 1));
 
-        assert_eq!(app.state.selected, 2);
+        assert_eq!(app.state.selected, 1);
     }
 
     #[test]
@@ -1221,18 +1125,6 @@ mod tests {
         repo
     }
 
-    fn workspace_with_space(name: &str, key: &str) -> Workspace {
-        let mut ws = Workspace::test_new(name);
-        ws.cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-            key: key.into(),
-            checkout_key: format!("/repo/{name}"),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            is_linked_worktree: name != "main",
-        });
-        ws
-    }
-
     #[test]
     fn top_drop_slot_is_distinct_from_gap_below_first_workspace() {
         let mut app = app_for_mouse_test();
@@ -1295,76 +1187,6 @@ mod tests {
         let last = cards.last().unwrap().rect;
         assert_eq!(bottom_slot, last.y + last.height);
         assert!(bottom_slot < app.state.sidebar_footer_rect().y.saturating_sub(1));
-    }
-
-    #[test]
-    fn grouped_sidebar_drop_slots_do_not_land_inside_compact_group() {
-        let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![
-            workspace_with_space("main", "repo-key"),
-            Workspace::test_new("normal"),
-            workspace_with_space("issue", "repo-key"),
-        ];
-        app.state.active = Some(1);
-        app.state.selected = 1;
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 40));
-
-        let cards = &app.state.view.workspace_card_areas;
-        let order = cards.iter().map(|card| card.ws_idx).collect::<Vec<_>>();
-        assert_eq!(order, vec![0, 2, 1]);
-        let issue = cards.iter().find(|card| card.ws_idx == 2).unwrap();
-        let normal = cards.iter().find(|card| card.ws_idx == 1).unwrap();
-
-        assert_eq!(app.state.workspace_drop_index_at_row(issue.rect.y), Some(1));
-        assert_eq!(
-            crate::ui::workspace_drop_indicator_row(cards, app.state.workspace_list_rect(), 2),
-            Some(normal.rect.y + normal.rect.height)
-        );
-    }
-
-    #[test]
-    fn dragging_git_space_member_does_not_reorder_workspaces() {
-        let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![
-            workspace_with_space("main", "repo-key"),
-            Workspace::test_new("normal"),
-            workspace_with_space("issue", "repo-key"),
-        ];
-        app.state.active = Some(0);
-        app.state.selected = 0;
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 40));
-
-        let source = app
-            .state
-            .view
-            .workspace_card_areas
-            .iter()
-            .find(|card| card.ws_idx == 2)
-            .unwrap()
-            .rect;
-        let target_row = crate::ui::workspace_drop_indicator_row(
-            &app.state.view.workspace_card_areas,
-            app.state.workspace_list_rect(),
-            0,
-        )
-        .unwrap();
-
-        app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 2, source.y));
-        app.handle_mouse(mouse(
-            MouseEventKind::Drag(MouseButton::Left),
-            2,
-            target_row,
-        ));
-        assert!(app.state.drag.is_none());
-        app.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left), 2, target_row));
-
-        let names = app
-            .state
-            .workspaces
-            .iter()
-            .map(|ws| ws.display_name())
-            .collect::<Vec<_>>();
-        assert_eq!(names, vec!["main", "normal", "issue"]);
     }
 
     #[test]

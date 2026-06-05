@@ -234,55 +234,9 @@ fn workspace_row_height(ws: &crate::workspace::Workspace) -> u16 {
     }
 }
 
-fn space_has_active_workspace(app: &AppState, key: &str) -> bool {
-    app.workspaces
-        .iter()
-        .enumerate()
-        .filter(|(_, ws)| ws.git_space().is_some_and(|space| space.key == key))
-        .any(|(idx, _)| Some(idx) == app.active)
-}
-
-pub(crate) fn workspace_parent_group_state(
-    app: &AppState,
-    ws_idx: usize,
-) -> Option<(String, bool)> {
-    let space = app.workspaces.get(ws_idx)?.git_space()?;
-    let member_count = app
-        .workspaces
-        .iter()
-        .filter(|ws| ws.git_space().is_some_and(|member| member.key == space.key))
-        .count();
-    (member_count >= 2).then(|| {
-        (
-            space.key.clone(),
-            app.collapsed_space_keys.contains(&space.key),
-        )
-    })
-}
-
-fn grouped_child_display_label(label: &str, branch: Option<&str>, has_custom_name: bool) -> String {
-    if has_custom_name {
-        return label.to_string();
-    }
-    let Some(branch) = branch else {
-        return label.to_string();
-    };
-    branch
-        .strip_prefix("worktree/")
-        .unwrap_or(branch)
-        .to_string()
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WorkspaceListEntry {
-    Workspace { ws_idx: usize, indented: bool },
-}
-
-fn next_entry_is_indented_workspace(entries: &[WorkspaceListEntry], idx: usize) -> bool {
-    matches!(
-        entries.get(idx.saturating_add(1)),
-        Some(WorkspaceListEntry::Workspace { indented: true, .. })
-    )
+    Workspace { ws_idx: usize },
 }
 
 pub(crate) fn normalized_workspace_scroll(app: &AppState, area: Rect, requested: usize) -> usize {
@@ -301,90 +255,11 @@ pub(crate) fn normalized_workspace_scroll(app: &AppState, area: Rect, requested:
 }
 
 pub(crate) fn workspace_list_entries(app: &AppState) -> Vec<WorkspaceListEntry> {
-    let mut members_by_key = std::collections::HashMap::<String, Vec<usize>>::new();
-    for (ws_idx, ws) in app.workspaces.iter().enumerate() {
-        if let Some(space) = ws.git_space() {
-            members_by_key
-                .entry(space.key.clone())
-                .or_default()
-                .push(ws_idx);
-        }
-    }
-    let grouped_keys = members_by_key
+    app.workspaces
         .iter()
-        .filter(|(_, members)| members.len() >= 2)
-        .map(|(key, _)| key.clone())
-        .collect::<std::collections::HashSet<_>>();
-
-    let visible_group_idx = if matches!(app.mode, Mode::Navigate) {
-        Some(app.selected)
-    } else {
-        app.active
-    };
-    let active_group = visible_group_idx.and_then(|idx| {
-        app.workspaces
-            .get(idx)
-            .and_then(|ws| ws.git_space())
-            .map(|space| space.key.clone())
-    });
-
-    let mut emitted_groups = std::collections::HashSet::<String>::new();
-    let mut entries = Vec::new();
-    for (ws_idx, ws) in app.workspaces.iter().enumerate() {
-        let Some(space) = ws
-            .git_space()
-            .filter(|space| grouped_keys.contains(&space.key))
-        else {
-            entries.push(WorkspaceListEntry::Workspace {
-                ws_idx,
-                indented: false,
-            });
-            continue;
-        };
-
-        if !emitted_groups.insert(space.key.clone()) {
-            continue;
-        }
-
-        let Some(members) = members_by_key.get(&space.key) else {
-            continue;
-        };
-        let Some(parent_idx) = members.first().copied() else {
-            entries.push(WorkspaceListEntry::Workspace {
-                ws_idx,
-                indented: false,
-            });
-            continue;
-        };
-        let collapsed = app.collapsed_space_keys.contains(&space.key);
-        entries.push(WorkspaceListEntry::Workspace {
-            ws_idx: parent_idx,
-            indented: false,
-        });
-
-        if collapsed {
-            if let Some(active_idx) = visible_group_idx
-                .filter(|idx| *idx != parent_idx)
-                .filter(|_| active_group.as_deref() == Some(space.key.as_str()))
-            {
-                entries.push(WorkspaceListEntry::Workspace {
-                    ws_idx: active_idx,
-                    indented: true,
-                });
-            }
-        } else {
-            for member_idx in members {
-                if *member_idx == parent_idx {
-                    continue;
-                }
-                entries.push(WorkspaceListEntry::Workspace {
-                    ws_idx: *member_idx,
-                    indented: true,
-                });
-            }
-        }
-    }
-    entries
+        .enumerate()
+        .map(|(ws_idx, _)| WorkspaceListEntry::Workspace { ws_idx })
+        .collect()
 }
 
 pub(crate) fn workspace_list_rect(area: Rect, split_ratio: f32) -> Rect {
@@ -413,20 +288,14 @@ fn workspace_list_visible_count(app: &AppState, area: Rect, scroll: usize) -> us
     let mut used_rows = 0u16;
     let mut visible = 0usize;
     let entries = workspace_list_entries(app);
-    for (entry_idx, entry) in entries.iter().enumerate().skip(scroll) {
+    for entry in entries.iter().skip(scroll) {
         let needed = match entry {
-            WorkspaceListEntry::Workspace { ws_idx, indented } => {
+            WorkspaceListEntry::Workspace { ws_idx } => {
                 let Some(ws) = app.workspaces.get(*ws_idx) else {
                     continue;
                 };
-                let row_height = if *indented {
-                    1
-                } else {
-                    workspace_row_height(ws)
-                };
-                let gap = u16::from(
-                    !(*indented && next_entry_is_indented_workspace(&entries, entry_idx)),
-                );
+                let row_height = workspace_row_height(ws);
+                let gap = 1;
                 row_height.saturating_add(gap)
             }
         };
@@ -547,27 +416,21 @@ pub(crate) fn compute_workspace_list_areas(
     let headers = Vec::new();
 
     let entries = workspace_list_entries(app);
-    for (entry_idx, entry) in entries.iter().enumerate().skip(scroll) {
+    for entry in entries.iter().skip(scroll) {
         match entry {
-            WorkspaceListEntry::Workspace { ws_idx, indented } => {
+            WorkspaceListEntry::Workspace { ws_idx } => {
                 let Some(ws) = app.workspaces.get(*ws_idx) else {
                     continue;
                 };
-                let row_height = if *indented {
-                    1
-                } else {
-                    workspace_row_height(ws)
-                };
-                let gap = u16::from(
-                    !(*indented && next_entry_is_indented_workspace(&entries, entry_idx)),
-                );
+                let row_height = workspace_row_height(ws);
+                let gap = 1;
                 if row_y.saturating_add(row_height).saturating_add(gap) > body_bottom {
                     break;
                 }
                 cards.push(crate::app::state::WorkspaceCardArea {
                     ws_idx: *ws_idx,
                     rect: Rect::new(body.x, row_y, body.width, row_height),
-                    indented: *indented,
+                    indented: false,
                 });
                 row_y = row_y.saturating_add(row_height + gap);
             }
@@ -864,40 +727,10 @@ fn render_workspace_list(
         let (icon, icon_style) = session_dot(is_active, selected, p);
         let label = ws.display_name_from(&app.terminals, terminal_runtimes);
         let mut line1 = Vec::new();
-        let mut show_workspace_icon = true;
-        if card.indented {
-            line1.push(Span::styled("   ", Style::default()));
-        } else if let Some((key, collapsed)) = workspace_parent_group_state(app, i) {
-            let icon = if collapsed { "▸" } else { "▾" };
-            let (state_icon, state_style) = if collapsed {
-                session_dot(space_has_active_workspace(app, &key), selected, p)
-            } else {
-                (icon, Style::default().fg(p.accent))
-            };
-            line1.push(Span::styled(icon, Style::default().fg(p.accent)));
-            if collapsed {
-                line1.push(Span::styled(" ", Style::default()));
-                line1.push(Span::styled(state_icon, state_style));
-                show_workspace_icon = false;
-            }
-            line1.push(Span::styled(" ", Style::default()));
-        } else {
-            line1.push(Span::styled(" ", Style::default()));
-        }
-        if show_workspace_icon {
-            line1.push(Span::styled(icon, icon_style));
-            line1.push(Span::styled(" ", Style::default()));
-        }
-        if card.indented {
-            let display_label = grouped_child_display_label(
-                &label,
-                ws.branch().as_deref(),
-                ws.custom_name.is_some(),
-            );
-            line1.push(Span::styled(display_label, name_style));
-        } else {
-            line1.push(Span::styled(label, name_style));
-        }
+        line1.push(Span::styled(" ", Style::default()));
+        line1.push(Span::styled(icon, icon_style));
+        line1.push(Span::styled(" ", Style::default()));
+        line1.push(Span::styled(label, name_style));
 
         frame.render_widget(
             Paragraph::new(Line::from(line1)),
@@ -933,9 +766,8 @@ fn render_workspace_list(
                 } else {
                     p.overlay0
                 };
-                let branch_indent = if card.indented { "     " } else { "   " };
                 let mut spans = vec![
-                    Span::styled(branch_indent, Style::default()),
+                    Span::styled("   ", Style::default()),
                     Span::styled(branch_display, Style::default().fg(branch_color)),
                 ];
                 if let Some(parts) = upstream_label {
@@ -1292,58 +1124,28 @@ mod tests {
     }
 
     #[test]
-    fn grouped_child_label_keeps_custom_workspace_name() {
-        assert_eq!(
-            grouped_child_display_label("renamed issue", Some("worktree/issue-137"), true),
-            "renamed issue"
-        );
-    }
-
-    #[test]
-    fn grouped_child_label_uses_short_branch_for_auto_named_workspace() {
-        assert_eq!(
-            grouped_child_display_label("gmux-issue", Some("worktree/issue-137"), false),
-            "issue-137"
-        );
-    }
-
-    fn workspace_with_space(
-        name: &str,
-        key: Option<&str>,
-        checkout_key: &str,
-    ) -> crate::workspace::Workspace {
-        let mut ws = crate::workspace::Workspace::test_new(name);
-        if let Some(key) = key {
-            ws.cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-                key: key.into(),
-                checkout_key: checkout_key.into(),
-                label: "gmux".into(),
-                repo_root: std::path::PathBuf::from("/repo/gmux"),
-                is_linked_worktree: name != "main",
-            });
-        }
-        ws
-    }
-
-    fn workspace_with_git_space(name: &str, key: &str) -> crate::workspace::Workspace {
-        let mut ws = crate::workspace::Workspace::test_new(name);
-        ws.cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-            key: key.into(),
-            checkout_key: format!("/repo/{name}"),
-            label: "gmux".into(),
-            repo_root: std::path::PathBuf::from(format!("/repo/{name}")),
-            is_linked_worktree: false,
-        });
-        ws
-    }
-
-    #[test]
-    fn parent_workspace_row_stays_clickable_when_grouped() {
+    fn workspace_list_entries_keep_workspace_order_flat() {
         let mut app = AppState::test_new();
         app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
+            Workspace::test_new("main"),
+            Workspace::test_new("issue"),
+            Workspace::test_new("notes"),
         ];
+
+        assert_eq!(
+            workspace_list_entries(&app),
+            vec![
+                WorkspaceListEntry::Workspace { ws_idx: 0 },
+                WorkspaceListEntry::Workspace { ws_idx: 1 },
+                WorkspaceListEntry::Workspace { ws_idx: 2 },
+            ]
+        );
+    }
+
+    #[test]
+    fn workspace_rows_stay_clickable_in_flat_order() {
+        let mut app = AppState::test_new();
+        app.workspaces = vec![Workspace::test_new("main"), Workspace::test_new("issue")];
 
         let (cards, headers) = compute_workspace_list_areas(&app, Rect::new(0, 0, 30, 20));
 
@@ -1351,278 +1153,7 @@ mod tests {
         assert_eq!(cards[0].ws_idx, 0);
         assert!(!cards[0].indented);
         assert_eq!(cards[1].ws_idx, 1);
-        assert!(cards[1].indented);
+        assert!(!cards[1].indented);
         assert_eq!(cards[1].rect.y, cards[0].rect.y + cards[0].rect.height + 1);
-    }
-
-    #[test]
-    fn git_space_members_group_without_explicit_parent() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-            workspace_with_space("review", Some("repo-key"), "/repo/gmux-review"),
-        ];
-
-        let entries = workspace_list_entries(&app);
-
-        assert_eq!(
-            entries,
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: true
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn compact_space_group_scroll_offset_can_start_inside_group() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("one", Some("repo-key"), "/repo/gmux-one"),
-            workspace_with_space("two", Some("repo-key"), "/repo/gmux-two"),
-        ];
-        let area = Rect::new(0, 0, 30, 20);
-        app.workspace_scroll = normalized_workspace_scroll(&app, area, 2);
-
-        let (cards, headers) = compute_workspace_list_areas(&app, area);
-
-        assert!(headers.is_empty());
-        assert_eq!(cards.len(), 1);
-        assert_eq!(cards[0].ws_idx, 2);
-    }
-
-    #[test]
-    fn workspace_scroll_metrics_count_display_entries_not_raw_workspaces() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-            Workspace::test_new("notes"),
-        ];
-        app.collapsed_space_keys.insert("repo-key".into());
-        app.active = None;
-        app.mode = Mode::Terminal;
-
-        let ws_area = Rect::new(0, 0, 30, 6);
-        let metrics = workspace_list_scroll_metrics(&app, ws_area);
-
-        assert_eq!(metrics.viewport_rows, 1);
-        assert_eq!(metrics.max_offset_from_bottom, 1);
-        assert_eq!(metrics.offset_from_bottom, 1);
-    }
-
-    #[test]
-    fn workspace_scroll_offset_applies_to_group_children() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-            Workspace::test_new("notes"),
-        ];
-        app.collapsed_space_keys.insert("repo-key".into());
-        app.active = None;
-        app.mode = Mode::Terminal;
-        app.workspace_scroll = 1;
-
-        let (cards, headers) = compute_workspace_list_areas(&app, Rect::new(0, 0, 30, 12));
-
-        assert!(headers.is_empty());
-        assert_eq!(cards.len(), 1);
-        assert_eq!(cards[0].ws_idx, 2);
-    }
-
-    #[test]
-    fn workspace_list_entries_group_multiple_workspaces_in_same_git_space() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-        ];
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: true,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn workspace_list_entries_group_non_contiguous_explicit_members() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_git_space("normal", "other-key"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-        ];
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 2,
-                    indented: true,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: false,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn workspace_list_entries_group_normal_git_workspaces() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_git_space("one", "repo-key"),
-            workspace_with_git_space("two", "repo-key"),
-        ];
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: true,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn workspace_list_entries_groups_all_matching_git_workspaces() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_git_space("scratch", "repo-key"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-        ];
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: true,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 2,
-                    indented: true,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn workspace_list_entries_leave_single_git_and_non_git_workspaces_flat() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_git_space("one", "repo-key"),
-            workspace_with_space("notes", None, "/notes"),
-        ];
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: false,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn collapsed_group_hides_inactive_children_but_keeps_active_visible() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-        ];
-        app.active = Some(1);
-        app.mode = Mode::Terminal;
-        app.collapsed_space_keys.insert("repo-key".into());
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: true,
-                },
-            ]
-        );
-
-        app.active = None;
-        app.mode = Mode::Terminal;
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![WorkspaceListEntry::Workspace {
-                ws_idx: 0,
-                indented: false,
-            }]
-        );
-    }
-
-    #[test]
-    fn collapsed_group_keeps_selected_child_visible_in_navigate_mode() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            workspace_with_space("main", Some("repo-key"), "/repo/gmux"),
-            workspace_with_space("issue", Some("repo-key"), "/repo/gmux-issue"),
-        ];
-        app.mode = Mode::Navigate;
-        app.selected = 1;
-        app.active = Some(1);
-        app.collapsed_space_keys.insert("repo-key".into());
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 0,
-                    indented: false,
-                },
-                WorkspaceListEntry::Workspace {
-                    ws_idx: 1,
-                    indented: true,
-                },
-            ]
-        );
     }
 }

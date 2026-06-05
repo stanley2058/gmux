@@ -1,15 +1,6 @@
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GitSpaceMetadata {
-    pub key: String,
-    pub checkout_key: String,
-    pub label: String,
-    pub repo_root: PathBuf,
-    pub is_linked_worktree: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitWorktreeInfo {
     pub repo_root: PathBuf,
     pub git_dir: PathBuf,
@@ -51,43 +42,6 @@ pub fn git_worktree_info(cwd: &Path) -> Option<GitWorktreeInfo> {
         git_common_dir,
         is_bare: false,
         is_linked_worktree,
-    })
-}
-
-pub fn git_space_metadata(cwd: &Path) -> Option<GitSpaceMetadata> {
-    git_repo_root(cwd)?;
-
-    let info = git_worktree_info(cwd)?;
-    if info.is_bare {
-        return None;
-    }
-    let key = canonicalize_best_effort_path(&info.git_common_dir)
-        .display()
-        .to_string();
-    let checkout_key = canonicalize_best_effort_path(&info.repo_root)
-        .display()
-        .to_string();
-    let label_path = if info
-        .git_common_dir
-        .file_name()
-        .and_then(|name| name.to_str())
-        == Some(".git")
-    {
-        info.git_common_dir.parent().unwrap_or(&info.repo_root)
-    } else {
-        &info.repo_root
-    };
-    let label = label_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("repo")
-        .to_string();
-    Some(GitSpaceMetadata {
-        key,
-        checkout_key,
-        label,
-        repo_root: info.repo_root,
-        is_linked_worktree: info.is_linked_worktree,
     })
 }
 

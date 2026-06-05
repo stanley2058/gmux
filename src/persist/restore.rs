@@ -301,7 +301,6 @@ fn restore_workspace(
             identity_cwd: snap.identity_cwd.clone(),
             cached_git_branch: crate::workspace::git_branch(&snap.identity_cwd),
             cached_git_ahead_behind: None,
-            cached_git_space: crate::workspace::git_space_metadata(&snap.identity_cwd),
             public_pane_numbers,
             next_public_pane_number,
             active_tab: snap.active_tab.min(tabs.len().saturating_sub(1)),

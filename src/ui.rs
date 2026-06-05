@@ -61,8 +61,7 @@ pub(crate) use self::{
         pane_panel_body_rect, pane_panel_entries, pane_panel_scroll_metrics,
         pane_panel_scrollbar_rect, pane_panel_toggle_rect, sidebar_section_divider_rect,
         workspace_drop_indicator_row, workspace_list_entries, workspace_list_rect,
-        workspace_list_scroll_metrics, workspace_list_scrollbar_rect, workspace_parent_group_state,
-        WorkspaceListEntry,
+        workspace_list_scroll_metrics, workspace_list_scrollbar_rect, WorkspaceListEntry,
     },
 };
 pub(crate) use self::{

@@ -932,16 +932,6 @@ mod tests {
         app::App, config::Config, input::TerminalKey, terminal::TerminalState, workspace::Workspace,
     };
 
-    fn mark_git_space_member(state: &mut AppState, ws_idx: usize, key: &str) {
-        state.workspaces[ws_idx].cached_git_space = Some(crate::workspace::GitSpaceMetadata {
-            key: key.into(),
-            checkout_key: format!("/repo/checkout-{ws_idx}"),
-            label: "gmux".into(),
-            repo_root: "/repo/gmux".into(),
-            is_linked_worktree: ws_idx != 0,
-        });
-    }
-
     #[test]
     fn default_goto_key_opens_navigator() {
         let mut state = state_with_workspaces(&["test"]);
@@ -1028,11 +1018,9 @@ mod tests {
     }
 
     #[test]
-    fn navigate_down_follows_grouped_sidebar_visual_order() {
+    fn navigate_down_follows_sidebar_visual_order() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
         state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
-        mark_git_space_member(&mut state, 0, "repo-key");
-        mark_git_space_member(&mut state, 2, "repo-key");
         state.mode = Mode::Navigate;
         state.active = Some(0);
         state.selected = 0;
@@ -1042,14 +1030,12 @@ mod tests {
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 2);
+        assert_eq!(state.selected, 1);
     }
 
     #[test]
-    fn navigate_number_keys_follow_grouped_sidebar_visual_order() {
+    fn navigate_number_keys_follow_sidebar_visual_order() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
-        mark_git_space_member(&mut state, 0, "repo-key");
-        mark_git_space_member(&mut state, 2, "repo-key");
         state.mode = Mode::Navigate;
         state.active = Some(0);
         state.selected = 0;
@@ -1059,16 +1045,14 @@ mod tests {
             KeyEvent::new(KeyCode::Char('2'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.active, Some(2));
-        assert_eq!(state.selected, 2);
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.selected, 1);
     }
 
     #[test]
-    fn indexed_switch_workspace_keybind_follows_grouped_sidebar_visual_order() {
+    fn indexed_switch_workspace_keybind_follows_sidebar_visual_order() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
         let mut terminal_runtimes = TerminalRuntimeRegistry::new();
-        mark_git_space_member(&mut state, 0, "repo-key");
-        mark_git_space_member(&mut state, 2, "repo-key");
         state.mode = Mode::Prefix;
         state.active = Some(0);
         state.selected = 0;
@@ -1080,8 +1064,8 @@ mod tests {
             ActionContext::Prefix,
         );
 
-        assert_eq!(state.active, Some(2));
-        assert_eq!(state.selected, 2);
+        assert_eq!(state.active, Some(1));
+        assert_eq!(state.selected, 1);
     }
 
     #[test]
