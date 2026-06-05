@@ -105,14 +105,7 @@ pub(crate) fn api_request_completed(
 fn is_routine_api_method(method: &str) -> bool {
     matches!(
         method,
-        "pane.get"
-            | "pane.read"
-            | "pane.list"
-            | "workspace.list"
-            | "tab.list"
-            | "pane.report_agent"
-            | "pane.report_agent_session"
-            | "pane.report_metadata"
+        "pane.get" | "pane.read" | "pane.list" | "workspace.list" | "tab.list"
     )
 }
 
