@@ -725,7 +725,6 @@ mod tests {
             .get_mut(&terminal_id)
             .expect("test terminal should exist");
         terminal.respawn_shell_on_exit = true;
-        terminal.set_agent_name("codex".into());
 
         app.handle_internal_event(AppEvent::PaneDied { pane_id });
 
@@ -739,7 +738,6 @@ mod tests {
             .get(&terminal_id)
             .expect("terminal should survive respawn");
         assert!(!terminal.respawn_shell_on_exit);
-        assert!(terminal.agent_name.is_none());
 
         for (_, runtime) in app.terminal_runtimes.drain() {
             runtime.shutdown();

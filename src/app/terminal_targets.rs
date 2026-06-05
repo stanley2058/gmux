@@ -66,7 +66,7 @@ impl App {
                     .values()
                     .find(|terminal| terminal.id.to_string() == candidate.terminal_id)
                     .is_some_and(|terminal| {
-                        terminal.agent_name.as_deref() == Some(target)
+                        terminal.manual_label.as_deref() == Some(target)
                             || terminal.effective_agent_label() == Some(target)
                     })
             })

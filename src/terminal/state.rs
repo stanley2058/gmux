@@ -63,7 +63,6 @@ pub struct TerminalState {
     pub hook_authority: Option<HookAuthority>,
     pub agent_metadata: HashMap<String, AgentMetadata>,
     pub manual_label: Option<String>,
-    pub agent_name: Option<String>,
     hook_report_sequences: HashMap<String, u64>,
     metadata_report_sequences: HashMap<String, u64>,
     pub state: AgentState,
@@ -87,7 +86,6 @@ impl TerminalState {
             hook_authority: None,
             agent_metadata: HashMap::new(),
             manual_label: None,
-            agent_name: None,
             hook_report_sequences: HashMap::new(),
             metadata_report_sequences: HashMap::new(),
             state: AgentState::Unknown,
@@ -510,15 +508,6 @@ impl TerminalState {
         self.manual_label = None;
     }
 
-    pub fn set_agent_name(&mut self, name: String) {
-        let name = name.trim().to_string();
-        self.agent_name = (!name.is_empty()).then_some(name);
-    }
-
-    pub fn clear_agent_name(&mut self) {
-        self.agent_name = None;
-    }
-
     pub fn clear_agent_runtime_identity_after_respawn(&mut self) {
         self.detected_agent = None;
         self.fallback_state = AgentState::Unknown;
@@ -532,13 +521,10 @@ impl TerminalState {
         self.state = AgentState::Unknown;
         self.launch_argv = None;
         self.respawn_shell_on_exit = false;
-        self.clear_agent_name();
     }
 
     pub fn is_agent_terminal(&self) -> bool {
-        self.agent_name.is_some()
-            || self.effective_agent_label().is_some()
-            || self.launch_argv.is_some()
+        self.effective_agent_label().is_some() || self.launch_argv.is_some()
     }
 
     pub fn border_label(&self) -> Option<String> {
@@ -1530,14 +1516,12 @@ mod tests {
     fn respawn_cleanup_resets_restored_agent_status() {
         let mut terminal = test_terminal();
         terminal.respawn_shell_on_exit = true;
-        terminal.set_agent_name("codex".into());
         terminal.set_detected_state(Some(Agent::Codex), AgentState::Idle);
 
         terminal.clear_agent_runtime_identity_after_respawn();
 
         assert_eq!(terminal.state, AgentState::Unknown);
         assert!(terminal.detected_agent.is_none());
-        assert!(terminal.agent_name.is_none());
         assert!(!terminal.respawn_shell_on_exit);
     }
 

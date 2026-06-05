@@ -80,10 +80,9 @@ impl App {
         };
         match normalized_name {
             Some(name) => {
-                terminal.set_agent_name(name.clone());
                 terminal.set_manual_label(name);
             }
-            None => terminal.clear_agent_name(),
+            None => terminal.clear_manual_label(),
         }
         self.state.mark_session_dirty();
         self.agent_info(resolved.ws_idx, resolved.pane_id)
@@ -189,7 +188,6 @@ impl App {
         let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
             return Err(AgentStartError::SpawnFailed("terminal disappeared".into()));
         };
-        terminal.set_agent_name(name.clone());
         terminal.set_manual_label(name);
         self.state.mark_session_dirty();
 
@@ -410,7 +408,7 @@ impl App {
         let pane = self.pane_info(ws_idx, pane_id)?;
         Some(crate::api::schema::AgentInfo {
             terminal_id: pane.terminal_id,
-            name: terminal.agent_name.clone(),
+            name: terminal.manual_label.clone(),
             agent: pane.agent,
             title: pane.title,
             display_agent: pane.display_agent,
