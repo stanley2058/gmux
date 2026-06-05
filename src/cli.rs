@@ -4,8 +4,8 @@ use serde::Serialize;
 
 use crate::api::client::{ApiClient, ApiClientError};
 use crate::api::schema::{
-    AgentStatus, Method, OutputMatch, PaneAgentState, PaneWaitForOutputParams, ReadFormat,
-    ReadSource, Request, SplitDirection, Subscription,
+    AgentStatus, Method, OutputMatch, PaneAgentState, PaneListParams, PaneWaitForOutputParams,
+    ReadFormat, ReadSource, Request, SplitDirection, Subscription,
 };
 
 mod agent;
@@ -44,6 +44,9 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "select-tab" => select_tab_alias(&args[2..])?,
         "rename-tab" => rename_tab_alias(&args[2..])?,
         "kill-tab" => kill_tab_alias(&args[2..])?,
+        "capture-pane" => capture_pane_alias(&args[2..])?,
+        "send-text" => send_text_alias(&args[2..])?,
+        "send-keys" => send_keys_alias(&args[2..])?,
         "split-pane" => split_pane_alias(&args[2..])?,
         "kill-pane" => kill_pane_alias(&args[2..])?,
         "detach" => detach_alias(&args[2..])?,
@@ -194,6 +197,195 @@ fn normalize_session_tab_target(value: &str) -> String {
     } else {
         value.to_string()
     }
+}
+
+fn capture_pane_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!(
+            "usage: gmux capture-pane [-t pane] [-S lines] [-e|--ansi] [--source visible|recent|recent-unwrapped]"
+        );
+        return Ok(0);
+    }
+
+    let mut target = None;
+    let mut pane_args = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-t" | "--target" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                target = Some(value.clone());
+                index += 2;
+            }
+            value if value.starts_with("--target=") => {
+                target = Some(
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                );
+                index += 1;
+            }
+            "-S" | "--lines" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                pane_args.extend(["--lines".to_string(), value.clone()]);
+                index += 2;
+            }
+            "-e" | "--ansi" => {
+                pane_args.push("--ansi".to_string());
+                index += 1;
+            }
+            "--raw" => {
+                pane_args.push("--raw".to_string());
+                index += 1;
+            }
+            "--source" | "--format" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                pane_args.extend([args[index].clone(), value.clone()]);
+                index += 2;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+
+    let pane_id = match pane_target_or_focused(target)? {
+        Ok(pane_id) => pane_id,
+        Err(code) => return Ok(code),
+    };
+    let mut read_args = vec!["read".to_string(), pane_id];
+    read_args.extend(pane_args);
+    pane::run_pane_command(&read_args)
+}
+
+fn send_text_alias(args: &[String]) -> std::io::Result<i32> {
+    let (pane_id, text) =
+        match parse_pane_target_and_payload(args, "usage: gmux send-text [-t pane] <text>")? {
+            Ok(Some(parsed)) => parsed,
+            Ok(None) => return Ok(0),
+            Err(code) => return Ok(code),
+        };
+    let mut pane_args = vec!["send-text".to_string(), pane_id];
+    pane_args.extend(text);
+    pane::run_pane_command(&pane_args)
+}
+
+fn send_keys_alias(args: &[String]) -> std::io::Result<i32> {
+    let (pane_id, keys) = match parse_pane_target_and_payload(
+        args,
+        "usage: gmux send-keys [-t pane] <key> [key ...]",
+    )? {
+        Ok(Some(parsed)) => parsed,
+        Ok(None) => return Ok(0),
+        Err(code) => return Ok(code),
+    };
+    let mut pane_args = vec!["send-keys".to_string(), pane_id];
+    pane_args.extend(keys);
+    pane::run_pane_command(&pane_args)
+}
+
+fn parse_pane_target_and_payload(
+    args: &[String],
+    usage: &str,
+) -> std::io::Result<Result<Option<(String, Vec<String>)>, i32>> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("{usage}");
+        return Ok(Ok(None));
+    }
+
+    let mut target = None;
+    let mut payload = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-t" | "--target" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(Err(2));
+                };
+                target = Some(value.clone());
+                index += 2;
+            }
+            value if value.starts_with("--target=") => {
+                target = Some(
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                );
+                index += 1;
+            }
+            "--" => {
+                payload.extend(args[index + 1..].iter().cloned());
+                break;
+            }
+            _ => {
+                payload.extend(args[index..].iter().cloned());
+                break;
+            }
+        }
+    }
+
+    if payload.is_empty() {
+        eprintln!("{usage}");
+        return Ok(Err(2));
+    }
+
+    let pane_id = match pane_target_or_focused(target)? {
+        Ok(pane_id) => pane_id,
+        Err(code) => return Ok(Err(code)),
+    };
+    Ok(Ok(Some((pane_id, payload))))
+}
+
+fn pane_target_or_focused(target: Option<String>) -> std::io::Result<Result<String, i32>> {
+    if let Some(target) = target {
+        let target = target.trim();
+        if target.is_empty() {
+            eprintln!("missing pane target");
+            return Ok(Err(2));
+        }
+        return Ok(Ok(normalize_pane_id(target)));
+    }
+
+    let response = send_request(&Request {
+        id: "cli:pane:focused".into(),
+        method: Method::PaneList(PaneListParams { workspace_id: None }),
+    })?;
+    if let Some(error) = response.get("error") {
+        eprintln!("{}", serde_json::to_string(error).unwrap());
+        return Ok(Err(1));
+    }
+    let Some(panes) = response["result"]["panes"].as_array() else {
+        eprintln!("pane list response did not include panes");
+        return Ok(Err(1));
+    };
+    let Some(pane_id) = panes.iter().find_map(|pane| {
+        (pane["focused"].as_bool() == Some(true))
+            .then(|| pane["pane_id"].as_str().map(str::to_string))
+            .flatten()
+    }) else {
+        eprintln!("no focused pane; pass -t <pane>");
+        return Ok(Err(1));
+    };
+    Ok(Ok(pane_id))
 }
 
 fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {

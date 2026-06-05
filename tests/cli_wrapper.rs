@@ -1003,6 +1003,9 @@ fn help_commands_exit_successfully() {
         &["select-tab", "-h"],
         &["rename-tab", "-h"],
         &["kill-tab", "-h"],
+        &["capture-pane", "-h"],
+        &["send-text", "-h"],
+        &["send-keys", "-h"],
         &["split-pane", "-h"],
         &["kill-pane", "-h"],
         &["detach", "-h"],
@@ -2494,6 +2497,48 @@ fn pane_run_read_and_wait_commands_work() {
     let text = String::from_utf8(read.stdout).unwrap();
     assert!(text.contains("alpha"));
     assert!(text.contains("ready"));
+
+    let sent_text = run_cli(&socket_path, &["send-text", "printf top-level-pane-ok"]);
+    assert!(
+        sent_text.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&sent_text.stderr)
+    );
+    let sent_enter = run_cli(&socket_path, &["send-keys", "Enter"]);
+    assert!(
+        sent_enter.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&sent_enter.stderr)
+    );
+    let waited_alias = run_cli(
+        &socket_path,
+        &[
+            "wait",
+            "output",
+            "1-1",
+            "--match",
+            "top-level-pane-ok",
+            "--source",
+            "recent",
+            "--lines",
+            "40",
+            "--timeout",
+            "5000",
+        ],
+    );
+    assert!(
+        waited_alias.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&waited_alias.stderr)
+    );
+    let captured = run_cli(&socket_path, &["capture-pane", "-S", "40"]);
+    assert!(
+        captured.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&captured.stderr)
+    );
+    let captured_text = String::from_utf8(captured.stdout).unwrap();
+    assert!(captured_text.contains("top-level-pane-ok"));
 
     cleanup_spawned_gmux(gmux, base);
 }

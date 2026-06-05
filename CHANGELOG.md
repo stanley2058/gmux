@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- Added top-level pane automation aliases `gmux capture-pane`, `gmux send-text`, and `gmux send-keys`.
 - Added top-level tab aliases `gmux list-tabs`, `gmux select-tab`, and `gmux kill-tab`.
 - Added tmux-style top-level CLI aliases for sessions, tabs, and panes, including `gmux new`, `gmux attach`, `gmux ls`, `gmux kill-session`, `gmux new-tab`, `gmux split-pane`, and `gmux kill-pane`.
 

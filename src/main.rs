@@ -382,6 +382,9 @@ fn main() -> io::Result<()> {
         println!("       gmux select-tab [-t tab]");
         println!("       gmux rename-tab <tab_id> <label>");
         println!("       gmux kill-tab [-t tab]");
+        println!("       gmux capture-pane [-t pane] [-S lines] [-e]");
+        println!("       gmux send-text [-t pane] <text>");
+        println!("       gmux send-keys [-t pane] <key> [key ...]");
         println!("       gmux split-pane <pane_id> [-h|-v]");
         println!("       gmux kill-pane <pane_id>");
         println!("       gmux update [--handoff]");
@@ -406,6 +409,9 @@ fn main() -> io::Result<()> {
             ("gmux new-tab", "Create and focus a tab"),
             ("gmux select-tab -t tab", "Focus a tab"),
             ("gmux kill-tab -t tab", "Close a tab"),
+            ("gmux capture-pane", "Print pane output"),
+            ("gmux send-text", "Send text to a pane"),
+            ("gmux send-keys", "Send key names to a pane"),
             ("gmux split-pane <pane_id>", "Split a pane"),
             ("gmux kill-pane <pane_id>", "Close a pane"),
             (
@@ -506,6 +512,9 @@ fn main() -> io::Result<()> {
                 "select-tab",
                 "rename-tab",
                 "kill-tab",
+                "capture-pane",
+                "send-text",
+                "send-keys",
                 "split-pane",
                 "kill-pane",
                 "update",
