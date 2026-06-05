@@ -237,8 +237,6 @@ pub enum Subscription {
     PaneFocused {},
     #[serde(rename = "pane.exited")]
     PaneExited {},
-    #[serde(rename = "pane.agent_detected")]
-    PaneAgentDetected {},
     #[serde(rename = "pane.output_matched")]
     PaneOutputMatched {
         pane_id: String,
@@ -248,12 +246,6 @@ pub enum Subscription {
         r#match: OutputMatch,
         #[serde(default = "default_true")]
         strip_ansi: bool,
-    },
-    #[serde(rename = "pane.agent_status_changed")]
-    PaneAgentStatusChanged {
-        pane_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        agent_status: Option<AgentStatus>,
     },
 }
 
@@ -319,15 +311,6 @@ pub enum EventMatch {
     },
     PaneExited {
         pane_id: String,
-    },
-    PaneAgentDetected {
-        pane_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        agent: Option<String>,
-    },
-    PaneAgentStatusChanged {
-        pane_id: String,
-        agent_status: AgentStatus,
     },
 }
 
@@ -485,8 +468,6 @@ pub struct EventEnvelope {
 pub enum SubscriptionEventKind {
     #[serde(rename = "pane.output_matched")]
     PaneOutputMatched,
-    #[serde(rename = "pane.agent_status_changed")]
-    PaneAgentStatusChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -499,7 +480,6 @@ pub struct SubscriptionEventEnvelope {
 #[serde(untagged)]
 pub enum SubscriptionEventData {
     PaneOutputMatched(PaneOutputMatchedEvent),
-    PaneAgentStatusChanged(PaneAgentStatusChangedEvent),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -507,23 +487,6 @@ pub struct PaneOutputMatchedEvent {
     pub pane_id: String,
     pub matched_line: String,
     pub read: PaneReadResult,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneAgentStatusChangedEvent {
-    pub pane_id: String,
-    pub workspace_id: String,
-    pub agent_status: AgentStatus,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_status: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub display_agent: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub state_labels: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -819,11 +782,6 @@ mod tests {
                         "source": "recent",
                         "lines": 200,
                         "match": { "type": "substring", "value": "auth: received" }
-                    },
-                    {
-                        "type": "pane.agent_status_changed",
-                        "pane_id": "p_1_1",
-                        "agent_status": "done"
                     }
                 ]
             }
@@ -834,7 +792,7 @@ mod tests {
         let Method::EventsSubscribe(params) = request.method else {
             panic!("wrong method parsed");
         };
-        assert_eq!(params.subscriptions.len(), 2);
+        assert_eq!(params.subscriptions.len(), 1);
         assert!(matches!(
             &params.subscriptions[0],
             Subscription::PaneOutputMatched {
@@ -844,13 +802,6 @@ mod tests {
                 r#match: OutputMatch::Substring { value },
                 strip_ansi: true,
             } if pane_id == "p_1_1" && value == "auth: received"
-        ));
-        assert!(matches!(
-            &params.subscriptions[1],
-            Subscription::PaneAgentStatusChanged {
-                pane_id,
-                agent_status: Some(AgentStatus::Done),
-            } if pane_id == "p_1_1"
         ));
     }
 
@@ -954,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn event_wait_parses_typed_match() {
+    fn event_wait_rejects_agent_matches() {
         let json = r#"
         {
             "id": "req_9",
@@ -970,17 +921,10 @@ mod tests {
         }
         "#;
 
-        let request: Request = serde_json::from_str(json).unwrap();
-        let Method::EventsWait(params) = request.method else {
-            panic!("wrong method parsed");
-        };
-        assert_eq!(
-            params.match_event,
-            EventMatch::PaneAgentStatusChanged {
-                pane_id: "p_1".into(),
-                agent_status: AgentStatus::Done,
-            }
-        );
+        let err = serde_json::from_str::<Request>(json)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown variant"), "error: {err}");
     }
 
     #[test]

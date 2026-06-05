@@ -87,21 +87,6 @@ fn spawn_gmux(config_home: &Path, runtime_dir: &Path, socket_path: &Path) -> Spa
     spawn_gmux_with_options(config_home, runtime_dir, socket_path, None, "/bin/sh")
 }
 
-fn spawn_gmux_with_path(
-    config_home: &Path,
-    runtime_dir: &Path,
-    socket_path: &Path,
-    path_override: Option<&Path>,
-) -> SpawnedGmux {
-    spawn_gmux_with_options(
-        config_home,
-        runtime_dir,
-        socket_path,
-        path_override,
-        "/bin/sh",
-    )
-}
-
 #[cfg(target_os = "linux")]
 fn spawn_gmux_with_shell(
     config_home: &Path,
@@ -911,42 +896,19 @@ fn tab_create_with_no_focus_preserves_active_tab() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn events_subscribe_streams_workspace_tab_and_agent_events() {
+fn events_subscribe_streams_tab_and_pane_events() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let socket_path = runtime_dir.join("gmux.sock");
-    let bin_dir = base.join("bin");
 
-    fs::create_dir_all(&bin_dir).unwrap();
-    let fake_pi = bin_dir.join("pi");
-    fs::write(
-        &fake_pi,
-        "#!/bin/sh\nprintf 'Working...\\n'\nsleep 1\nprintf '\\033[2J\\033[Hdone\\n'\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&fake_pi).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&fake_pi, perms).unwrap();
-    }
-
-    let inherited_path = std::env::var("PATH").unwrap_or_default();
-    let path_override = format!("{}:{}", bin_dir.display(), inherited_path);
-    let child = spawn_gmux_with_path(
-        &config_home,
-        &runtime_dir,
-        &socket_path,
-        Some(Path::new(&path_override)),
-    );
+    let child = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
     let mut reader = open_subscription(
         &socket_path,
-        r#"{"id":"sub_life_a","method":"events.subscribe","params":{"subscriptions":[{"type":"tab.created"},{"type":"tab.focused"},{"type":"tab.renamed"},{"type":"pane.created"},{"type":"pane.focused"},{"type":"pane.agent_detected"}]}}"#,
+        r#"{"id":"sub_life_a","method":"events.subscribe","params":{"subscriptions":[{"type":"tab.created"},{"type":"tab.focused"},{"type":"tab.renamed"},{"type":"pane.created"},{"type":"pane.focused"}]}}"#,
     );
 
     let ack = reader.read_json_line(Duration::from_secs(2));
@@ -978,27 +940,6 @@ fn events_subscribe_streams_workspace_tab_and_agent_events() {
         .to_string();
     let pane_focused = wait_for_event(&mut reader, "pane_focused", Duration::from_secs(2));
     assert_eq!(pane_focused["data"]["pane_id"], pane_id);
-
-    let send_pi = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_l2","method":"pane.send_text","params":{{"pane_id":"{}","text":"pi"}}}}"#,
-            pane_id
-        ),
-    );
-    assert_eq!(send_pi["result"]["type"], "ok");
-    let send_enter = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_l3","method":"pane.send_keys","params":{{"pane_id":"{}","keys":["Enter"]}}}}"#,
-            pane_id
-        ),
-    );
-    assert_eq!(send_enter["result"]["type"], "ok");
-
-    let agent_detected = wait_for_event(&mut reader, "pane_agent_detected", Duration::from_secs(3));
-    assert_eq!(agent_detected["data"]["pane_id"], pane_id);
-    assert_eq!(agent_detected["data"]["agent"], "pi");
 
     let new_tab = send_request(
         &socket_path,
@@ -1217,37 +1158,14 @@ fn pane_agent_report_methods_are_not_socket_api() {
 }
 
 #[test]
-fn events_subscribe_streams_output_and_agent_status_events() {
+fn events_subscribe_streams_output_events() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let socket_path = runtime_dir.join("gmux.sock");
-    let bin_dir = base.join("bin");
 
-    fs::create_dir_all(&bin_dir).unwrap();
-    let fake_pi = bin_dir.join("pi");
-    fs::write(
-        &fake_pi,
-        "#!/bin/sh\nprintf 'Working...\\n'\nsleep 1\nprintf '\\033[2J\\033[Hdone\\n'\n",
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&fake_pi).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&fake_pi, perms).unwrap();
-    }
-
-    let inherited_path = std::env::var("PATH").unwrap_or_default();
-    let path_override = format!("{}:{}", bin_dir.display(), inherited_path);
-    let child = spawn_gmux_with_path(
-        &config_home,
-        &runtime_dir,
-        &socket_path,
-        Some(Path::new(&path_override)),
-    );
+    let child = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
     let created = send_request(
@@ -1271,8 +1189,8 @@ fn events_subscribe_streams_output_and_agent_status_events() {
     let mut reader = open_subscription(
         &socket_path,
         &format!(
-            r#"{{"id":"sub_1","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.output_matched","pane_id":"{}","source":"recent","lines":40,"match":{{"type":"substring","value":"hello from socket"}}}},{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"idle"}}]}}}}"#,
-            pane_id, pane_id,
+            r#"{{"id":"sub_1","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.output_matched","pane_id":"{}","source":"recent","lines":40,"match":{{"type":"substring","value":"hello from socket"}}}}]}}}}"#,
+            pane_id,
         ),
     );
 
@@ -1309,171 +1227,31 @@ fn events_subscribe_streams_output_and_agent_status_events() {
         .unwrap()
         .contains("hello from socket"));
 
-    let send_pi = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_24","method":"pane.send_text","params":{{"pane_id":"{}","text":"pi"}}}}"#,
-            pane_id
-        ),
-    );
-    assert_eq!(send_pi["result"]["type"], "ok");
-    let send_enter = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_25","method":"pane.send_keys","params":{{"pane_id":"{}","keys":["Enter"]}}}}"#,
-            pane_id
-        ),
-    );
-    assert_eq!(send_enter["result"]["type"], "ok");
-
-    let agent_idle = reader.read_json_line(Duration::from_secs(8));
-    assert_eq!(agent_idle["event"], "pane.agent_status_changed");
-    assert_eq!(agent_idle["data"]["pane_id"], pane_id);
-    assert_eq!(agent_idle["data"]["agent_status"], "idle");
-    assert_eq!(agent_idle["data"]["agent"], "pi");
-
     cleanup_spawned_gmux(child, base);
 }
 
 #[test]
-fn pane_info_and_subscriptions_expose_idle_agent_status() {
+fn agent_event_subscriptions_are_not_socket_api() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let socket_path = runtime_dir.join("gmux.sock");
-    let bin_dir = base.join("bin");
 
-    fs::create_dir_all(&bin_dir).unwrap();
-    let fake_pi = bin_dir.join("pi");
-    let stop_file = base.join("pi-stop");
-    fs::write(
-        &fake_pi,
-        format!(
-            "#!/bin/sh\nprintf 'Working...\\n'\nsleep 1\nprintf '\\033[2J\\033[Hdone\\n'\nwhile [ ! -f '{}' ]; do sleep 0.05; done\n",
-            stop_file.display()
-        ),
-    )
-    .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&fake_pi).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&fake_pi, perms).unwrap();
-    }
-
-    let inherited_path = std::env::var("PATH").unwrap_or_default();
-    let path_override = format!("{}:{}", bin_dir.display(), inherited_path);
-    let child = spawn_gmux_with_path(
-        &config_home,
-        &runtime_dir,
-        &socket_path,
-        Some(Path::new(&path_override)),
-    );
+    let child = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = send_request(
+    let status = send_request(
         &socket_path,
-        &format!(
-            r#"{{"id":"req_status_1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
-            base.display()
-        ),
+        r#"{"id":"sub_removed_status","method":"events.subscribe","params":{"subscriptions":[{"type":"pane.agent_status_changed","pane_id":"1-1","agent_status":"idle"}]}}"#,
     );
-    let background_pane_id = created["result"]["root_pane"]["pane_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    assert_eq!(status["error"]["code"], "invalid_request");
 
-    let tab_created = send_request(
+    let detected = send_request(
         &socket_path,
-        r#"{"id":"req_status_2","method":"tab.create","params":{"focus":true}}"#,
+        r#"{"id":"sub_removed_detected","method":"events.subscribe","params":{"subscriptions":[{"type":"pane.agent_detected"}]}}"#,
     );
-    assert_eq!(tab_created["result"]["type"], "tab_created");
-
-    let mut reader = open_subscription(
-        &socket_path,
-        &format!(
-            r#"{{"id":"sub_status","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"idle"}}]}}}}"#,
-            background_pane_id,
-        ),
-    );
-    let ack = reader.read_json_line(Duration::from_secs(2));
-    assert_eq!(ack["id"], "sub_status");
-    assert_eq!(ack["result"]["type"], "subscription_started");
-
-    let send_pi = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_status_3","method":"pane.send_text","params":{{"pane_id":"{}","text":"pi"}}}}"#,
-            background_pane_id
-        ),
-    );
-    assert_eq!(send_pi["result"]["type"], "ok");
-    let send_enter = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_status_4","method":"pane.send_keys","params":{{"pane_id":"{}","keys":["Enter"]}}}}"#,
-            background_pane_id
-        ),
-    );
-    assert_eq!(send_enter["result"]["type"], "ok");
-
-    let status_event = reader.read_json_line(Duration::from_secs(8));
-    assert_eq!(status_event["event"], "pane.agent_status_changed");
-    assert_eq!(status_event["data"]["pane_id"], background_pane_id);
-    assert_eq!(status_event["data"]["agent_status"], "idle");
-    assert_eq!(status_event["data"]["agent"], "pi");
-
-    let pane = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_status_5","method":"pane.get","params":{{"pane_id":"{}"}}}}"#,
-            background_pane_id
-        ),
-    );
-    assert_eq!(pane["result"]["pane"]["agent_status"], "idle");
-
-    let mut already_idle_reader = open_subscription(
-        &socket_path,
-        &format!(
-            r#"{{"id":"sub_status_already_idle","method":"events.subscribe","params":{{"subscriptions":[{{"type":"pane.agent_status_changed","pane_id":"{}","agent_status":"idle"}}]}}}}"#,
-            background_pane_id,
-        ),
-    );
-    let ack = already_idle_reader.read_json_line(Duration::from_secs(2));
-    assert_eq!(ack["id"], "sub_status_already_idle");
-    assert_eq!(ack["result"]["type"], "subscription_started");
-
-    let initial_status_event = already_idle_reader.read_json_line(Duration::from_secs(2));
-    assert_eq!(initial_status_event["event"], "pane.agent_status_changed");
-    assert_eq!(initial_status_event["data"]["pane_id"], background_pane_id);
-    assert_eq!(initial_status_event["data"]["agent_status"], "idle");
-    assert_eq!(initial_status_event["data"]["agent"], "pi");
-
-    let focused_tab_id = created["result"]["tab"]["tab_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let tab_focus = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_status_6","method":"tab.focus","params":{{"tab_id":"{}"}}}}"#,
-            focused_tab_id
-        ),
-    );
-    assert_eq!(tab_focus["result"]["type"], "tab_info");
-
-    let pane_after_focus = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_status_7","method":"pane.get","params":{{"pane_id":"{}"}}}}"#,
-            background_pane_id
-        ),
-    );
-    assert_eq!(pane_after_focus["result"]["pane"]["agent_status"], "idle");
-
-    fs::write(&stop_file, "stop").unwrap();
+    assert_eq!(detected["error"]["code"], "invalid_request");
 
     cleanup_spawned_gmux(child, base);
 }
