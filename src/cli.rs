@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::api::client::{ApiClient, ApiClientError};
 use crate::api::schema::{
-    Method, OutputMatch, PaneAgentState, PaneListParams, PaneSendInputParams, PaneSplitParams,
+    Method, OutputMatch, PaneListParams, PaneSendInputParams, PaneSplitParams,
     PaneWaitForOutputParams, ReadFormat, ReadSource, Request, SplitDirection,
 };
 
@@ -936,7 +936,6 @@ fn run_wait_command(args: &[String]) -> std::io::Result<i32> {
 
     match subcommand {
         "output" => wait_output(&args[1..]),
-        "agent-status" => wait_agent_status(&args[1..]),
         "help" | "--help" | "-h" => {
             print_wait_help();
             Ok(0)
@@ -1196,13 +1195,6 @@ fn wait_output(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
-fn wait_agent_status(_args: &[String]) -> std::io::Result<i32> {
-    eprintln!(
-        r#"{{"error":{{"code":"agent_api_removed","message":"agent status waits are no longer available; use pane output waits instead"}},"id":"cli:wait:agent-status"}}"#
-    );
-    Ok(1)
-}
-
 pub(super) fn print_response(response: &serde_json::Value) -> std::io::Result<i32> {
     if response.get("error").is_some() {
         eprintln!("{}", serde_json::to_string(response).unwrap());
@@ -1279,18 +1271,6 @@ pub(super) fn parse_read_format(value: &str) -> std::io::Result<ReadFormat> {
         "ansi" => Ok(ReadFormat::Ansi),
         _ => Err(std::io::Error::other(format!(
             "invalid read format: {value}"
-        ))),
-    }
-}
-
-pub(super) fn parse_pane_agent_state(value: &str) -> std::io::Result<PaneAgentState> {
-    match value {
-        "idle" => Ok(PaneAgentState::Idle),
-        "working" => Ok(PaneAgentState::Working),
-        "blocked" => Ok(PaneAgentState::Blocked),
-        "unknown" => Ok(PaneAgentState::Unknown),
-        _ => Err(std::io::Error::other(format!(
-            "invalid pane agent state: {value} (expected idle, working, blocked, or unknown)"
         ))),
     }
 }
@@ -1383,9 +1363,6 @@ fn print_terminal_help() {
 fn print_wait_help() {
     eprintln!("gmux wait commands:");
     eprintln!("  gmux wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]");
-    eprintln!(
-        "  gmux wait agent-status <pane_id> --status <idle|working|blocked|done|unknown> [--timeout MS]"
-    );
 }
 
 fn print_session_help() {

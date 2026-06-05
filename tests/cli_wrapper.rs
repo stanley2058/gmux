@@ -839,24 +839,10 @@ fn pane_run_sends_one_send_input_request_with_enter_key() {
 }
 
 #[test]
-fn pane_report_metadata_sends_presentation_request() {
+fn pane_report_metadata_is_not_public_cli() {
     let base = unique_test_dir();
     fs::create_dir_all(&base).unwrap();
-    let socket_path = base.join("gmux.sock");
-    let listener = UnixListener::bind(&socket_path).unwrap();
-
-    let server = thread::spawn(move || {
-        let (mut stream, _) = listener.accept().unwrap();
-        let mut line = String::new();
-        let mut reader = BufReader::new(stream.try_clone().unwrap());
-        reader.read_line(&mut line).unwrap();
-        stream
-            .write_all(br#"{"id":"cli:request","result":{"type":"ok"}}"#)
-            .unwrap();
-        stream.write_all(b"\n").unwrap();
-        stream.flush().unwrap();
-        line
-    });
+    let socket_path = base.join("missing.sock");
 
     let run = run_cli(
         &socket_path,
@@ -880,84 +866,14 @@ fn pane_report_metadata_sends_presentation_request() {
             "3600000",
         ],
     );
-    assert!(
-        run.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&run.stderr)
-    );
-
-    let line = server.join().unwrap();
-    let request: serde_json::Value = serde_json::from_str(&line).unwrap();
-    assert_eq!(request["method"], "pane.report_metadata");
-    assert_eq!(request["params"]["pane_id"], "1-1");
-    assert_eq!(request["params"]["source"], "user:claude-title");
-    assert_eq!(request["params"]["agent"], "claude");
-    assert!(request["params"]["applies_to_source"].is_null());
-    assert_eq!(request["params"]["title"], "Refactor auth");
-    assert_eq!(request["params"]["display_agent"], "Claude auth");
-    assert_eq!(request["params"]["custom_status"], "middleware");
     assert_eq!(
-        request["params"]["state_labels"]["working"],
-        "deep in the mines"
-    );
-    assert_eq!(request["params"]["ttl_ms"], 3_600_000);
-
-    cleanup_test_base(&base);
-}
-
-#[test]
-fn pane_report_metadata_rejects_blank_source_before_socket_request() {
-    let base = unique_test_dir();
-    fs::create_dir_all(&base).unwrap();
-    let socket_path = base.join("missing.sock");
-
-    let run = run_cli(
-        &socket_path,
-        &[
-            "pane",
-            "report-metadata",
-            "1-1",
-            "--source",
-            "   ",
-            "--custom-status",
-            "middleware",
-        ],
-    );
-
-    assert_eq!(run.status.code(), Some(2));
-    assert!(
-        String::from_utf8_lossy(&run.stderr).contains("missing required --source"),
+        run.status.code(),
+        Some(2),
         "stderr: {}",
         String::from_utf8_lossy(&run.stderr)
     );
-
-    cleanup_test_base(&base);
-}
-
-#[test]
-fn pane_report_metadata_rejects_blank_applies_to_source_before_socket_request() {
-    let base = unique_test_dir();
-    fs::create_dir_all(&base).unwrap();
-    let socket_path = base.join("missing.sock");
-
-    let run = run_cli(
-        &socket_path,
-        &[
-            "pane",
-            "report-metadata",
-            "1-1",
-            "--source",
-            "user:claude-title",
-            "--applies-to-source",
-            "   ",
-            "--custom-status",
-            "middleware",
-        ],
-    );
-
-    assert_eq!(run.status.code(), Some(2));
     assert!(
-        String::from_utf8_lossy(&run.stderr).contains("missing value for --applies-to-source"),
+        String::from_utf8_lossy(&run.stderr).contains("gmux pane commands:"),
         "stderr: {}",
         String::from_utf8_lossy(&run.stderr)
     );
@@ -2827,7 +2743,7 @@ fn pane_shell_gets_gmux_socket_and_pane_env() {
 }
 
 #[test]
-fn wait_agent_status_returns_removed_error() {
+fn wait_agent_status_is_not_public_cli() {
     let base = unique_test_dir();
     let runtime_dir = base.join("runtime");
     let socket_path = runtime_dir.join("gmux.sock");
@@ -2844,8 +2760,14 @@ fn wait_agent_status_returns_removed_error() {
             "5000",
         ],
     );
-    assert!(!waited.status.success());
-    let waited_json: serde_json::Value = serde_json::from_slice(&waited.stderr).unwrap();
-    assert_eq!(waited_json["error"]["code"], "agent_api_removed");
+    assert_eq!(
+        waited.status.code(),
+        Some(2),
+        "stderr: {}",
+        String::from_utf8_lossy(&waited.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&waited.stderr);
+    assert!(stderr.contains("gmux wait commands:"), "stderr: {stderr}");
+    assert!(!stderr.contains("agent-status"), "stderr: {stderr}");
     cleanup_test_base(&base);
 }
