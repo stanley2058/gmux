@@ -190,21 +190,6 @@ fn pane_panel_scope_from_config(
     }
 }
 
-/// Parse the configured agent name list into a deduplicated set of `Agent`
-/// values. Unknown agent names are silently dropped so a typo cannot disable
-/// other valid entries.
-fn parse_cjk_ime_agents(names: &[String]) -> Vec<crate::detect::Agent> {
-    let mut out = Vec::with_capacity(names.len());
-    for name in names {
-        if let Some(agent) = crate::detect::parse_agent_label(name) {
-            if !out.contains(&agent) {
-                out.push(agent);
-            }
-        }
-    }
-    out
-}
-
 /// Resolve the palette from config: base theme + optional custom overrides.
 fn resolve_palette(config: &crate::config::Config) -> state::Palette {
     resolve_palette_with_legacy_accent(config, true)
@@ -502,8 +487,6 @@ impl App {
             prompt_new_tab_name: config.ui.prompt_new_tab_name,
             pane_history_persistence: config.experimental.pane_history,
             reveal_hidden_cursor_for_cjk_ime: config.experimental.reveal_hidden_cursor_for_cjk_ime,
-            cjk_ime_agent_filter_configured: !config.experimental.cjk_ime_agents.is_empty(),
-            cjk_ime_agents: parse_cjk_ime_agents(&config.experimental.cjk_ime_agents),
             cjk_ime_cursor_shape: config.experimental.cjk_ime_cursor_shape.to_decscusr(),
             switch_ascii_input_source_in_prefix: config
                 .experimental
@@ -1166,9 +1149,6 @@ impl App {
             }
             self.state.reveal_hidden_cursor_for_cjk_ime =
                 config.experimental.reveal_hidden_cursor_for_cjk_ime;
-            self.state.cjk_ime_agent_filter_configured =
-                !config.experimental.cjk_ime_agents.is_empty();
-            self.state.cjk_ime_agents = parse_cjk_ime_agents(&config.experimental.cjk_ime_agents);
             self.state.cjk_ime_cursor_shape =
                 config.experimental.cjk_ime_cursor_shape.to_decscusr();
             self.state.switch_ascii_input_source_in_prefix =

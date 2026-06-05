@@ -354,20 +354,7 @@ pub(crate) fn focused_terminal_cursor(
     let rt = app_state.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)?;
     let scrolled_back = crate::ui::pane_is_scrolled_back(rt);
 
-    // Determine whether the IME-anchor reveal applies to this focused pane.
-    // The master switch must be on, and either no agent filter is configured
-    // (apply to any pane) or the focused pane's detected agent matches the
-    // allow-list. A configured list with no valid entries reveals nothing.
-    let reveal = app_state.reveal_hidden_cursor_for_cjk_ime
-        && (!app_state.cjk_ime_agent_filter_configured || {
-            let detected = app_state
-                .workspaces
-                .get(ws_idx)
-                .and_then(|ws| ws.terminal_id(info.id))
-                .and_then(|tid| app_state.terminals.get(tid))
-                .and_then(|t| t.detected_agent);
-            detected.is_some_and(|agent| app_state.cjk_ime_agents.contains(&agent))
-        });
+    let reveal = app_state.reveal_hidden_cursor_for_cjk_ime;
 
     if let Some(cursor) = rt.cursor_state(info.inner_rect, true) {
         // When the reveal applies, expose the cursor anchor regardless of the

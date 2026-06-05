@@ -458,8 +458,7 @@ pub struct ExperimentalConfig {
     pub pane_history: bool,
     /// Expose the focused pane's cursor anchor to the outer terminal even when
     /// the pane requested `?25l`, so macOS native input methods keep tracking
-    /// the candidate window when TUIs paint their own cursor (Claude Code, pi,
-    /// codex, etc.). Default: false.
+    /// the candidate window when TUIs paint their own cursor. Default: false.
     ///
     /// When the pane reports no cursor position, falls back to the pane's
     /// top-left so a stable IME anchor is always available.
@@ -468,14 +467,6 @@ pub struct ExperimentalConfig {
     /// outer terminal for apps that hide the cursor without painting a
     /// replacement (vim normal mode, etc.). See #149.
     pub reveal_hidden_cursor_for_cjk_ime: bool,
-    /// Restrict `reveal_hidden_cursor_for_cjk_ime` to focused panes whose
-    /// detected agent matches one of these names (case-insensitive). Empty
-    /// list means apply to any focused pane. Unknown agent names are ignored;
-    /// if the list contains no valid names, the reveal does not apply.
-    /// Accepted names: pi, claude, codex, gemini, cursor, cline, opencode,
-    /// copilot, kimi, kiro, droid, amp, grok, hermes, kilo, qodercli, qoder.
-    /// Default: empty.
-    pub cjk_ime_agents: Vec<String>,
     /// Cursor shape rendered for the IME anchor when
     /// `reveal_hidden_cursor_for_cjk_ime` is enabled. Default: "steady_block".
     pub cjk_ime_cursor_shape: ImeCursorShape,
@@ -841,22 +832,6 @@ cjk_ime_cursor_shape = "bar"
         assert_eq!(
             config.experimental.cjk_ime_cursor_shape,
             ImeCursorShape::Bar
-        );
-    }
-
-    #[test]
-    fn cjk_ime_agents_default_empty_and_parse() {
-        let default_config = Config::default();
-        assert!(default_config.experimental.cjk_ime_agents.is_empty());
-
-        let toml = r#"
-[experimental]
-cjk_ime_agents = ["claude", "codex"]
-"#;
-        let config: Config = toml::from_str(toml).unwrap();
-        assert_eq!(
-            config.experimental.cjk_ime_agents,
-            vec!["claude".to_string(), "codex".to_string()]
         );
     }
 

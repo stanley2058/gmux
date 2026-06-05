@@ -1269,10 +1269,6 @@ pub struct AppState {
     /// Expose the focused pane's cursor anchor to the outer terminal even when
     /// the pane requested `?25l`. See `[experimental] reveal_hidden_cursor_for_cjk_ime`.
     pub reveal_hidden_cursor_for_cjk_ime: bool,
-    /// Restrict cursor reveal to focused panes whose detected agent matches
-    /// one of these. When false, apply to any focused pane.
-    pub cjk_ime_agent_filter_configured: bool,
-    pub cjk_ime_agents: Vec<crate::detect::Agent>,
     /// DECSCUSR shape parameter (1–6) for the IME anchor cursor.
     pub cjk_ime_cursor_shape: u8,
     /// While prefix mode is active, switch the macOS host input source to an
@@ -1573,8 +1569,6 @@ impl AppState {
             prompt_new_tab_name: true,
             pane_history_persistence: false,
             reveal_hidden_cursor_for_cjk_ime: false,
-            cjk_ime_agent_filter_configured: false,
-            cjk_ime_agents: Vec::new(),
             cjk_ime_cursor_shape: 2, // steady_block
             switch_ascii_input_source_in_prefix: false,
             kitty_graphics_enabled: false,
