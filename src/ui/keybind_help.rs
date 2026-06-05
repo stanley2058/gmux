@@ -78,14 +78,6 @@ pub(super) fn keybind_help_groups(app: &AppState) -> Vec<HelpGroup> {
             help_entry("esc", "back"),
             help_entry(
                 format!(
-                    "{} / {}",
-                    keybind_label(&kb.navigate.workspace_up),
-                    keybind_label(&kb.navigate.workspace_down)
-                ),
-                "list",
-            ),
-            help_entry(
-                format!(
                     "{} / {} / {} / {} / left / right",
                     keybind_label(&kb.navigate.pane_left),
                     keybind_label(&kb.navigate.pane_down),

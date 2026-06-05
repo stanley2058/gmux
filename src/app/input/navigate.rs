@@ -1030,6 +1030,7 @@ mod tests {
     #[test]
     fn navigate_down_follows_grouped_sidebar_visual_order() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
+        state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
         mark_git_space_member(&mut state, 0, "repo-key");
         mark_git_space_member(&mut state, 2, "repo-key");
         state.mode = Mode::Navigate;
@@ -1159,6 +1160,7 @@ mod tests {
     #[test]
     fn movement_action_stays_in_navigate_mode() {
         let mut state = state_with_workspaces(&["a", "b"]);
+        state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
         state.selected = 0;
 
         handle_navigate_key(
@@ -1326,6 +1328,7 @@ navigate_pane_right = "ctrl+l"
     #[test]
     fn mobile_workspace_keyboard_navigation_keeps_selected_row_visible() {
         let mut state = state_with_workspaces(&["a", "b", "c", "d"]);
+        state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Navigate;

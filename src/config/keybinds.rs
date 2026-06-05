@@ -1774,6 +1774,8 @@ switch_workspace = "prefix+shift+1..9"
         assert!(kb.rename_workspace.bindings.is_empty());
         assert!(kb.close_workspace.bindings.is_empty());
         assert!(kb.switch_workspace.is_empty());
+        assert!(kb.navigate.workspace_up.bindings.is_empty());
+        assert!(kb.navigate.workspace_down.bindings.is_empty());
         assert_eq!(
             binding_triggers(&kb.split_vertical),
             vec![

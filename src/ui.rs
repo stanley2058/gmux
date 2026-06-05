@@ -978,6 +978,34 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect::<String>();
         assert!(rendered.contains("PREFIX"));
+        assert!(rendered.contains("g"));
+        assert!(rendered.contains("session nav"));
+        assert!(!rendered.contains("unset"));
+    }
+
+    #[test]
+    fn navigate_mode_hides_unset_workspace_navigation_hint() {
+        let mut app = crate::app::state::AppState::test_new();
+        app.mode = Mode::Navigate;
+        app.view.terminal_area = ratatui::layout::Rect::new(0, 0, 80, 4);
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 4))
+            .expect("test terminal");
+
+        terminal
+            .draw(|frame| render_navigate_overlay(&app, frame, app.view.terminal_area))
+            .expect("draw navigate overlay");
+
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("NAVIGATE"));
+        assert!(rendered.contains("navigator"));
+        assert!(!rendered.contains("unset"));
+        assert!(!rendered.contains("unset / unset"));
     }
 
     #[test]
@@ -1001,6 +1029,15 @@ mod tests {
         assert!(tabs
             .iter()
             .any(|(key, label)| key == "prefix+g" && label.as_ref() == "session navigator"));
+        let navigation = groups
+            .iter()
+            .find(|(name, _)| *name == "navigation")
+            .expect("navigation group")
+            .1
+            .clone();
+        assert!(!navigation
+            .iter()
+            .any(|(key, label)| key.contains("unset") || label.as_ref() == "list"));
         assert!(!groups
             .iter()
             .flat_map(|(_, entries)| entries)

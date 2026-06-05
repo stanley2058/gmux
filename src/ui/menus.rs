@@ -15,10 +15,6 @@ fn prefix_rhs_label(bindings: &crate::config::ActionKeybinds) -> String {
         .unwrap_or_else(|| "unset".to_string())
 }
 
-fn keybind_label(bindings: &crate::config::ActionKeybinds) -> String {
-    bindings.label().unwrap_or_else(|| "unset".to_string())
-}
-
 fn render_bottom_bar(frame: &mut Frame, area: Rect, line: Line<'_>, bg: ratatui::style::Color) {
     frame.render_widget(Clear, area);
     let buf = frame.buffer_mut();
@@ -38,7 +34,7 @@ pub(super) fn render_prefix_overlay(app: &AppState, frame: &mut Frame, area: Rec
         .bg(app.palette.accent)
         .add_modifier(Modifier::BOLD);
 
-    let session_picker = prefix_rhs_label(&app.keybinds.workspace_picker);
+    let navigator = prefix_rhs_label(&app.keybinds.goto);
     let help = prefix_rhs_label(&app.keybinds.help);
     let prefix = crate::config::format_key_combo((app.prefix_code, app.prefix_mods));
 
@@ -49,7 +45,7 @@ pub(super) fn render_prefix_overlay(app: &AppState, frame: &mut Frame, area: Rec
         Span::styled(" cancel  ", dim),
         Span::styled(prefix, key),
         Span::styled(" send prefix  ", dim),
-        Span::styled(session_picker, key),
+        Span::styled(navigator, key),
         Span::styled(" session nav  ", dim),
         Span::styled(help, key),
         Span::styled(" keybinds", dim),
@@ -118,18 +114,20 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
     let settings = prefix_rhs_label(&kb.settings);
     let goto = prefix_rhs_label(&kb.goto);
     let detach = prefix_rhs_label(&kb.detach);
-    let session_nav = format!(
-        "{} / {}",
-        keybind_label(&kb.navigate.workspace_up),
-        keybind_label(&kb.navigate.workspace_down)
-    );
-    let line = Line::from(vec![
+    let session_nav = match (
+        kb.navigate.workspace_up.label(),
+        kb.navigate.workspace_down.label(),
+    ) {
+        (Some(up), Some(down)) => Some(format!("{up} / {down}")),
+        (Some(up), None) => Some(up),
+        (None, Some(down)) => Some(down),
+        (None, None) => None,
+    };
+    let mut spans = vec![
         Span::styled(" NAVIGATE ", mode_style),
         Span::raw(" "),
         Span::styled("esc", key),
         Span::styled(" back  ", dim),
-        Span::styled(session_nav, key),
-        Span::styled(" session  ", dim),
         Span::styled("⇥", key),
         Span::styled(" pane  ", dim),
         Span::styled(goto, key),
@@ -152,7 +150,12 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
         Span::styled(" settings  ", dim),
         Span::styled(detach, key),
         Span::styled(" detach", dim),
-    ]);
+    ];
+    if let Some(session_nav) = session_nav {
+        spans.insert(4, Span::styled(" session  ", dim));
+        spans.insert(4, Span::styled(session_nav, key));
+    }
+    let line = Line::from(spans);
 
     let overlay_y = area.y + area.height.saturating_sub(1);
     let overlay_area = Rect::new(area.x, overlay_y, area.width, 1);

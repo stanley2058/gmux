@@ -473,25 +473,13 @@ fn render_empty(app: &AppState, frame: &mut Frame, area: Rect) {
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "  Start a shell, then add tabs or split panes as needed.",
+            "  Create a tab from the CLI, then add panes as needed.",
             Style::default().fg(p.overlay1),
         )),
         Line::from(Span::styled(
-            "  The first pane sets the default repo or folder name.",
+            "  For example: gmux new-tab --focus",
             Style::default().fg(p.overlay1),
         )),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  Press ", Style::default().fg(p.overlay0)),
-            Span::styled(
-                app.keybinds
-                    .new_workspace
-                    .label()
-                    .unwrap_or_else(|| "unset".to_string()),
-                Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" to create one", Style::default().fg(p.overlay0)),
-        ]),
     ];
     frame.render_widget(
         Paragraph::new(lines).block(
@@ -752,5 +740,30 @@ mod tests {
             panic!("selection background should resolve to rgb");
         };
         assert!(relative_luminance((r, g, b)) > relative_luminance((12, 14, 16)));
+    }
+
+    #[test]
+    fn empty_pane_view_does_not_advertise_workspace_creation() {
+        let app = AppState::test_new();
+        let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 12))
+            .expect("test terminal");
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+
+        terminal
+            .draw(|frame| render_panes(&app, &terminal_runtimes, frame, Rect::new(0, 0, 80, 12)))
+            .expect("draw empty panes");
+
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(rendered.contains("No session panes yet"));
+        assert!(rendered.contains("gmux new-tab --focus"));
+        assert!(!rendered.contains("workspace"));
+        assert!(!rendered.contains("unset"));
+        assert!(!rendered.contains("create one"));
     }
 }
