@@ -209,7 +209,6 @@ pub struct Config {
     pub update: UpdateConfig,
     pub keys: KeysConfig,
     pub ui: UiConfig,
-    pub worktrees: WorktreesConfig,
     pub advanced: AdvancedConfig,
     pub experimental: ExperimentalConfig,
     pub remote: RemoteConfig,
@@ -233,12 +232,6 @@ pub struct KeysConfig {
     pub settings: BindingConfig,
     /// Create a new workspace. Unset by default.
     pub new_workspace: BindingConfig,
-    /// Create a Git worktree from the selected workspace. Unset by default.
-    pub new_worktree: BindingConfig,
-    /// Open an existing Git worktree from the selected workspace. Unset by default.
-    pub open_worktree: BindingConfig,
-    /// Delete the selected managed worktree checkout after confirmation. Unset by default.
-    pub remove_worktree: BindingConfig,
     /// Rename the selected workspace. Unset by default.
     pub rename_workspace: BindingConfig,
     /// Close the selected workspace. Unset by default.
@@ -341,13 +334,6 @@ pub struct IndexedKeysConfig {
     pub workspaces: String,
     /// Modifier combo for agent shortcuts 1-9. Unset by default.
     pub agents: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(default)]
-pub struct WorktreesConfig {
-    /// Root directory under which Gmux creates <repo>/<branch-slug> checkouts.
-    pub directory: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -473,9 +459,6 @@ impl Default for KeysConfig {
             help: BindingConfig::one("prefix+?"),
             settings: BindingConfig::one("prefix+s"),
             new_workspace: BindingConfig::empty(),
-            new_worktree: BindingConfig::empty(),
-            open_worktree: BindingConfig::empty(),
-            remove_worktree: BindingConfig::empty(),
             rename_workspace: BindingConfig::empty(),
             close_workspace: BindingConfig::empty(),
             workspace_picker: BindingConfig::empty(),
@@ -525,14 +508,6 @@ impl Default for KeysConfig {
             toggle_sidebar: BindingConfig::one("prefix+b"),
             indexed: IndexedKeysConfig::default(),
             command: Vec::new(),
-        }
-    }
-}
-
-impl Default for WorktreesConfig {
-    fn default() -> Self {
-        Self {
-            directory: "~/.gmux/worktrees".into(),
         }
     }
 }
@@ -733,19 +708,6 @@ focus_agent = "prefix+alt+1..9"
             config.keys.focus_pane_panel_entry,
             BindingConfig::one("prefix+alt+1..9")
         );
-    }
-
-    #[test]
-    fn worktrees_directory_defaults_and_parses() {
-        let default_config = Config::default();
-        assert_eq!(default_config.worktrees.directory, "~/.gmux/worktrees");
-
-        let toml = r#"
-[worktrees]
-directory = "~/Projects/gmux-worktrees"
-"#;
-        let config: Config = toml::from_str(toml).unwrap();
-        assert_eq!(config.worktrees.directory, "~/Projects/gmux-worktrees");
     }
 
     #[test]

@@ -476,9 +476,6 @@ pub(crate) fn handle_navigate_key(state: &mut AppState, key: KeyEvent) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NavigateAction {
     NewWorkspace,
-    NewWorktree,
-    OpenWorktree,
-    RemoveWorktree,
     RenameWorkspace,
     CloseWorkspace,
     SwitchWorkspace(usize),
@@ -580,9 +577,6 @@ fn action_for_key(
         (&kb.settings, NavigateAction::Settings),
         (&kb.workspace_picker, NavigateAction::WorkspacePicker),
         (&kb.new_workspace, NavigateAction::NewWorkspace),
-        (&kb.new_worktree, NavigateAction::NewWorktree),
-        (&kb.open_worktree, NavigateAction::OpenWorktree),
-        (&kb.remove_worktree, NavigateAction::RemoveWorktree),
         (&kb.rename_workspace, NavigateAction::RenameWorkspace),
         (&kb.close_workspace, NavigateAction::CloseWorkspace),
         (&kb.previous_workspace, NavigateAction::PreviousWorkspace),
@@ -667,28 +661,6 @@ pub(super) fn execute_navigate_action_in_context(
         NavigateAction::NewWorkspace => {
             state.request_new_workspace = true;
             leave_navigate_mode(state);
-        }
-        NavigateAction::NewWorktree => {
-            if let Some(ws_idx) = workspace_action_target(state, context)
-                .filter(|idx| workspace_can_start_worktree_action(state, terminal_runtimes, *idx))
-            {
-                state.request_new_linked_worktree = Some(ws_idx);
-                leave_navigate_mode(state);
-            }
-        }
-        NavigateAction::OpenWorktree => {
-            if let Some(ws_idx) = workspace_action_target(state, context)
-                .filter(|idx| workspace_can_start_worktree_action(state, terminal_runtimes, *idx))
-            {
-                state.request_open_existing_worktree = Some(ws_idx);
-                leave_navigate_mode(state);
-            }
-        }
-        NavigateAction::RemoveWorktree => {
-            if let Some(ws_idx) = workspace_action_target(state, context) {
-                state.request_remove_linked_worktree = Some(ws_idx);
-                leave_navigate_mode(state);
-            }
         }
         NavigateAction::RenameWorkspace => {
             if let Some(ws_idx) = workspace_action_target(state, context) {
@@ -848,28 +820,6 @@ fn workspace_action_target(state: &AppState, context: ActionContext) -> Option<u
         ActionContext::Navigate => state.selected,
     };
     (idx < state.workspaces.len()).then_some(idx)
-}
-
-fn workspace_can_start_worktree_action(
-    state: &AppState,
-    terminal_runtimes: &TerminalRuntimeRegistry,
-    ws_idx: usize,
-) -> bool {
-    let Some(ws) = state.workspaces.get(ws_idx) else {
-        return false;
-    };
-    if ws
-        .worktree_space()
-        .is_some_and(|space| space.is_linked_worktree)
-    {
-        return false;
-    }
-    let git_space = ws.git_space().cloned().or_else(|| {
-        ws.resolved_identity_cwd_from(&state.terminals, terminal_runtimes)
-            .as_deref()
-            .and_then(crate::workspace::git_space_metadata)
-    });
-    !git_space.is_some_and(|space| space.is_linked_worktree)
 }
 
 fn leave_navigate_mode(state: &mut AppState) {
@@ -1082,7 +1032,6 @@ mod tests {
             ActionContext::Prefix,
         );
 
-        assert_eq!(state.request_remove_linked_worktree, None);
         assert_eq!(state.workspaces.len(), 1);
         assert_eq!(state.workspaces[0].display_name(), "main");
         assert_eq!(state.mode, Mode::Terminal);
@@ -1100,70 +1049,6 @@ mod tests {
 
         assert!(state.request_new_workspace);
         assert_eq!(state.mode, Mode::Terminal);
-    }
-
-    #[test]
-    fn custom_new_worktree_key_requests_selected_workspace() {
-        let mut state = state_with_workspaces(&["main", "scratch"]);
-        state.workspaces[1].identity_cwd = unique_temp_path("navigate-new-worktree-selected");
-        state.mode = Mode::Navigate;
-        state.selected = 1;
-        state.active = Some(0);
-        state.keybinds.new_worktree = crate::config::ActionKeybinds::prefix("g");
-
-        handle_navigate_key(
-            &mut state,
-            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
-        );
-
-        assert_eq!(state.request_new_linked_worktree, Some(1));
-        assert_eq!(state.mode, Mode::Terminal);
-    }
-
-    #[test]
-    fn worktree_actions_do_not_start_from_linked_child_workspace() {
-        let mut terminal_runtimes = TerminalRuntimeRegistry::new();
-        let mut state = state_with_workspaces(&["main", "issue"]);
-        mark_worktree_space_member(&mut state, 0, "repo-key");
-        mark_worktree_space_member(&mut state, 1, "repo-key");
-        state.mode = Mode::Navigate;
-        state.selected = 1;
-        state.active = Some(0);
-
-        execute_navigate_action_in_context(
-            &mut state,
-            &mut terminal_runtimes,
-            NavigateAction::NewWorktree,
-            ActionContext::Navigate,
-        );
-        assert_eq!(state.request_new_linked_worktree, None);
-
-        execute_navigate_action_in_context(
-            &mut state,
-            &mut terminal_runtimes,
-            NavigateAction::OpenWorktree,
-            ActionContext::Navigate,
-        );
-        assert_eq!(state.request_open_existing_worktree, None);
-    }
-
-    #[test]
-    fn direct_new_worktree_action_targets_active_workspace() {
-        let mut terminal_runtimes = TerminalRuntimeRegistry::new();
-        let mut state = state_with_workspaces(&["main", "scratch"]);
-        state.workspaces[0].identity_cwd = unique_temp_path("navigate-new-worktree-active");
-        state.mode = Mode::Terminal;
-        state.selected = 1;
-        state.active = Some(0);
-
-        execute_navigate_action_in_context(
-            &mut state,
-            &mut terminal_runtimes,
-            NavigateAction::NewWorktree,
-            ActionContext::Direct,
-        );
-
-        assert_eq!(state.request_new_linked_worktree, Some(0));
     }
 
     #[test]
@@ -1843,7 +1728,6 @@ last_pane = "prefix+tab"
 
         execute_navigate_action(&mut state, NavigateAction::CloseWorkspace);
 
-        assert_eq!(state.request_remove_linked_worktree, None);
         assert_eq!(state.workspaces.len(), 1);
         assert_eq!(state.workspaces[0].display_name(), "main");
         assert_eq!(state.mode, Mode::Terminal);

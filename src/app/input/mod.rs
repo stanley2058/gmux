@@ -70,9 +70,6 @@ impl App {
                     Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
                         handle_rename_key(&mut self.state, key_event)
                     }
-                    Mode::NewLinkedWorktree => self.handle_worktree_create_key(key_event),
-                    Mode::OpenExistingWorktree => self.handle_worktree_open_key(key_event),
-                    Mode::ConfirmRemoveWorktree => self.handle_worktree_remove_key(key_event),
                     Mode::Resize => handle_resize_key(&mut self.state, key),
                     Mode::ConfirmClose => handle_confirm_close_key(&mut self.state, key_event),
                     Mode::ContextMenu => {

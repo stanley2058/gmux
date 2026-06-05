@@ -567,141 +567,6 @@ pub struct WorkspaceCardArea {
     pub indented: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorktreeCreateState {
-    pub source_workspace_id: String,
-    pub source_checkout_path: std::path::PathBuf,
-    pub source_existing_membership: Option<crate::workspace::WorktreeSpaceMembership>,
-    pub source_repo_root: std::path::PathBuf,
-    pub repo_key: String,
-    pub repo_name: String,
-    pub branch: String,
-    pub checkout_path: std::path::PathBuf,
-    pub error: Option<String>,
-    pub creating: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorktreeRemoveState {
-    pub workspace_id: String,
-    pub repo_root: std::path::PathBuf,
-    pub path: std::path::PathBuf,
-    pub error: Option<String>,
-    pub removing: bool,
-    pub force_confirmation: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorktreeOpenEntry {
-    pub path: std::path::PathBuf,
-    pub branch: Option<String>,
-    pub is_linked_worktree: bool,
-    pub already_open_ws_idx: Option<usize>,
-}
-
-impl WorktreeOpenEntry {
-    pub(crate) fn display_name(&self) -> String {
-        self.branch.clone().unwrap_or_else(|| {
-            self.path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(str::to_owned)
-                .unwrap_or_else(|| self.path.display().to_string())
-        })
-    }
-
-    pub(crate) fn status_label(&self) -> &'static str {
-        if self.already_open_ws_idx.is_some() {
-            "open"
-        } else if self.branch.is_some() {
-            ""
-        } else if self.is_linked_worktree {
-            "detached"
-        } else {
-            "root"
-        }
-    }
-
-    fn search_text(&self) -> String {
-        format!(
-            "{} {} {} {}",
-            self.display_name(),
-            self.path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or_default(),
-            self.path.display(),
-            self.status_label()
-        )
-        .to_lowercase()
-    }
-
-    fn matches_query(&self, query: &str) -> bool {
-        text_matches_query(query, &self.search_text())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorktreeOpenState {
-    pub source_workspace_id: String,
-    pub source_existing_membership: Option<crate::workspace::WorktreeSpaceMembership>,
-    pub source_checkout_path: std::path::PathBuf,
-    pub source_repo_root: std::path::PathBuf,
-    pub repo_key: String,
-    pub repo_name: String,
-    pub entries: Vec<WorktreeOpenEntry>,
-    pub selected: usize,
-    pub query: String,
-    pub search_focused: bool,
-    pub error: Option<String>,
-}
-
-impl WorktreeOpenState {
-    pub(crate) fn filtered_indices(&self) -> Vec<usize> {
-        let query = self.query.trim();
-        self.entries
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, entry)| {
-                (query.is_empty() || entry.matches_query(query)).then_some(idx)
-            })
-            .collect()
-    }
-
-    pub(crate) fn selected_entry_index(&self) -> Option<usize> {
-        let indices = self.filtered_indices();
-        if indices.contains(&self.selected) {
-            Some(self.selected)
-        } else {
-            indices.first().copied()
-        }
-    }
-
-    pub(crate) fn normalize_selection(&mut self) {
-        if let Some(selected) = self.selected_entry_index() {
-            self.selected = selected;
-        }
-    }
-
-    pub(crate) fn select_previous_filtered(&mut self) {
-        let indices = self.filtered_indices();
-        let Some(current) = self.selected_entry_index() else {
-            return;
-        };
-        let pos = indices.iter().position(|idx| *idx == current).unwrap_or(0);
-        self.selected = indices[pos.saturating_sub(1)];
-    }
-
-    pub(crate) fn select_next_filtered(&mut self) {
-        let indices = self.filtered_indices();
-        let Some(current) = self.selected_entry_index() else {
-            return;
-        };
-        let pos = indices.iter().position(|idx| *idx == current).unwrap_or(0);
-        self.selected = indices[(pos + 1).min(indices.len().saturating_sub(1))];
-    }
-}
-
 pub(crate) fn text_matches_query(query: &str, text: &str) -> bool {
     let haystack = text.to_lowercase();
     query
@@ -747,9 +612,6 @@ pub enum Mode {
     RenameWorkspace,
     RenameTab,
     RenamePane,
-    NewLinkedWorktree,
-    OpenExistingWorktree,
-    ConfirmRemoveWorktree,
     Resize,
     ConfirmClose,
     ContextMenu,
@@ -1053,35 +915,23 @@ impl ContextMenuState {
                 is_linked_worktree: false,
                 has_worktree_children: false,
                 ..
-            } => &["Rename", "Close", "New worktree", "Open worktree..."],
+            } => &["Rename", "Close"],
             ContextMenuKind::GitWorkspace {
                 is_linked_worktree: true,
                 ..
-            } => &["Rename", "Close", "Delete worktree checkout..."],
+            } => &["Rename", "Close"],
             ContextMenuKind::GitWorkspace {
                 is_linked_worktree: false,
                 has_worktree_children: true,
                 collapsed: true,
                 ..
-            } => &[
-                "Rename",
-                "Close group",
-                "New worktree",
-                "Open worktree...",
-                "Expand",
-            ],
+            } => &["Rename", "Close group", "Expand"],
             ContextMenuKind::GitWorkspace {
                 is_linked_worktree: false,
                 has_worktree_children: true,
                 collapsed: false,
                 ..
-            } => &[
-                "Rename",
-                "Close group",
-                "New worktree",
-                "Open worktree...",
-                "Collapse",
-            ],
+            } => &["Rename", "Close group", "Collapse"],
             ContextMenuKind::Tab { .. } => &["New tab", "Rename", "Close"],
             ContextMenuKind::Pane {
                 has_manual_label: true,
@@ -1188,13 +1038,7 @@ pub struct AppState {
     pub detach_requested: bool,
     pub request_new_workspace: bool,
     pub request_new_tab: bool,
-    pub request_new_linked_worktree: Option<usize>,
-    pub request_open_existing_worktree: Option<usize>,
     pub request_new_workspace_cwd: Option<std::path::PathBuf>,
-    pub request_remove_linked_worktree: Option<usize>,
-    pub request_submit_worktree_create: bool,
-    pub request_submit_worktree_open: bool,
-    pub request_submit_worktree_remove: bool,
     pub request_reload_config: bool,
     /// Set when the headless server should ask attached clients to reload
     /// their client-local sound config from disk.
@@ -1205,10 +1049,6 @@ pub struct AppState {
     pub creating_new_tab: bool,
     pub requested_new_tab_name: Option<String>,
     pub rename_pane_target: Option<PaneId>,
-    pub worktree_create: Option<WorktreeCreateState>,
-    pub worktree_open: Option<WorktreeOpenState>,
-    pub worktree_remove: Option<WorktreeRemoveState>,
-    pub worktree_directory: std::path::PathBuf,
     pub collapsed_space_keys: std::collections::HashSet<String>,
     pub request_complete_onboarding: bool,
     pub name_input: String,
@@ -1487,23 +1327,13 @@ impl AppState {
             detach_requested: false,
             request_new_workspace: false,
             request_new_tab: false,
-            request_new_linked_worktree: None,
-            request_open_existing_worktree: None,
             request_new_workspace_cwd: None,
-            request_remove_linked_worktree: None,
-            request_submit_worktree_create: false,
-            request_submit_worktree_open: false,
-            request_submit_worktree_remove: false,
             request_reload_config: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,
-            worktree_create: None,
-            worktree_open: None,
-            worktree_remove: None,
-            worktree_directory: std::path::PathBuf::from("/tmp/gmux-worktrees"),
             collapsed_space_keys: std::collections::HashSet::new(),
             request_complete_onboarding: false,
             name_input: String::new(),
@@ -1687,7 +1517,7 @@ mod tests {
     }
 
     #[test]
-    fn linked_worktree_context_menu_keeps_safe_close_and_explicit_remove() {
+    fn linked_worktree_context_menu_uses_plain_workspace_actions() {
         let menu = ContextMenuState {
             kind: ContextMenuKind::GitWorkspace {
                 ws_idx: 0,
@@ -1700,14 +1530,11 @@ mod tests {
             list: MenuListState::new(0),
         };
 
-        assert_eq!(
-            menu.items(),
-            &["Rename", "Close", "Delete worktree checkout..."]
-        );
+        assert_eq!(menu.items(), &["Rename", "Close"]);
     }
 
     #[test]
-    fn git_workspace_context_menu_keeps_remove_for_managed_worktrees_only() {
+    fn git_workspace_context_menu_uses_plain_workspace_actions() {
         let menu = ContextMenuState {
             kind: ContextMenuKind::GitWorkspace {
                 ws_idx: 0,
@@ -1720,14 +1547,11 @@ mod tests {
             list: MenuListState::new(0),
         };
 
-        assert_eq!(
-            menu.items(),
-            &["Rename", "Close", "New worktree", "Open worktree..."]
-        );
+        assert_eq!(menu.items(), &["Rename", "Close"]);
     }
 
     #[test]
-    fn parent_worktree_context_menu_uses_repo_actions() {
+    fn parent_worktree_context_menu_keeps_group_actions_only() {
         let menu = ContextMenuState {
             kind: ContextMenuKind::GitWorkspace {
                 ws_idx: 0,
@@ -1740,15 +1564,6 @@ mod tests {
             list: MenuListState::new(0),
         };
 
-        assert_eq!(
-            menu.items(),
-            &[
-                "Rename",
-                "Close group",
-                "New worktree",
-                "Open worktree...",
-                "Collapse"
-            ]
-        );
+        assert_eq!(menu.items(), &["Rename", "Close group", "Collapse"]);
     }
 }

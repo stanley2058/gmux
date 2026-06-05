@@ -54,7 +54,6 @@ mod terminal_theme;
 mod ui;
 mod update;
 mod workspace;
-mod worktree;
 
 fn init_logging() {
     crate::logging::init_file_logging("gmux.log");

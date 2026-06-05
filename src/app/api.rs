@@ -51,16 +51,6 @@ impl App {
             return;
         }
 
-        if let AppEvent::WorktreeAddFinished(result) = ev {
-            self.handle_worktree_add_finished(result);
-            return;
-        }
-
-        if let AppEvent::WorktreeRemoveFinished(result) = ev {
-            self.handle_worktree_remove_finished(result);
-            return;
-        }
-
         if let AppEvent::PaneDied { pane_id } = &ev {
             if self.runtime_exit_action(*pane_id) == RuntimeExitAction::RespawnShell
                 && self.respawn_shell_for_launch_pane(*pane_id)
@@ -606,28 +596,39 @@ mod tests {
         while runtime.cwd() != Some(live_cwd.clone()) && std::time::Instant::now() < deadline {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
-        app.terminal_runtimes.insert(terminal_id, runtime);
+        app.terminal_runtimes.insert(terminal_id.clone(), runtime);
 
-        app.handle_internal_event(AppEvent::StateChanged {
+        let previous_toast = app.state.toast.clone();
+        app.state.toast = Some(crate::app::state::ToastNotification {
+            kind: ToastKind::Finished,
+            title: "codex finished".into(),
+            context: "__gmux_original__ · 1".into(),
+            target: Some(crate::app::state::ToastTarget {
+                workspace_id: app.state.workspaces[0].id.clone(),
+                pane_id: root,
+            }),
+        });
+        let presentation = app
+            .state
+            .terminals
+            .get(&terminal_id)
+            .unwrap()
+            .effective_presentation();
+        let update = crate::app::actions::PaneStateUpdate {
             pane_id: root,
-            agent: Some(Agent::Codex),
+            ws_idx: 0,
+            previous_agent_label: Some("codex".into()),
+            previous_known_agent: Some(Agent::Codex),
+            previous_state: AgentState::Working,
+            previous_seen: true,
+            previous_presentation: presentation.clone(),
+            agent_label: Some("codex".into()),
+            known_agent: Some(Agent::Codex),
             state: AgentState::Working,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-        app.handle_internal_event(AppEvent::StateChanged {
-            pane_id: root,
-            agent: Some(Agent::Codex),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
+            seen: true,
+            presentation,
+        };
+        app.refresh_new_gmux_toast_context_for_update(&update, &previous_toast);
 
         assert_eq!(
             app.state.toast.as_ref().map(|toast| toast.context.as_str()),

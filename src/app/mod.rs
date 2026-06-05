@@ -15,7 +15,6 @@ mod runtime;
 mod session;
 pub mod state;
 mod theme_sync;
-mod worktrees;
 
 use std::collections::{HashMap, HashSet};
 use std::future::pending;
@@ -347,9 +346,6 @@ impl App {
             (18, 36)
         });
 
-        let worktree_directory =
-            crate::worktree::expand_tilde_absolute_path(&config.worktrees.directory);
-
         info!(
             pane_scrollback_limit_bytes = config.advanced.scrollback_limit_bytes,
             "using pane scrollback configuration"
@@ -389,23 +385,13 @@ impl App {
             detach_requested: false,
             request_new_workspace: false,
             request_new_tab: false,
-            request_new_linked_worktree: None,
-            request_open_existing_worktree: None,
             request_new_workspace_cwd: None,
-            request_remove_linked_worktree: None,
-            request_submit_worktree_create: false,
-            request_submit_worktree_open: false,
-            request_submit_worktree_remove: false,
             request_reload_config: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,
-            worktree_create: None,
-            worktree_open: None,
-            worktree_remove: None,
-            worktree_directory,
             collapsed_space_keys,
             request_complete_onboarding: false,
             name_input: String::new(),
@@ -730,44 +716,11 @@ impl App {
                 needs_render = true;
             }
 
-            if let Some(ws_idx) = self.state.request_new_linked_worktree.take() {
-                self.open_new_linked_worktree_dialog(ws_idx);
-                needs_render = true;
-            }
-
-            if let Some(ws_idx) = self.state.request_open_existing_worktree.take() {
-                self.open_existing_worktree_dialog(ws_idx);
-                needs_render = true;
-            }
-
             if let Some(cwd) = self.state.request_new_workspace_cwd.take() {
                 if let Err(err) = self.create_workspace_with_options(cwd, true) {
                     tracing::error!(err = %err, "failed to create workspace at requested cwd");
                     self.state.mode = Mode::Navigate;
                 }
-                needs_render = true;
-            }
-
-            if let Some(ws_idx) = self.state.request_remove_linked_worktree.take() {
-                self.open_remove_linked_worktree_confirmation(ws_idx);
-                needs_render = true;
-            }
-
-            if self.state.request_submit_worktree_create {
-                self.state.request_submit_worktree_create = false;
-                self.start_worktree_add();
-                needs_render = true;
-            }
-
-            if self.state.request_submit_worktree_open {
-                self.state.request_submit_worktree_open = false;
-                self.open_selected_existing_worktree();
-                needs_render = true;
-            }
-
-            if self.state.request_submit_worktree_remove {
-                self.state.request_submit_worktree_remove = false;
-                self.start_worktree_remove();
                 needs_render = true;
             }
 
@@ -1156,11 +1109,6 @@ impl App {
             self.state.new_terminal_cwd = config.terminal.new_cwd.clone();
         }
 
-        if !invalid_section("worktrees") {
-            self.state.worktree_directory =
-                crate::worktree::expand_tilde_absolute_path(&config.worktrees.directory);
-        }
-
         if !invalid_section("theme") {
             self.state.palette = resolve_palette_with_legacy_accent(config, !invalid_section("ui"));
             self.state.theme_name = config
@@ -1325,15 +1273,6 @@ impl App {
             }
             Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
                 input::handle_rename_key(&mut self.state, key_event);
-            }
-            Mode::NewLinkedWorktree => {
-                self.handle_worktree_create_key(key_event);
-            }
-            Mode::OpenExistingWorktree => {
-                self.handle_worktree_open_key(key_event);
-            }
-            Mode::ConfirmRemoveWorktree => {
-                self.handle_worktree_remove_key(key_event);
             }
             Mode::Resize => {
                 input::handle_resize_key(&mut self.state, key);
@@ -2729,8 +2668,8 @@ mod tests {
         let response_cwd =
             std::path::PathBuf::from(response["result"]["pane"]["cwd"].as_str().unwrap());
         assert_eq!(
-            crate::worktree::canonical_or_original(&response_cwd),
-            crate::worktree::canonical_or_original(&split_cwd)
+            std::fs::canonicalize(&response_cwd).unwrap_or(response_cwd),
+            std::fs::canonicalize(&split_cwd).unwrap_or(split_cwd)
         );
         assert_eq!(response["result"]["pane"]["focused"], false);
         assert_eq!(app.state.active, Some(0));

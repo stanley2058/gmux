@@ -1857,8 +1857,6 @@ impl AppState {
                 let _ = cache_updates;
                 Vec::new()
             }
-            AppEvent::WorktreeAddFinished(_) => Vec::new(),
-            AppEvent::WorktreeRemoveFinished(_) => Vec::new(),
         }
     }
 
@@ -3602,7 +3600,6 @@ mod tests {
 
         state.close_tab();
 
-        assert_eq!(state.request_remove_linked_worktree, None);
         assert_eq!(state.workspaces.len(), 1);
         assert_eq!(state.workspaces[0].display_name(), "selected");
     }
@@ -3632,7 +3629,6 @@ mod tests {
 
         state.close_pane();
 
-        assert_eq!(state.request_remove_linked_worktree, None);
         assert_eq!(state.workspaces.len(), 1);
         assert_eq!(state.workspaces[0].display_name(), "selected");
     }

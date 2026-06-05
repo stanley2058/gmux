@@ -9,19 +9,6 @@ use crate::detect::{Agent, AgentState};
 use crate::layout::PaneId;
 use crate::workspace::{GitStatusCacheEntry, WorkspaceGitStatus};
 
-#[derive(Debug)]
-pub struct WorktreeAddResult {
-    pub path: std::path::PathBuf,
-    pub result: Result<(), String>,
-}
-
-#[derive(Debug)]
-pub struct WorktreeRemoveResult {
-    pub workspace_id: String,
-    pub path: std::path::PathBuf,
-    pub result: Result<(), String>,
-}
-
 /// An event from a background task to the main loop.
 #[derive(Debug)]
 pub enum AppEvent {
@@ -51,8 +38,4 @@ pub enum AppEvent {
         results: Vec<WorkspaceGitStatus>,
         cache_updates: Vec<(std::path::PathBuf, GitStatusCacheEntry)>,
     },
-    /// Background `git worktree add` completed.
-    WorktreeAddFinished(WorktreeAddResult),
-    /// Background `git worktree remove` completed.
-    WorktreeRemoveFinished(WorktreeRemoveResult),
 }

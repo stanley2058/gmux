@@ -21,8 +21,22 @@ pub(crate) fn resolve_new_terminal_cwd(
         NewTerminalCwdConfig::Current => {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
         }
-        NewTerminalCwdConfig::Path(path) => crate::worktree::expand_tilde_path(path),
+        NewTerminalCwdConfig::Path(path) => expand_tilde_path(path),
     }
+}
+
+fn expand_tilde_path(path: &str) -> PathBuf {
+    if path == "~" {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(path));
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(rest);
+        }
+    }
+    PathBuf::from(path)
 }
 
 impl App {
