@@ -257,24 +257,6 @@ pub enum OutputMatch {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum EventMatch {
-    WorkspaceCreated {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        workspace_id: Option<String>,
-    },
-    WorkspaceUpdated {
-        workspace_id: String,
-    },
-    WorkspaceClosed {
-        workspace_id: String,
-    },
-    WorkspaceRenamed {
-        workspace_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        label: Option<String>,
-    },
-    WorkspaceFocused {
-        workspace_id: String,
-    },
     TabCreated {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         tab_id: Option<String>,
@@ -326,11 +308,6 @@ pub enum EventMatch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventKind {
-    WorkspaceCreated,
-    WorkspaceUpdated,
-    WorkspaceClosed,
-    WorkspaceRenamed,
-    WorkspaceFocused,
     TabCreated,
     TabClosed,
     TabRenamed,
@@ -410,18 +387,6 @@ pub enum ResponseResult {
         diagnostics: Vec<String>,
     },
     Ok {},
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceInfo {
-    pub workspace_id: String,
-    pub number: usize,
-    pub label: String,
-    pub focused: bool,
-    pub pane_count: usize,
-    pub tab_count: usize,
-    pub active_tab_id: String,
-    pub agent_status: AgentStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -538,22 +503,6 @@ pub struct PaneAgentStatusChangedEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventData {
-    WorkspaceCreated {
-        workspace: WorkspaceInfo,
-    },
-    WorkspaceUpdated {
-        workspace: WorkspaceInfo,
-    },
-    WorkspaceClosed {
-        workspace_id: String,
-    },
-    WorkspaceRenamed {
-        workspace_id: String,
-        label: String,
-    },
-    WorkspaceFocused {
-        workspace_id: String,
-    },
     TabCreated {
         tab: TabInfo,
     },

@@ -60,17 +60,12 @@ impl App {
                             self.schedule_session_save();
                         }
                     }
-                    let workspace = self.workspace_info(ws_idx);
                     let tab = self
                         .tab_info(ws_idx, 0)
                         .expect("new workspace should have an initial tab");
                     let root_pane = self
                         .root_pane_info(ws_idx, 0)
                         .expect("new workspace should have an initial root pane");
-                    self.emit_event(EventEnvelope {
-                        event: EventKind::WorkspaceCreated,
-                        data: EventData::WorkspaceCreated { workspace },
-                    });
                     self.emit_event(EventEnvelope {
                         event: EventKind::TabCreated,
                         data: EventData::TabCreated { tab: tab.clone() },

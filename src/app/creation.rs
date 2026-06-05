@@ -287,20 +287,4 @@ impl App {
         self.state
             .runtime_for_pane_in_workspace(&self.terminal_runtimes, ws_idx, pane_id)
     }
-
-    pub(super) fn workspace_info(&self, index: usize) -> crate::api::schema::WorkspaceInfo {
-        let ws = &self.state.workspaces[index];
-        crate::api::schema::WorkspaceInfo {
-            workspace_id: self.public_workspace_id(index),
-            number: index + 1,
-            label: ws.display_name_from(&self.state.terminals, &self.terminal_runtimes),
-            focused: self.state.active == Some(index),
-            pane_count: ws.public_pane_numbers.len(),
-            tab_count: ws.tabs.len(),
-            active_tab_id: self
-                .public_tab_id(index, ws.active_tab)
-                .unwrap_or_else(|| format!("{}:{}", ws.id, ws.active_tab + 1)),
-            agent_status: crate::api::schema::AgentStatus::Unknown,
-        }
-    }
 }

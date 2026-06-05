@@ -393,12 +393,6 @@ impl App {
         }
         if let Some((ws_idx, pane_id)) = current_focus {
             self.send_pane_focus_event(ws_idx, pane_id, crate::ghostty::FocusEvent::Gained);
-            self.emit_event(crate::api::schema::EventEnvelope {
-                event: crate::api::schema::EventKind::WorkspaceFocused,
-                data: crate::api::schema::EventData::WorkspaceFocused {
-                    workspace_id: self.public_workspace_id(ws_idx),
-                },
-            });
             if let Some(tab_id) =
                 self.public_tab_id(ws_idx, self.state.workspaces[ws_idx].active_tab)
             {
