@@ -49,7 +49,6 @@ impl App {
                         event: crate::api::schema::EventKind::PaneExited,
                         data: crate::api::schema::EventData::PaneExited {
                             pane_id: public_pane_id,
-                            workspace_id: self.public_workspace_id(ws_idx),
                         },
                     });
                 }
@@ -228,10 +227,7 @@ impl App {
             {
                 self.emit_event(crate::api::schema::EventEnvelope {
                     event: crate::api::schema::EventKind::TabFocused,
-                    data: crate::api::schema::EventData::TabFocused {
-                        tab_id,
-                        workspace_id: self.public_workspace_id(ws_idx),
-                    },
+                    data: crate::api::schema::EventData::TabFocused { tab_id },
                 });
             }
             if let Some(public_pane_id) = self.public_pane_id(ws_idx, pane_id) {
@@ -239,7 +235,6 @@ impl App {
                     event: crate::api::schema::EventKind::PaneFocused,
                     data: crate::api::schema::EventData::PaneFocused {
                         pane_id: public_pane_id,
-                        workspace_id: self.public_workspace_id(ws_idx),
                     },
                 });
             }

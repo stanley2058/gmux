@@ -199,7 +199,6 @@ impl App {
         let tab = ws.tabs.get(tab_idx)?;
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
-            workspace_id: self.public_workspace_id(ws_idx),
             number: tab_idx + 1,
             label: tab.display_name(),
             focused: self.state.active == Some(ws_idx) && ws.active_tab == tab_idx,
@@ -245,7 +244,6 @@ impl App {
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
-            workspace_id: self.public_workspace_id(ws_idx),
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             focused,
             cwd: ws.tabs[tab_idx]
@@ -264,11 +262,9 @@ impl App {
         &self,
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
-    ) -> Option<(&crate::terminal::TerminalRuntime, String)> {
-        let runtime =
-            self.state
-                .runtime_for_pane_in_workspace(&self.terminal_runtimes, ws_idx, pane_id)?;
-        Some((runtime, self.public_workspace_id(ws_idx)))
+    ) -> Option<&crate::terminal::TerminalRuntime> {
+        self.state
+            .runtime_for_pane_in_workspace(&self.terminal_runtimes, ws_idx, pane_id)
     }
 
     pub(super) fn lookup_runtime_sender(

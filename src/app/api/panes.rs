@@ -191,7 +191,7 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
-        let Some((pane, workspace_id)) = self.lookup_runtime(ws_idx, pane_id) else {
+        let Some(pane) = self.lookup_runtime(ws_idx, pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
         let Some(tab_idx) = self
@@ -221,7 +221,6 @@ impl App {
             ResponseResult::PaneRead {
                 read: PaneReadResult {
                     pane_id: params.pane_id,
-                    workspace_id,
                     tab_id: self.public_tab_id(ws_idx, tab_idx).unwrap(),
                     source: params.source,
                     format: params.format,
@@ -285,7 +284,6 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&target.pane_id) else {
             return pane_not_found(id, &target.pane_id);
         };
-        let workspace_id = self.state.workspaces[ws_idx].id.clone();
         let terminal_id = self.state.terminal_id_for_pane(ws_idx, pane_id);
         let should_close_workspace = {
             let Some(ws) = self.state.workspaces.get_mut(ws_idx) else {
@@ -301,7 +299,6 @@ impl App {
                 event: EventKind::PaneClosed,
                 data: EventData::PaneClosed {
                     pane_id: target.pane_id.clone(),
-                    workspace_id: workspace_id.clone(),
                 },
             });
         } else {
@@ -312,7 +309,6 @@ impl App {
                 event: EventKind::PaneClosed,
                 data: EventData::PaneClosed {
                     pane_id: target.pane_id,
-                    workspace_id,
                 },
             });
         }

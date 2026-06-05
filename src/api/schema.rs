@@ -397,7 +397,6 @@ pub enum ResponseResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabInfo {
     pub tab_id: String,
-    pub workspace_id: String,
     pub number: usize,
     pub label: String,
     pub focused: bool,
@@ -408,7 +407,6 @@ pub struct TabInfo {
 pub struct PaneInfo {
     pub pane_id: String,
     pub terminal_id: String,
-    pub workspace_id: String,
     pub tab_id: String,
     pub focused: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -425,7 +423,6 @@ pub struct PaneInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaneReadResult {
     pub pane_id: String,
-    pub workspace_id: String,
     pub tab_id: String,
     pub source: ReadSource,
     pub format: ReadFormat,
@@ -468,42 +465,15 @@ pub struct PaneOutputMatchedEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventData {
-    TabCreated {
-        tab: TabInfo,
-    },
-    TabClosed {
-        tab_id: String,
-        workspace_id: String,
-    },
-    TabRenamed {
-        tab_id: String,
-        workspace_id: String,
-        label: String,
-    },
-    TabFocused {
-        tab_id: String,
-        workspace_id: String,
-    },
-    PaneCreated {
-        pane: PaneInfo,
-    },
-    PaneClosed {
-        pane_id: String,
-        workspace_id: String,
-    },
-    PaneFocused {
-        pane_id: String,
-        workspace_id: String,
-    },
-    PaneOutputChanged {
-        pane_id: String,
-        workspace_id: String,
-        revision: u64,
-    },
-    PaneExited {
-        pane_id: String,
-        workspace_id: String,
-    },
+    TabCreated { tab: TabInfo },
+    TabClosed { tab_id: String },
+    TabRenamed { tab_id: String, label: String },
+    TabFocused { tab_id: String },
+    PaneCreated { pane: PaneInfo },
+    PaneClosed { pane_id: String },
+    PaneFocused { pane_id: String },
+    PaneOutputChanged { pane_id: String, revision: u64 },
+    PaneExited { pane_id: String },
 }
 
 fn default_true() -> bool {
@@ -703,7 +673,6 @@ mod tests {
             event: EventKind::PaneOutputChanged,
             data: EventData::PaneOutputChanged {
                 pane_id: "p_1".into(),
-                workspace_id: "w_1".into(),
                 revision: 42,
             },
         };
@@ -759,7 +728,6 @@ mod tests {
                 matched_line: "auth: received".into(),
                 read: PaneReadResult {
                     pane_id: "p_1_1".into(),
-                    workspace_id: "w_1".into(),
                     tab_id: "t_1_1".into(),
                     source: ReadSource::Recent,
                     format: ReadFormat::Text,
@@ -799,7 +767,6 @@ mod tests {
             result: ResponseResult::TabCreated {
                 tab: TabInfo {
                     tab_id: "w_1:2".into(),
-                    workspace_id: "w_1".into(),
                     number: 2,
                     label: "review".into(),
                     focused: false,
@@ -808,7 +775,6 @@ mod tests {
                 root_pane: PaneInfo {
                     pane_id: "w_1-3".into(),
                     terminal_id: "term_example".into(),
-                    workspace_id: "w_1".into(),
                     tab_id: "w_1:2".into(),
                     focused: false,
                     cwd: Some("/tmp/review".into()),

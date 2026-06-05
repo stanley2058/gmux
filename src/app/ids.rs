@@ -12,10 +12,6 @@ impl App {
             .find_map(|(ws_idx, ws)| ws.pane_state(pane_id).map(|pane| (ws_idx, pane)))
     }
 
-    pub(super) fn public_workspace_id(&self, ws_idx: usize) -> String {
-        self.state.workspaces[ws_idx].id.clone()
-    }
-
     pub(super) fn public_tab_id(&self, ws_idx: usize, tab_idx: usize) -> Option<String> {
         let ws = self.state.workspaces.get(ws_idx)?;
         ws.tabs.get(tab_idx)?;

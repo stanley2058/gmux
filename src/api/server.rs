@@ -724,7 +724,6 @@ mod tests {
                             result: ResponseResult::PaneRead {
                                 read: crate::api::schema::PaneReadResult {
                                     pane_id: "pane_1".into(),
-                                    workspace_id: "ws_1".into(),
                                     tab_id: "tab_1".into(),
                                     source: crate::api::schema::ReadSource::RecentUnwrapped,
                                     format: crate::api::schema::ReadFormat::Text,

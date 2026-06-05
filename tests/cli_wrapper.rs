@@ -434,6 +434,18 @@ fn send_json_request(socket_path: &Path, request: serde_json::Value) -> serde_js
     send_request(socket_path, &request.to_string())
 }
 
+fn workspace_id_from_tab_id(tab_id: &str) -> Option<&str> {
+    tab_id
+        .rsplit_once(':')
+        .map(|(workspace_id, _)| workspace_id)
+}
+
+fn workspace_id_from_pane_id(pane_id: &str) -> Option<&str> {
+    pane_id
+        .rsplit_once('-')
+        .map(|(workspace_id, _)| workspace_id)
+}
+
 fn create_workspace_api(
     socket_path: &Path,
     cwd: Option<&Path>,
@@ -460,13 +472,13 @@ fn create_workspace_api(
         .get_mut("result")
         .and_then(|value| value.as_object_mut())
     {
-        if let (Some(workspace_id), Some(tab_id)) = (
-            result
-                .get("tab")
-                .and_then(|tab| tab.get("workspace_id"))
-                .cloned(),
-            result.get("tab").and_then(|tab| tab.get("tab_id")).cloned(),
-        ) {
+        if let Some(tab_id) = result
+            .get("tab")
+            .and_then(|tab| tab.get("tab_id"))
+            .and_then(|tab_id| tab_id.as_str())
+            .map(str::to_string)
+        {
+            let workspace_id = workspace_id_from_tab_id(&tab_id).unwrap_or("1").to_string();
             let label = result
                 .get("tab")
                 .and_then(|tab| tab.get("label"))
@@ -497,7 +509,8 @@ fn list_workspaces_api(socket_path: &Path) -> serde_json::Value {
     let mut workspaces = Vec::new();
     if let Some(tabs) = tabs["result"]["tabs"].as_array() {
         for tab in tabs {
-            let Some(workspace_id) = tab["workspace_id"].as_str() else {
+            let Some(workspace_id) = tab["tab_id"].as_str().and_then(workspace_id_from_tab_id)
+            else {
                 continue;
             };
             if workspaces
@@ -537,7 +550,9 @@ fn focus_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
         "result": {
             "type": "workspace_info",
             "workspace": {
-                "workspace_id": response["result"]["tab"]["workspace_id"],
+                "workspace_id": workspace_id_from_tab_id(
+                    response["result"]["tab"]["tab_id"].as_str().unwrap_or("")
+                ).unwrap_or(workspace_id),
             },
         },
     })
@@ -582,7 +597,7 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
             .and_then(|index| {
                 panes
                     .iter()
-                    .filter_map(|pane| pane["workspace_id"].as_str())
+                    .filter_map(|pane| pane["pane_id"].as_str().and_then(workspace_id_from_pane_id))
                     .fold(Vec::<&str>::new(), |mut workspace_ids, id| {
                         if !workspace_ids.contains(&id) {
                             workspace_ids.push(id);
@@ -595,7 +610,10 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
             .unwrap_or_else(|| workspace_id.to_string());
         let mut pane_ids: Vec<_> = panes
             .iter()
-            .filter(|pane| pane["workspace_id"].as_str() == Some(target_workspace_id.as_str()))
+            .filter(|pane| {
+                pane["pane_id"].as_str().and_then(workspace_id_from_pane_id)
+                    == Some(target_workspace_id.as_str())
+            })
             .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
             .collect();
         pane_ids.reverse();
@@ -864,11 +882,11 @@ fn named_sessions_use_separate_servers_and_tab_state() {
         Some("beta-ws"),
         true,
     );
-    let alpha_workspace_id = alpha_workspace["result"]["workspace"]["workspace_id"]
+    let alpha_tab_id = alpha_workspace["result"]["workspace"]["active_tab_id"]
         .as_str()
         .unwrap()
         .to_string();
-    let beta_workspace_id = beta_workspace["result"]["workspace"]["workspace_id"]
+    let beta_tab_id = beta_workspace["result"]["workspace"]["active_tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -884,21 +902,21 @@ fn named_sessions_use_separate_servers_and_tab_state() {
         &["--session", "beta", "tab", "list"],
     );
 
-    let alpha_workspace_ids: Vec<_> = alpha_list["result"]["tabs"]
+    let alpha_tab_ids: Vec<_> = alpha_list["result"]["tabs"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|tab| tab["workspace_id"].as_str().unwrap())
+        .map(|tab| tab["tab_id"].as_str().unwrap())
         .collect();
-    let beta_workspace_ids: Vec<_> = beta_list["result"]["tabs"]
+    let beta_tab_ids: Vec<_> = beta_list["result"]["tabs"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|tab| tab["workspace_id"].as_str().unwrap())
+        .map(|tab| tab["tab_id"].as_str().unwrap())
         .collect();
 
-    assert_eq!(alpha_workspace_ids, vec![alpha_workspace_id.as_str()]);
-    assert_eq!(beta_workspace_ids, vec![beta_workspace_id.as_str()]);
+    assert_eq!(alpha_tab_ids, vec![alpha_tab_id.as_str()]);
+    assert_eq!(beta_tab_ids, vec![beta_tab_id.as_str()]);
 
     let beta_via_explicit_session = run_named_cli_with_socket_override(
         &config_home,
@@ -913,13 +931,13 @@ fn named_sessions_use_separate_servers_and_tab_state() {
     );
     let beta_via_explicit_session: serde_json::Value =
         serde_json::from_slice(&beta_via_explicit_session.stdout).unwrap();
-    let workspace_ids_via_explicit: Vec<_> = beta_via_explicit_session["result"]["tabs"]
+    let tab_ids_via_explicit: Vec<_> = beta_via_explicit_session["result"]["tabs"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|tab| tab["workspace_id"].as_str().unwrap())
+        .map(|tab| tab["tab_id"].as_str().unwrap())
         .collect();
-    assert_eq!(workspace_ids_via_explicit, vec![beta_workspace_id.as_str()]);
+    assert_eq!(tab_ids_via_explicit, vec![beta_tab_id.as_str()]);
 
     let human_sessions = run_named_cli(&config_home, &runtime_dir, &["session", "list"]);
     assert!(human_sessions.status.success());

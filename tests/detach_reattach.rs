@@ -138,13 +138,16 @@ fn workspace_create(socket_path: &PathBuf, label: &str) -> Value {
         ),
     );
     if let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) {
-        if let (Some(workspace_id), Some(tab_id)) = (
-            result
-                .get("tab")
-                .and_then(|tab| tab.get("workspace_id"))
-                .cloned(),
-            result.get("tab").and_then(|tab| tab.get("tab_id")).cloned(),
-        ) {
+        if let Some(tab_id) = result
+            .get("tab")
+            .and_then(|tab| tab.get("tab_id"))
+            .and_then(|tab_id| tab_id.as_str())
+            .map(str::to_string)
+        {
+            let workspace_id = tab_id
+                .rsplit_once(':')
+                .map(|(workspace_id, _)| workspace_id.to_string())
+                .unwrap_or_else(|| "1".to_string());
             result.insert(
                 "workspace".to_string(),
                 serde_json::json!({
@@ -166,7 +169,11 @@ fn workspace_list(socket_path: &PathBuf) -> Value {
     let mut workspaces = Vec::new();
     if let Some(tabs) = tabs["result"]["tabs"].as_array() {
         for tab in tabs {
-            let Some(workspace_id) = tab["workspace_id"].as_str() else {
+            let Some(workspace_id) = tab["tab_id"].as_str().and_then(|tab_id| {
+                tab_id
+                    .rsplit_once(':')
+                    .map(|(workspace_id, _)| workspace_id)
+            }) else {
                 continue;
             };
             workspaces.push(serde_json::json!({

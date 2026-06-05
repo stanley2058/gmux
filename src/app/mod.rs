@@ -2365,7 +2365,6 @@ mod tests {
             panic!("expected tab_created response");
         };
 
-        assert_eq!(tab.workspace_id, root_pane.workspace_id);
         assert_eq!(root_pane.tab_id, tab.tab_id);
         assert_eq!(tab.pane_count, 1);
     }

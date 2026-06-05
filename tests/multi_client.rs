@@ -255,11 +255,15 @@ fn create_workspace_and_root_pane(socket_path: &Path, label: &str) -> (String, S
         panic!("tab.create failed: {response}");
     }
 
-    let workspace_id = response
-        .pointer("/result/tab/workspace_id")
+    let tab_id = response
+        .pointer("/result/tab/tab_id")
         .and_then(Value::as_str)
-        .expect("tab.create should return workspace id")
+        .expect("tab.create should return tab id")
         .to_string();
+    let workspace_id = tab_id
+        .rsplit_once(':')
+        .map(|(workspace_id, _)| workspace_id.to_string())
+        .unwrap_or_else(|| "1".to_string());
 
     let pane_id = response
         .pointer("/result/root_pane/pane_id")

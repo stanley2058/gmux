@@ -195,7 +195,6 @@ impl App {
             event: EventKind::TabRenamed,
             data: EventData::TabRenamed {
                 tab_id: self.public_tab_id(ws_idx, tab_idx).unwrap(),
-                workspace_id: self.public_workspace_id(ws_idx),
                 label: params.label,
             },
         });
@@ -233,7 +232,6 @@ impl App {
             event: EventKind::TabClosed,
             data: EventData::TabClosed {
                 tab_id: target.tab_id,
-                workspace_id: self.public_workspace_id(ws_idx),
             },
         });
 
