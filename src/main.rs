@@ -377,8 +377,11 @@ fn main() -> io::Result<()> {
         println!("       gmux ls [--json]");
         println!("       gmux kill-session [-t name] [--json]");
         println!("       gmux detach");
+        println!("       gmux list-tabs");
         println!("       gmux new-tab [--cwd PATH] [--label TEXT]");
+        println!("       gmux select-tab [-t tab]");
         println!("       gmux rename-tab <tab_id> <label>");
+        println!("       gmux kill-tab [-t tab]");
         println!("       gmux split-pane <pane_id> [-h|-v]");
         println!("       gmux kill-pane <pane_id>");
         println!("       gmux update [--handoff]");
@@ -399,7 +402,10 @@ fn main() -> io::Result<()> {
             ("gmux ls", "List persistent sessions"),
             ("gmux kill-session", "Stop the default or targeted session"),
             ("gmux detach", "Show the detach keybinding"),
+            ("gmux list-tabs", "List tabs in the session"),
             ("gmux new-tab", "Create and focus a tab"),
+            ("gmux select-tab -t tab", "Focus a tab"),
+            ("gmux kill-tab -t tab", "Close a tab"),
             ("gmux split-pane <pane_id>", "Split a pane"),
             ("gmux kill-pane <pane_id>", "Close a pane"),
             (
@@ -495,8 +501,11 @@ fn main() -> io::Result<()> {
                 "ls",
                 "kill-session",
                 "detach",
+                "list-tabs",
                 "new-tab",
+                "select-tab",
                 "rename-tab",
+                "kill-tab",
                 "split-pane",
                 "kill-pane",
                 "update",

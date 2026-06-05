@@ -998,8 +998,11 @@ fn help_commands_exit_successfully() {
         &["attach", "-h"],
         &["ls", "-h"],
         &["kill-session", "-h"],
+        &["list-tabs", "-h"],
         &["new-tab", "-h"],
+        &["select-tab", "-h"],
         &["rename-tab", "-h"],
+        &["kill-tab", "-h"],
         &["split-pane", "-h"],
         &["kill-pane", "-h"],
         &["detach", "-h"],
@@ -2118,6 +2121,11 @@ fn top_level_tab_and_pane_aliases_work() {
         &["workspace", "create", "--cwd", base.to_str().unwrap()],
     );
     assert!(created.status.success());
+    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let first_tab_id = created_json["result"]["workspace"]["active_tab_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let listed_sessions = run_cli(&socket_path, &["ls", "--json"]);
     assert!(listed_sessions.status.success());
@@ -2141,6 +2149,16 @@ fn top_level_tab_and_pane_aliases_work() {
         .unwrap()
         .to_string();
     assert_eq!(created_tab_json["result"]["tab"]["label"], "logs");
+
+    let listed_tabs = run_cli(&socket_path, &["list-tabs"]);
+    assert!(listed_tabs.status.success());
+    let listed_tabs_json: serde_json::Value = serde_json::from_slice(&listed_tabs.stdout).unwrap();
+    assert!(listed_tabs_json["result"]["tabs"].as_array().unwrap().len() >= 2);
+
+    let selected = run_cli(&socket_path, &["select-tab", "-t", "1"]);
+    assert!(selected.status.success());
+    let selected_json: serde_json::Value = serde_json::from_slice(&selected.stdout).unwrap();
+    assert_eq!(selected_json["result"]["tab"]["tab_id"], first_tab_id);
 
     let renamed = run_cli(&socket_path, &["rename-tab", &tab_id, "renamed"]);
     assert!(renamed.status.success());
@@ -2166,6 +2184,11 @@ fn top_level_tab_and_pane_aliases_work() {
     assert!(closed.status.success());
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
+
+    let closed_tab = run_cli(&socket_path, &["kill-tab", "2"]);
+    assert!(closed_tab.status.success());
+    let closed_tab_json: serde_json::Value = serde_json::from_slice(&closed_tab.stdout).unwrap();
+    assert_eq!(closed_tab_json["result"]["type"], "ok");
 
     let detach = run_cli(&socket_path, &["detach"]);
     assert!(detach.status.success());

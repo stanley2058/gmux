@@ -39,8 +39,11 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "channel" => run_channel_command(&args[2..])?,
         "ls" => session_list(&args[2..], "usage: gmux ls [--json]")?,
         "kill-session" => kill_session_alias(&args[2..])?,
+        "list-tabs" => list_tabs_alias(&args[2..])?,
         "new-tab" => new_tab_alias(&args[2..])?,
+        "select-tab" => select_tab_alias(&args[2..])?,
         "rename-tab" => rename_tab_alias(&args[2..])?,
+        "kill-tab" => kill_tab_alias(&args[2..])?,
         "split-pane" => split_pane_alias(&args[2..])?,
         "kill-pane" => kill_pane_alias(&args[2..])?,
         "detach" => detach_alias(&args[2..])?,
@@ -109,6 +112,30 @@ fn new_tab_alias(args: &[String]) -> std::io::Result<i32> {
     tab::run_tab_command(&tab_args)
 }
 
+fn list_tabs_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux list-tabs");
+        return Ok(0);
+    }
+    if !args.is_empty() {
+        eprintln!("usage: gmux list-tabs");
+        return Ok(2);
+    }
+    tab::run_tab_command(&["list".to_string()])
+}
+
+fn select_tab_alias(args: &[String]) -> std::io::Result<i32> {
+    let tab_id = match parse_tab_target_alias(args, "usage: gmux select-tab [-t tab]") {
+        Ok(Some(tab_id)) => tab_id,
+        Ok(None) => return Ok(0),
+        Err(code) => return Ok(code),
+    };
+    tab::run_tab_command(&["focus".to_string(), tab_id])
+}
+
 fn rename_tab_alias(args: &[String]) -> std::io::Result<i32> {
     if matches!(
         args.first().map(String::as_str),
@@ -120,6 +147,53 @@ fn rename_tab_alias(args: &[String]) -> std::io::Result<i32> {
     let mut tab_args = vec!["rename".to_string()];
     tab_args.extend(args.iter().cloned());
     tab::run_tab_command(&tab_args)
+}
+
+fn kill_tab_alias(args: &[String]) -> std::io::Result<i32> {
+    let tab_id = match parse_tab_target_alias(args, "usage: gmux kill-tab [-t tab]") {
+        Ok(Some(tab_id)) => tab_id,
+        Ok(None) => return Ok(0),
+        Err(code) => return Ok(code),
+    };
+    tab::run_tab_command(&["close".to_string(), tab_id])
+}
+
+fn parse_tab_target_alias(args: &[String], usage: &str) -> Result<Option<String>, i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("{usage}");
+        return Ok(None);
+    }
+
+    let target = match args {
+        [value] if value.starts_with("--target=") => value
+            .split_once('=')
+            .map(|(_, value)| value)
+            .unwrap_or_default(),
+        [value] => value,
+        [flag, value] if flag == "-t" || flag == "--target" => value,
+        _ => {
+            eprintln!("{usage}");
+            return Err(2);
+        }
+    };
+    if target.trim().is_empty() {
+        eprintln!("{usage}");
+        return Err(2);
+    }
+    Ok(Some(normalize_session_tab_target(target)))
+}
+
+fn normalize_session_tab_target(value: &str) -> String {
+    if value.starts_with("t_") || value.contains(':') {
+        value.to_string()
+    } else if value.parse::<usize>().is_ok() {
+        format!("1:{value}")
+    } else {
+        value.to_string()
+    }
 }
 
 fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {
