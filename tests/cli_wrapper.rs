@@ -6,7 +6,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -466,306 +466,6 @@ fn send_request(socket_path: &Path, json: &str) -> serde_json::Value {
     let mut reader = BufReader::new(stream);
     reader.read_line(&mut line).unwrap();
     serde_json::from_str(&line).unwrap()
-}
-
-fn run_claude_hook(action: &str, hook_input: &str) -> Option<serde_json::Value> {
-    run_shell_hook(
-        "src/integration/assets/claude/gmux-agent-state.sh",
-        &[action],
-        hook_input,
-    )
-}
-
-fn run_codex_hook(action: &str, hook_input: &str) -> Option<serde_json::Value> {
-    run_shell_hook(
-        "src/integration/assets/codex/gmux-agent-state.sh",
-        &[action],
-        hook_input,
-    )
-}
-
-fn run_copilot_hook(hook_input: &str) -> Option<serde_json::Value> {
-    run_shell_hook(
-        "src/integration/assets/copilot/gmux-agent-state.sh",
-        &[],
-        hook_input,
-    )
-}
-
-fn run_shell_hook(asset_path: &str, args: &[&str], hook_input: &str) -> Option<serde_json::Value> {
-    let base = unique_test_dir();
-    fs::create_dir_all(&base).unwrap();
-    let socket_path = base.join("gmux.sock");
-    let listener = UnixListener::bind(&socket_path).unwrap();
-
-    let server = thread::spawn(move || {
-        listener.set_nonblocking(true).unwrap();
-        let deadline = Instant::now() + Duration::from_millis(700);
-        while Instant::now() < deadline {
-            match listener.accept() {
-                Ok((mut stream, _)) => {
-                    let mut line = String::new();
-                    let mut reader = BufReader::new(stream.try_clone().unwrap());
-                    reader.read_line(&mut line).unwrap();
-                    let _ = stream.write_all(br#"{"id":"test","result":{"type":"ok"}}"#);
-                    let _ = stream.write_all(b"\n");
-                    let _ = stream.flush();
-                    return Some(line);
-                }
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(err) => panic!("accept failed: {err}"),
-            }
-        }
-        None
-    });
-
-    let hook_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(asset_path);
-    let mut child = Command::new("bash")
-        .arg(hook_path)
-        .args(args)
-        .env("GMUX_ENV", "1")
-        .env("GMUX_SOCKET_PATH", &socket_path)
-        .env("GMUX_PANE_ID", "p_test")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    let mut stdin = child.stdin.take().unwrap();
-    stdin.write_all(hook_input.as_bytes()).unwrap();
-    drop(stdin);
-
-    let output = child.wait_with_output().unwrap();
-    assert!(
-        output.status.success(),
-        "hook failed: status={:?} stderr={} stdout={}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stderr),
-        String::from_utf8_lossy(&output.stdout)
-    );
-
-    let request = server.join().unwrap();
-    cleanup_test_base(&base);
-    request.map(|line| serde_json::from_str(&line).unwrap())
-}
-
-#[test]
-fn claude_hook_ignores_state_actions() {
-    let subagent_input = r#"{"hook_event_name":"Notification","agent_id":"agent-abc123","agent_type":"Explore","notification_type":"permission_prompt"}"#;
-
-    assert!(run_claude_hook("working", subagent_input).is_none());
-    assert!(run_claude_hook("blocked", subagent_input).is_none());
-}
-
-#[test]
-fn claude_hook_ignores_subagent_completion_reports() {
-    let subagent_input =
-        r#"{"hook_event_name":"SubagentStop","agent_id":"agent-abc123","agent_type":"Explore"}"#;
-
-    assert!(run_claude_hook("working", subagent_input).is_none());
-    assert!(run_claude_hook("idle", subagent_input).is_none());
-    assert!(run_claude_hook("release", subagent_input).is_none());
-}
-
-#[test]
-fn claude_hook_keeps_parent_agent_type_only_blocked() {
-    let request = run_claude_hook(
-        "blocked",
-        r#"{"hook_event_name":"PermissionRequest","agent_type":"Explore"}"#,
-    );
-
-    assert!(request.is_none());
-}
-
-#[test]
-fn claude_hook_reports_session_id_from_stdin() {
-    let request = run_claude_hook(
-        "session",
-        r#"{"hook_event_name":"SessionStart","session_id":"claude-session"}"#,
-    )
-    .expect("session start should report session identity");
-
-    assert_eq!(request["method"], "pane.report_agent_session");
-    assert_eq!(request["params"]["agent_session_id"], "claude-session");
-    assert!(request["params"].get("state").is_none());
-}
-
-#[test]
-fn codex_hook_reports_session_id_from_stdin() {
-    let request = run_codex_hook(
-        "session",
-        r#"{"hook_event_name":"SessionStart","session_id":"codex-session"}"#,
-    )
-    .expect("codex hook should report session identity");
-
-    assert_eq!(request["method"], "pane.report_agent_session");
-    assert_eq!(request["params"]["agent_session_id"], "codex-session");
-    assert!(request["params"].get("state").is_none());
-}
-
-#[test]
-fn copilot_hook_maps_turn_lifecycle() {
-    let session_start_idle = run_copilot_hook(
-        r#"{"hook_event_name":"SessionStart","session_id":"copilot-session","source":"resume"}"#,
-    )
-    .expect("copilot session start without prompt should report idle");
-    assert_eq!(session_start_idle["method"], "pane.report_agent");
-    assert_eq!(session_start_idle["params"]["state"], "idle");
-    assert_eq!(
-        session_start_idle["params"]["agent_session_id"],
-        "copilot-session"
-    );
-
-    let session_start_working = run_copilot_hook(
-        r#"{"hook_event_name":"SessionStart","sessionId":"copilot-session","initialPrompt":"run tests"}"#,
-    )
-    .expect("copilot session start with prompt should report working");
-    assert_eq!(session_start_working["method"], "pane.report_agent");
-    assert_eq!(session_start_working["params"]["state"], "working");
-    assert_eq!(
-        session_start_working["params"]["agent_session_id"],
-        "copilot-session"
-    );
-
-    let working = run_copilot_hook(
-        r#"{"hook_event_name":"UserPromptSubmit","session_id":"copilot-session","prompt":"run tests"}"#,
-    )
-    .expect("copilot prompt should report working");
-    assert_eq!(working["method"], "pane.report_agent");
-    assert_eq!(working["params"]["agent"], "copilot");
-    assert_eq!(working["params"]["state"], "working");
-    assert_eq!(working["params"]["agent_session_id"], "copilot-session");
-
-    let idle = run_copilot_hook(
-        r#"{"hook_event_name":"agentStop","session_id":"copilot-session","stop_reason":"end_turn"}"#,
-    )
-    .expect("copilot stop should report idle");
-    assert_eq!(idle["method"], "pane.report_agent");
-    assert_eq!(idle["params"]["state"], "idle");
-}
-
-#[test]
-fn copilot_hook_maps_camel_case_payloads() {
-    let session_start = run_copilot_hook(
-        r#"{"sessionId":"copilot-camel-session","source":"new","initialPrompt":"run tests"}"#,
-    )
-    .expect("copilot camelCase session start should report working");
-    assert_eq!(session_start["method"], "pane.report_agent");
-    assert_eq!(session_start["params"]["state"], "working");
-    assert_eq!(
-        session_start["params"]["agent_session_id"],
-        "copilot-camel-session"
-    );
-
-    let prompt =
-        run_copilot_hook(r#"{"sessionId":"copilot-camel-session","prompt":"continue the task"}"#)
-            .expect("copilot camelCase prompt should report working");
-    assert_eq!(prompt["method"], "pane.report_agent");
-    assert_eq!(prompt["params"]["state"], "working");
-
-    let blocker = run_copilot_hook(
-        r#"{"sessionId":"copilot-camel-session","toolName":"ask_user","toolArgs":{}}"#,
-    )
-    .expect("copilot camelCase ask_user should report blocked");
-    assert_eq!(blocker["method"], "pane.report_agent");
-    assert_eq!(blocker["params"]["state"], "blocked");
-
-    let answered = run_copilot_hook(
-        r#"{"sessionId":"copilot-camel-session","toolName":"ask_user","toolArgs":{},"toolResult":{"resultType":"success","textResultForLlm":"ok"}}"#,
-    )
-    .expect("copilot camelCase postToolUse should report working");
-    assert_eq!(answered["method"], "pane.report_agent");
-    assert_eq!(answered["params"]["state"], "working");
-
-    let idle = run_copilot_hook(
-        r#"{"sessionId":"copilot-camel-session","stopReason":"end_turn","transcriptPath":"/tmp/transcript.jsonl"}"#,
-    )
-    .expect("copilot camelCase agentStop should report idle");
-    assert_eq!(idle["method"], "pane.report_agent");
-    assert_eq!(idle["params"]["state"], "idle");
-
-    let user_exit =
-        run_copilot_hook(r#"{"sessionId":"copilot-camel-session","reason":"user_exit"}"#)
-            .expect("copilot camelCase user exit should release");
-    assert_eq!(user_exit["method"], "pane.release_agent");
-    assert_eq!(user_exit["params"]["agent"], "copilot");
-}
-
-#[test]
-fn copilot_hook_maps_user_prompts_and_notifications() {
-    let ask_user = run_copilot_hook(
-        r#"{"hook_event_name":"PreToolUse","session_id":"copilot-session","tool_name":"ask_user"}"#,
-    )
-    .expect("copilot ask_user should report blocked");
-    assert_eq!(ask_user["method"], "pane.report_agent");
-    assert_eq!(ask_user["params"]["state"], "blocked");
-
-    let stale_report_intent = run_copilot_hook(
-        r#"{"hook_event_name":"PostToolUse","session_id":"copilot-session","tool_name":"report_intent","tool_result":{"text_result_for_llm":"ok"}}"#,
-    );
-    assert!(
-        stale_report_intent.is_none(),
-        "postToolUse report_intent must not clear a pending ask_user prompt"
-    );
-
-    let ask_user_answered = run_copilot_hook(
-        r#"{"hook_event_name":"PostToolUse","session_id":"copilot-session","tool_name":"ask_user","tool_result":{"text_result_for_llm":"Blue"}}"#,
-    )
-    .expect("copilot answered ask_user should report working");
-    assert_eq!(ask_user_answered["method"], "pane.report_agent");
-    assert_eq!(ask_user_answered["params"]["state"], "working");
-
-    let exit_plan_mode = run_copilot_hook(
-        r#"{"hook_event_name":"PreToolUse","session_id":"copilot-session","tool_name":"exit_plan_mode"}"#,
-    )
-    .expect("copilot exit_plan_mode should report blocked");
-    assert_eq!(exit_plan_mode["method"], "pane.report_agent");
-    assert_eq!(exit_plan_mode["params"]["state"], "blocked");
-
-    let exit_plan_answered = run_copilot_hook(
-        r#"{"hook_event_name":"PostToolUse","session_id":"copilot-session","tool_name":"exit_plan_mode","tool_result":{"text_result_for_llm":"Approved"}}"#,
-    )
-    .expect("copilot answered exit_plan_mode should report working");
-    assert_eq!(exit_plan_answered["method"], "pane.report_agent");
-    assert_eq!(exit_plan_answered["params"]["state"], "working");
-
-    let notification = run_copilot_hook(
-        r#"{"hook_event_name":"notification","session_id":"copilot-session","notification_type":"permission_prompt"}"#,
-    )
-    .expect("copilot permission notification should report blocked");
-    assert_eq!(notification["method"], "pane.report_agent");
-    assert_eq!(notification["params"]["state"], "blocked");
-
-    let permission_approved_tool = run_copilot_hook(
-        r#"{"hook_event_name":"PostToolUse","session_id":"copilot-session","tool_name":"bash","tool_result":{"text_result_for_llm":"ok"}}"#,
-    )
-    .expect("copilot completed tool should report working after permission prompt");
-    assert_eq!(permission_approved_tool["method"], "pane.report_agent");
-    assert_eq!(permission_approved_tool["params"]["state"], "working");
-
-    let agent_idle = run_copilot_hook(
-        r#"{"hook_event_name":"notification","session_id":"copilot-session","notification_type":"agent_idle"}"#,
-    )
-    .expect("copilot agent_idle notification should report idle");
-    assert_eq!(agent_idle["method"], "pane.report_agent");
-    assert_eq!(agent_idle["params"]["state"], "idle");
-}
-
-#[test]
-fn copilot_hook_releases_on_user_exit_only() {
-    let complete = run_copilot_hook(
-        r#"{"hook_event_name":"SessionEnd","session_id":"copilot-session","reason":"complete"}"#,
-    );
-    assert!(complete.is_none());
-
-    let user_exit = run_copilot_hook(
-        r#"{"hook_event_name":"SessionEnd","session_id":"copilot-session","reason":"user_exit"}"#,
-    )
-    .expect("copilot user exit should release");
-    assert_eq!(user_exit["method"], "pane.release_agent");
-    assert_eq!(user_exit["params"]["agent"], "copilot");
 }
 
 #[test]
@@ -2595,7 +2295,7 @@ fn workspace_ids_are_stable_and_pane_numbers_stay_compact() {
 }
 
 #[test]
-fn pane_shell_gets_gmux_socket_and_pane_env() {
+fn pane_shell_gets_gmux_socket_env() {
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
@@ -2621,7 +2321,7 @@ fn pane_shell_gets_gmux_socket_and_pane_env() {
             "run",
             "1-1",
             &format!(
-                "printf '%s\\n%s\\n' \"$GMUX_SOCKET_PATH\" \"$GMUX_PANE_ID\" > {}",
+                "printf '%s\\n' \"$GMUX_SOCKET_PATH\" > {}",
                 env_capture.display()
             ),
         ],
@@ -2633,7 +2333,7 @@ fn pane_shell_gets_gmux_socket_and_pane_env() {
     while Instant::now() < deadline {
         if env_capture.exists() {
             text = fs::read_to_string(&env_capture).unwrap();
-            if text.contains(&socket_path.display().to_string()) && text.contains("p_") {
+            if text.contains(&socket_path.display().to_string()) {
                 break;
             }
         }
@@ -2644,7 +2344,6 @@ fn pane_shell_gets_gmux_socket_and_pane_env() {
         text.contains(&socket_path.display().to_string()),
         "env file was: {text:?}"
     );
-    assert!(text.contains("p_"), "env file was: {text:?}");
 
     cleanup_spawned_gmux(gmux, base);
 }

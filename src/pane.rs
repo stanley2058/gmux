@@ -1102,7 +1102,6 @@ impl PaneRuntime {
         cmd.cwd(cwd);
         cmd.env(crate::GMUX_ENV_VAR, crate::GMUX_ENV_VALUE);
         apply_pane_terminal_env(&mut cmd);
-        crate::integration::apply_pane_env(&mut cmd, pane_id);
         Self::spawn_command_builder(
             pane_id,
             rows,
@@ -1140,7 +1139,6 @@ impl PaneRuntime {
         cmd.cwd(cwd);
         cmd.env(crate::GMUX_ENV_VAR, crate::GMUX_ENV_VALUE);
         apply_pane_terminal_env(&mut cmd);
-        crate::integration::apply_pane_env(&mut cmd, pane_id);
         for (key, value) in extra_env {
             cmd.env(key, value);
         }
@@ -1184,7 +1182,6 @@ impl PaneRuntime {
         cmd.cwd(cwd);
         cmd.env(crate::GMUX_ENV_VAR, crate::GMUX_ENV_VALUE);
         apply_pane_terminal_env(&mut cmd);
-        crate::integration::apply_pane_env(&mut cmd, pane_id);
         Self::spawn_command_builder(
             pane_id,
             rows,
@@ -2084,6 +2081,12 @@ impl PaneRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn path_env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+    }
 
     #[test]
     fn shutdown_liveness_treats_reaped_direct_child_as_gone() {
@@ -2238,7 +2241,7 @@ mod tests {
 
     #[test]
     fn login_shell_builder_resolves_bare_shell_names_from_path() {
-        let _lock = crate::integration::integration_env_lock();
+        let _lock = path_env_lock();
         let base = std::env::temp_dir().join(format!(
             "gmux-login-shell-path-{}-{}",
             std::process::id(),

@@ -891,43 +891,16 @@ pathlib.Path({received:?}).write_text(data.hex())
 }
 
 #[test]
-fn live_handoff_accepts_old_pane_id_from_child_env() {
+fn live_handoff_rejects_removed_report_agent_api() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let api_socket = runtime_dir.join("gmux.sock");
-    let pane_id_marker = base.join("old-pane-id");
 
     let spawned = spawn_server(&config_home, &runtime_dir, &api_socket);
     wait_for_socket(&api_socket, Duration::from_secs(10));
     register_runtime_dir(&runtime_dir);
-
-    let created = request(
-        &api_socket,
-        serde_json::json!({
-            "id": "test:workspace:create",
-            "method": "workspace.create",
-            "params": {"cwd": "/tmp", "focus": true}
-        }),
-    );
-    let pane_id = created["result"]["root_pane"]["pane_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    assert_ok(request(
-        &api_socket,
-        serde_json::json!({
-            "id": "test:pane:print-id",
-            "method": "pane.send_input",
-            "params": {"pane_id": pane_id, "text": format!("printf '%s' \"$GMUX_PANE_ID\" > {}", pane_id_marker.display()), "keys": ["Enter"]}
-        }),
-    ));
-    let old_pane_id = wait_for_file_contains(&pane_id_marker, "p_", Duration::from_secs(5));
-    assert!(
-        old_pane_id.starts_with("p_"),
-        "unexpected pane id from env: {old_pane_id:?}"
-    );
 
     assert_ok(request(
         &api_socket,
@@ -942,7 +915,7 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
             "id": "test:old-pane-report",
             "method": "pane.report_agent",
             "params": {
-                "pane_id": old_pane_id,
+                "pane_id": "1-1",
                 "source": "handoff-test",
                 "agent": "pi",
                 "state": "working"

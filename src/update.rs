@@ -1923,21 +1923,10 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     };
     let server_update_outcomes =
         apply_running_session_update_decisions(&release, &updated_exe, server_update_decisions)?;
-    print_outdated_integration_notice_with_updated_binary(&updated_exe);
 
     print_running_session_update_outcomes(&server_update_outcomes, &release);
 
     Ok(release.version)
-}
-
-fn print_outdated_integration_notice_with_updated_binary(updated_exe: &Path) {
-    let status = Command::new(updated_exe)
-        .args(["integration", "status", "--outdated-only"])
-        .status();
-
-    if !status.is_ok_and(|status| status.success()) {
-        crate::integration::print_outdated_update_notice();
-    }
 }
 
 /// Background update check: only surface availability and release notes.

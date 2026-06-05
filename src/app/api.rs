@@ -1,7 +1,6 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-mod integrations;
 mod panes;
 mod responses;
 mod tabs;
@@ -532,12 +531,6 @@ impl App {
             }
             Method::PaneClose(target) => return self.handle_pane_close(request.id, target),
             Method::PaneSendKeys(params) => return self.handle_pane_send_keys(request.id, params),
-            Method::IntegrationInstall(params) => {
-                return self.handle_integration_install(request.id, params);
-            }
-            Method::IntegrationUninstall(params) => {
-                return self.handle_integration_uninstall(request.id, params);
-            }
             _ => {
                 return responses::encode_error(
                     request.id,
