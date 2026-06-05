@@ -17,38 +17,6 @@ pub struct SoundConfig {
     /// Optional mp3 file path for "request" notifications.
     /// Relative paths are resolved from the config file's directory.
     pub request_path: Option<PathBuf>,
-    pub agents: AgentSoundOverrides,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(default)]
-pub struct AgentSoundOverrides {
-    pub pi: AgentSoundSetting,
-    pub claude: AgentSoundSetting,
-    pub codex: AgentSoundSetting,
-    pub gemini: AgentSoundSetting,
-    pub cursor: AgentSoundSetting,
-    pub agy: AgentSoundSetting,
-    pub cline: AgentSoundSetting,
-    pub open_code: AgentSoundSetting,
-    pub github_copilot: AgentSoundSetting,
-    pub kimi: AgentSoundSetting,
-    pub kiro: AgentSoundSetting,
-    pub droid: AgentSoundSetting,
-    pub amp: AgentSoundSetting,
-    pub grok: AgentSoundSetting,
-    pub hermes: AgentSoundSetting,
-    pub kilo: AgentSoundSetting,
-    pub qodercli: AgentSoundSetting,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentSoundSetting {
-    #[default]
-    Default,
-    On,
-    Off,
 }
 
 impl SoundConfig {
@@ -111,31 +79,6 @@ impl Default for SoundConfig {
             path: None,
             done_path: None,
             request_path: None,
-            agents: AgentSoundOverrides::default(),
-        }
-    }
-}
-
-impl Default for AgentSoundOverrides {
-    fn default() -> Self {
-        Self {
-            pi: AgentSoundSetting::Default,
-            claude: AgentSoundSetting::Default,
-            codex: AgentSoundSetting::Default,
-            gemini: AgentSoundSetting::Default,
-            cursor: AgentSoundSetting::Default,
-            agy: AgentSoundSetting::Default,
-            cline: AgentSoundSetting::Default,
-            open_code: AgentSoundSetting::Default,
-            github_copilot: AgentSoundSetting::Default,
-            kimi: AgentSoundSetting::Default,
-            kiro: AgentSoundSetting::Default,
-            droid: AgentSoundSetting::Off,
-            amp: AgentSoundSetting::Default,
-            grok: AgentSoundSetting::Default,
-            hermes: AgentSoundSetting::Default,
-            kilo: AgentSoundSetting::Default,
-            qodercli: AgentSoundSetting::Default,
         }
     }
 }
@@ -144,7 +87,6 @@ impl Default for AgentSoundOverrides {
 mod tests {
     use std::path::PathBuf;
 
-    use super::*;
     use crate::config::{config_path, Config};
 
     #[test]
@@ -155,10 +97,6 @@ enabled = true
 path = "sounds/all.mp3"
 done_path = "sounds/done.mp3"
 request_path = "/tmp/request.mp3"
-
-[ui.sound.agents]
-droid = "off"
-claude = "on"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert!(config.ui.sound.enabled);
@@ -171,9 +109,6 @@ claude = "on"
             config.ui.sound.request_path,
             Some(PathBuf::from("/tmp/request.mp3"))
         );
-        assert_eq!(config.ui.sound.agents.droid, AgentSoundSetting::Off);
-        assert_eq!(config.ui.sound.agents.claude, AgentSoundSetting::On);
-        assert_eq!(config.ui.sound.agents.pi, AgentSoundSetting::Default);
     }
 
     #[test]
