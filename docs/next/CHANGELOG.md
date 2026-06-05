@@ -19,6 +19,7 @@
 - Removed the visible agent label tab from Settings and made sound settings copy generic.
 - Removed agent rows from the mobile switcher so the mobile surface focuses on sessions, tabs, and app actions.
 - Removed agent state filters and agent metadata from the session navigator.
+- Updated the mobile header and toast copy to use pane-focused wording instead of agent status summaries.
 - Updated user documentation to present Gmux as sessions, tabs, and panes without a public workspace layer.
 - Updated first-run and empty-session copy to present tabs and panes instead of workspaces or agent setup.
 - Updated the mobile switcher to present sessions instead of spaces/workspaces.

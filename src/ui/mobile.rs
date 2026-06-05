@@ -9,7 +9,6 @@ use ratatui::{
 use super::status::state_dot;
 use crate::app::state::{Palette, ToastKind, ToastNotification};
 use crate::app::AppState;
-use crate::detect::AgentState;
 use crate::terminal::TerminalRuntimeRegistry;
 
 const SWITCH_BUTTON_WIDTH: u16 = 10;
@@ -262,14 +261,7 @@ fn render_header_status(
     };
 
     let (state, seen) = ws.aggregate_state(&app.terminals);
-    let (dot, dot_style) = if matches!(state, AgentState::Working) {
-        (
-            super::spinner_frame(app.spinner_tick),
-            Style::default().fg(p.yellow),
-        )
-    } else {
-        state_dot(state, seen, p)
-    };
+    let (dot, dot_style) = state_dot(state, seen, p);
     let tab_label = format!("tab {}/{}", ws.active_tab + 1, ws.tabs.len());
     let row1 = Rect::new(area.x, area.y, area.width, 1);
     let tab_w = (tab_label.chars().count() as u16 + 1).min(area.width);
@@ -302,7 +294,7 @@ fn render_header_status(
 
     if area.height > 1 {
         frame.render_widget(
-            Paragraph::new(agent_priority_label(app))
+            Paragraph::new(mobile_pane_summary(app))
                 .style(Style::default().fg(p.overlay1).bg(p.panel_bg)),
             Rect::new(area.x, area.y + 1, area.width, 1),
         );
@@ -754,29 +746,19 @@ fn mobile_screen_rect(app: &AppState) -> Rect {
     Rect::new(x, y, right.saturating_sub(x), bottom.saturating_sub(y))
 }
 
-fn agent_priority_label(app: &AppState) -> String {
+fn mobile_pane_summary(app: &AppState) -> String {
     let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) else {
-        return " no agents".to_string();
+        return " no session".to_string();
     };
-    let mut blocked = 0usize;
-    let mut working = 0usize;
-    let mut done = 0usize;
-    for detail in ws.pane_details(&app.terminals) {
-        match (detail.state, detail.seen) {
-            (AgentState::Blocked, _) => blocked += 1,
-            (AgentState::Working, _) => working += 1,
-            (AgentState::Idle, false) => done += 1,
-            _ => {}
-        }
-    }
-    if blocked > 0 {
-        format!(" ◉ {blocked} blocked")
-    } else if working > 0 {
-        format!(" {working} working")
-    } else if done > 0 {
-        format!(" {done} done")
+    let pane_count = ws
+        .tabs
+        .get(ws.active_tab)
+        .map(|tab| tab.panes.len())
+        .unwrap_or(0);
+    if pane_count == 1 {
+        " 1 pane".to_string()
     } else {
-        " all idle".to_string()
+        format!(" {pane_count} panes")
     }
 }
 
@@ -785,12 +767,12 @@ fn mobile_toast_title(toast: &ToastNotification) -> String {
         ToastKind::NeedsAttention => toast
             .title
             .strip_suffix(" needs attention")
-            .map(|agent| format!("{agent} waiting"))
+            .map(|_| "pane waiting".to_string())
             .unwrap_or_else(|| toast.title.clone()),
         ToastKind::Finished => toast
             .title
             .strip_suffix(" finished")
-            .map(|agent| format!("{agent} done"))
+            .map(|_| "pane done".to_string())
             .unwrap_or_else(|| toast.title.clone()),
         ToastKind::UpdateInstalled => "update ready".to_string(),
     }
