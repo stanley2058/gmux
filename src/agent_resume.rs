@@ -19,13 +19,6 @@ pub enum AgentSessionRefKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AgentResumePlan {
-    pub agent: String,
-    pub argv: Vec<String>,
-    pub dedupe_key: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PersistedAgentSession {
     pub source: String,
     pub agent: String,
@@ -79,83 +72,6 @@ pub fn is_reserved_native_state_source(source: &str, agent: &str) -> bool {
     )
 }
 
-pub fn session_ref_from_snapshot(
-    source: &str,
-    agent: &str,
-    kind: AgentSessionRefKind,
-    value: &str,
-) -> Option<PersistedAgentSession> {
-    if !is_official_agent_source(source, agent) {
-        return None;
-    }
-    let session_ref = match (agent, kind) {
-        ("pi", AgentSessionRefKind::Path) => AgentSessionRef::path(value)?,
-        (_, AgentSessionRefKind::Id) => AgentSessionRef::id(value)?,
-        _ => return None,
-    };
-    Some(PersistedAgentSession {
-        source: source.to_string(),
-        agent: agent.to_string(),
-        session_ref,
-    })
-}
-
-pub fn plan(source: &str, agent: &str, session_ref: &AgentSessionRef) -> Option<AgentResumePlan> {
-    if !is_official_agent_source(source, agent) {
-        return None;
-    }
-
-    let argv = match (source, agent, session_ref.kind) {
-        ("gmux:claude", "claude", AgentSessionRefKind::Id) => {
-            vec![
-                "claude".into(),
-                "--resume".into(),
-                session_ref.value.clone(),
-            ]
-        }
-        ("gmux:codex", "codex", AgentSessionRefKind::Id) => {
-            vec!["codex".into(), "resume".into(), session_ref.value.clone()]
-        }
-        ("gmux:copilot", "copilot", AgentSessionRefKind::Id) => {
-            vec!["copilot".into(), format!("--resume={}", session_ref.value)]
-        }
-        ("gmux:droid", "droid", AgentSessionRefKind::Id) => {
-            vec!["droid".into(), "--resume".into(), session_ref.value.clone()]
-        }
-        ("gmux:pi", "pi", AgentSessionRefKind::Path | AgentSessionRefKind::Id) => {
-            vec!["pi".into(), "--session".into(), session_ref.value.clone()]
-        }
-        ("gmux:hermes", "hermes", AgentSessionRefKind::Id) => {
-            vec![
-                "hermes".into(),
-                "--resume".into(),
-                session_ref.value.clone(),
-            ]
-        }
-        ("gmux:opencode", "opencode", AgentSessionRefKind::Id) => {
-            vec![
-                "opencode".into(),
-                "--session".into(),
-                session_ref.value.clone(),
-            ]
-        }
-        _ => return None,
-    };
-
-    Some(AgentResumePlan {
-        agent: agent.to_string(),
-        argv,
-        dedupe_key: dedupe_key(source, agent, session_ref),
-    })
-}
-
-pub fn dedupe_key(source: &str, agent: &str, session_ref: &AgentSessionRef) -> String {
-    format!(
-        "{source}\u{0}{agent}\u{0}{:?}\u{0}{}",
-        session_ref.kind, session_ref.value
-    )
-}
-
 fn is_official_agent_source(source: &str, agent: &str) -> bool {
     matches!(
         (source, agent),
@@ -183,96 +99,6 @@ fn valid_session_path(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn planner_allows_supported_agents() {
-        assert_eq!(
-            plan(
-                "gmux:claude",
-                "claude",
-                &AgentSessionRef::id("claude-session").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["claude", "--resume", "claude-session"]
-        );
-        assert_eq!(
-            plan(
-                "gmux:codex",
-                "codex",
-                &AgentSessionRef::id("codex-session").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["codex", "resume", "codex-session"]
-        );
-        assert_eq!(
-            plan(
-                "gmux:copilot",
-                "copilot",
-                &AgentSessionRef::id("copilot-session").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["copilot", "--resume=copilot-session"]
-        );
-        assert_eq!(
-            plan(
-                "gmux:droid",
-                "droid",
-                &AgentSessionRef::id("droid-session").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["droid", "--resume", "droid-session"]
-        );
-        assert_eq!(
-            plan(
-                "gmux:pi",
-                "pi",
-                &AgentSessionRef::path("/tmp/pi-session.jsonl").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["pi", "--session", "/tmp/pi-session.jsonl"]
-        );
-        assert_eq!(
-            plan(
-                "gmux:hermes",
-                "hermes",
-                &AgentSessionRef::id("hermes-session").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["hermes", "--resume", "hermes-session"]
-        );
-        assert_eq!(
-            plan(
-                "gmux:opencode",
-                "opencode",
-                &AgentSessionRef::id("opencode-session").unwrap()
-            )
-            .unwrap()
-            .argv,
-            vec!["opencode", "--session", "opencode-session"]
-        );
-    }
-
-    #[test]
-    fn planner_rejects_custom_and_unsupported_path_refs() {
-        assert!(plan(
-            "custom:claude",
-            "claude",
-            &AgentSessionRef::id("session").unwrap()
-        )
-        .is_none());
-        assert!(plan(
-            "gmux:claude",
-            "claude",
-            &AgentSessionRef::path("/tmp/claude-session").unwrap()
-        )
-        .is_none());
-    }
 
     #[test]
     fn report_ref_prefers_pi_path_and_validates_values() {
@@ -323,59 +149,5 @@ mod tests {
             Some("/tmp/droid-session".into())
         )
         .is_none());
-    }
-
-    #[test]
-    fn ids_are_data_not_shell_text() {
-        let id = "abc; rm -rf /";
-        let codex_plan = plan("gmux:codex", "codex", &AgentSessionRef::id(id).unwrap()).unwrap();
-        assert_eq!(codex_plan.argv, vec!["codex", "resume", id]);
-
-        let copilot_plan =
-            plan("gmux:copilot", "copilot", &AgentSessionRef::id(id).unwrap()).unwrap();
-        assert_eq!(copilot_plan.argv, vec!["copilot", "--resume=abc; rm -rf /"]);
-    }
-
-    #[test]
-    fn planner_rejects_path_refs_for_id_only_agents() {
-        assert!(plan(
-            "gmux:hermes",
-            "hermes",
-            &AgentSessionRef::path("/tmp/hermes-session").unwrap()
-        )
-        .is_none());
-        assert!(plan(
-            "gmux:opencode",
-            "opencode",
-            &AgentSessionRef::path("/tmp/opencode-session").unwrap()
-        )
-        .is_none());
-        assert!(plan(
-            "gmux:copilot",
-            "copilot",
-            &AgentSessionRef::path("/tmp/copilot-session").unwrap()
-        )
-        .is_none());
-        assert!(session_ref_from_snapshot(
-            "gmux:hermes",
-            "hermes",
-            AgentSessionRefKind::Id,
-            "hermes-session"
-        )
-        .is_some());
-        assert!(session_ref_from_snapshot(
-            "gmux:opencode",
-            "opencode",
-            AgentSessionRefKind::Id,
-            "opencode-session"
-        )
-        .is_some());
-        assert!(session_ref_from_snapshot(
-            "gmux:copilot",
-            "copilot",
-            AgentSessionRefKind::Id,
-            "copilot-session"
-        )
-        .is_some());
     }
 }
