@@ -193,10 +193,6 @@ impl TerminalRuntime {
         self.0.apply_host_terminal_theme(theme);
     }
 
-    pub fn begin_graceful_release(&self, agent: crate::detect::Agent) {
-        self.0.begin_graceful_release(agent);
-    }
-
     pub fn resize(&self, rows: u16, cols: u16, cell_width_px: u32, cell_height_px: u32) {
         self.0.resize(rows, cols, cell_width_px, cell_height_px);
     }

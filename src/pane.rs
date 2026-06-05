@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
-    Arc, Mutex,
+    Arc,
 };
 
 use bytes::Bytes;
@@ -36,7 +36,6 @@ pub use self::{
     terminal::{InputState, ScrollMetrics, TerminalCursorState},
 };
 
-const RELEASE_REACQUIRE_SUPPRESSION: std::time::Duration = std::time::Duration::from_secs(1);
 const PANE_TERM: &str = "xterm-256color";
 const PANE_COLORTERM: &str = "truecolor";
 
@@ -49,31 +48,10 @@ fn apply_pane_terminal_env(cmd: &mut CommandBuilder) {
     cmd.env("COLORTERM", PANE_COLORTERM);
 }
 
-#[derive(Debug, Clone, Copy)]
-struct PendingAgentRelease {
-    agent: Agent,
-    until: std::time::Instant,
-}
-
 #[derive(Clone, Copy, Default)]
 struct SpawnInitialState<'a> {
     detected_agent: Option<Agent>,
     history_ansi: Option<&'a str>,
-}
-
-fn active_pending_release(
-    pending_release: &Mutex<Option<PendingAgentRelease>>,
-    now: std::time::Instant,
-) -> Option<Agent> {
-    let mut pending_release = pending_release.lock().ok()?;
-    match *pending_release {
-        Some(pending) if now < pending.until => Some(pending.agent),
-        Some(_) => {
-            *pending_release = None;
-            None
-        }
-        None => None,
-    }
 }
 
 async fn publish_state_changed_event(
@@ -190,7 +168,6 @@ fn foreground_shell_agent_action(
 #[derive(Debug, Clone, Copy)]
 struct ProcessProbeInput {
     current_agent: Option<Agent>,
-    suppressed_agent: Option<Agent>,
     foreground_pgid: Option<u32>,
     last_foreground_pgid: Option<u32>,
     has_process_probe: bool,
@@ -215,10 +192,6 @@ fn should_probe_foreground_job(input: ProcessProbeInput) -> bool {
 
     let foreground_group_changed =
         foreground_group_changed(input.foreground_pgid, input.last_foreground_pgid);
-
-    if input.suppressed_agent.is_some() {
-        return !input.has_process_probe || foreground_group_changed;
-    }
 
     if let Some(acquisition_age) = input.acquisition_age {
         let acquisition_interval = if acquisition_age <= PROCESS_ACQUISITION_FAST_WINDOW {
@@ -245,14 +218,13 @@ fn should_probe_foreground_job(input: ProcessProbeInput) -> bool {
 
 fn sync_content_change_acquisition(
     current_agent: Option<Agent>,
-    suppressed_agent: Option<Agent>,
     process_group_changed: bool,
     content_changed: bool,
     now: std::time::Instant,
     acquisition_started_at: &mut Option<std::time::Instant>,
     last_content_change_at: &mut Option<std::time::Instant>,
 ) {
-    if current_agent.is_some() || suppressed_agent.is_some() || process_group_changed {
+    if current_agent.is_some() || process_group_changed {
         return;
     }
 
@@ -396,15 +368,9 @@ fn spawn_basic_detection_task(
     child_pid: Arc<AtomicU32>,
     terminal: Arc<PaneTerminal>,
     state_events: mpsc::Sender<AppEvent>,
-) -> (
-    tokio::task::AbortHandle,
-    Arc<Notify>,
-    Arc<Mutex<Option<PendingAgentRelease>>>,
-) {
+) -> tokio::task::AbortHandle {
     let detect_reset_notify = Arc::new(Notify::new());
     let detect_reset = detect_reset_notify.clone();
-    let pending_release = Arc::new(Mutex::new(None));
-    let pending_release_for_task = pending_release.clone();
 
     let handle = tokio::spawn(async move {
         let mut agent_presence = AgentDetectionPresence::from_agent(None);
@@ -418,7 +384,6 @@ fn spawn_basic_detection_task(
         let mut has_process_probe = false;
         let mut acquisition_started_at = None;
         let mut last_content_change_at = None;
-        let mut release_was_active = false;
         let mut last_detection_text = String::new();
 
         loop {
@@ -436,19 +401,11 @@ fn spawn_basic_detection_task(
                     has_process_probe = false;
                     acquisition_started_at = None;
                     last_content_change_at = None;
-                    release_was_active = false;
                     last_detection_text.clear();
                 }
             }
 
             let now = std::time::Instant::now();
-            let suppressed_agent = active_pending_release(&pending_release_for_task, now);
-            if suppressed_agent.is_none() && release_was_active {
-                has_process_probe = false;
-                acquisition_started_at = None;
-                last_content_change_at = None;
-            }
-            release_was_active = suppressed_agent.is_some();
             let pid = child_pid.load(Ordering::Acquire);
             let mut agent_changed = false;
             let mut agent = agent_presence.current_agent();
@@ -466,7 +423,6 @@ fn spawn_basic_detection_task(
                 foreground_group_changed(foreground_pgid, last_foreground_pgid);
             sync_content_change_acquisition(
                 agent_presence.current_agent(),
-                suppressed_agent,
                 process_group_changed,
                 content_changed,
                 now,
@@ -476,7 +432,6 @@ fn spawn_basic_detection_task(
             let should_check_process = pid > 0
                 && should_probe_foreground_job(ProcessProbeInput {
                     current_agent: agent_presence.current_agent(),
-                    suppressed_agent,
                     foreground_pgid,
                     last_foreground_pgid,
                     has_process_probe,
@@ -492,14 +447,7 @@ fn spawn_basic_detection_task(
                 let had_process_probe = has_process_probe;
                 has_process_probe = true;
                 let probe = probe_foreground_process(pid, foreground_pgid);
-                let mut new_agent = probe.agent;
-                if let Some(suppressed_agent) = suppressed_agent {
-                    if new_agent == Some(suppressed_agent) {
-                        new_agent = None;
-                    } else if let Ok(mut pending_release) = pending_release_for_task.lock() {
-                        *pending_release = None;
-                    }
-                }
+                let new_agent = probe.agent;
                 if new_agent.is_none() {
                     last_foreground_pgid = probe.process_group_id.or(foreground_pgid);
                     if had_process_probe && process_group_changed {
@@ -576,7 +524,7 @@ fn spawn_basic_detection_task(
         }
     });
 
-    (handle.abort_handle(), detect_reset_notify, pending_release)
+    handle.abort_handle()
 }
 
 impl AgentDetectionPresence {
@@ -642,8 +590,6 @@ pub struct PaneRuntime {
     child_pid: Arc<AtomicU32>,
     child_wait_completed: Option<Arc<AtomicBool>>,
     kitty_keyboard_flags: Arc<AtomicU16>,
-    detect_reset_notify: Arc<Notify>,
-    pending_release: Arc<Mutex<Option<PendingAgentRelease>>>,
     preserve_processes_on_drop: bool,
     // Task handles for deterministic shutdown
     detect_handle: tokio::task::AbortHandle,
@@ -1362,7 +1308,7 @@ impl PaneRuntime {
             })?)
         };
 
-        let (detect_handle, detect_reset_notify, pending_release) =
+        let detect_handle =
             spawn_basic_detection_task(pane_id, child_pid.clone(), terminal.clone(), events);
 
         Ok(Self {
@@ -1373,8 +1319,6 @@ impl PaneRuntime {
             child_pid,
             child_wait_completed: None,
             kitty_keyboard_flags,
-            detect_reset_notify,
-            pending_release,
             preserve_processes_on_drop: true,
             detect_handle,
         })
@@ -1494,13 +1438,13 @@ impl PaneRuntime {
         };
 
         // --- Detection task ---
-        let (detect_handle, detect_reset_notify, pending_release) = {
+        let detect_handle = {
             use crate::detect;
             use std::time::{Duration, Instant};
 
             const TICK_UNIDENTIFIED: Duration = Duration::from_millis(500);
             const TICK_IDENTIFIED: Duration = Duration::from_millis(300);
-            const TICK_PENDING_RELEASE: Duration = Duration::from_millis(50);
+            const TICK_TRANSIENT_THEME: Duration = Duration::from_millis(50);
 
             let child_pid = child_pid.clone();
             let terminal = terminal.clone();
@@ -1509,8 +1453,6 @@ impl PaneRuntime {
             let render_dirty = render_dirty.clone();
             let detect_reset_notify = Arc::new(Notify::new());
             let detect_reset = detect_reset_notify.clone();
-            let pending_release = Arc::new(Mutex::new(None));
-            let pending_release_for_task = pending_release.clone();
 
             let handle = tokio::spawn(async move {
                 let mut agent_presence =
@@ -1527,7 +1469,6 @@ impl PaneRuntime {
                 let mut last_content_change_at = None;
                 let mut pending_foreground_shell_clear = false;
                 let mut foreground_shell_exit_reported = false;
-                let mut release_was_active = false;
                 let mut pending_restore_probe = initial_state.detected_agent.is_some();
                 let mut last_claude_working_at = None;
                 let mut last_visible_blocker = false;
@@ -1539,11 +1480,8 @@ impl PaneRuntime {
                 tokio::time::sleep(Duration::from_millis(50)).await;
 
                 loop {
-                    let tick = if active_pending_release(&pending_release_for_task, Instant::now())
-                        .is_some()
-                        || terminal.has_transient_default_color_override()
-                    {
-                        TICK_PENDING_RELEASE
+                    let tick = if terminal.has_transient_default_color_override() {
+                        TICK_TRANSIENT_THEME
                     } else if agent_presence.current_agent().is_none() {
                         TICK_UNIDENTIFIED
                     } else {
@@ -1560,7 +1498,6 @@ impl PaneRuntime {
                             last_content_change_at = None;
                             pending_foreground_shell_clear = false;
                             foreground_shell_exit_reported = false;
-                            release_was_active = false;
                             pending_restore_probe = false;
                             last_claude_working_at = None;
                             last_visible_blocker = false;
@@ -1572,13 +1509,6 @@ impl PaneRuntime {
                     }
 
                     let now = Instant::now();
-                    let suppressed_agent = active_pending_release(&pending_release_for_task, now);
-                    if suppressed_agent.is_none() && release_was_active {
-                        has_process_probe = false;
-                        acquisition_started_at = None;
-                        last_content_change_at = None;
-                    }
-                    release_was_active = suppressed_agent.is_some();
                     let pid = child_pid.load(Ordering::Acquire);
                     let content = terminal.detection_text();
                     let content_changed = content != last_detection_text;
@@ -1593,7 +1523,6 @@ impl PaneRuntime {
                         foreground_group_changed(foreground_pgid, last_foreground_pgid);
                     sync_content_change_acquisition(
                         agent_presence.current_agent(),
-                        suppressed_agent,
                         process_group_changed,
                         content_changed,
                         now,
@@ -1603,7 +1532,6 @@ impl PaneRuntime {
                     let should_check_process = pid > 0
                         && should_probe_foreground_job(ProcessProbeInput {
                             current_agent: agent_presence.current_agent(),
-                            suppressed_agent,
                             foreground_pgid,
                             last_foreground_pgid,
                             has_process_probe,
@@ -1625,17 +1553,7 @@ impl PaneRuntime {
                             let process_name = probe.process_name;
                             let process_group_id = probe.process_group_id;
                             let foreground_is_pane_shell = probe.foreground_is_pane_shell;
-                            let mut new_agent = probe.agent;
-
-                            if let Some(suppressed_agent) = suppressed_agent {
-                                if new_agent == Some(suppressed_agent) {
-                                    new_agent = None;
-                                } else if let Ok(mut pending_release) =
-                                    pending_release_for_task.lock()
-                                {
-                                    *pending_release = None;
-                                }
-                            }
+                            let new_agent = probe.agent;
 
                             let previous_agent = agent_presence.current_agent();
                             let changed = match foreground_shell_agent_action(
@@ -1791,7 +1709,7 @@ impl PaneRuntime {
                     }
                 }
             });
-            (handle.abort_handle(), detect_reset_notify, pending_release)
+            handle.abort_handle()
         };
 
         Ok(Self {
@@ -1802,21 +1720,9 @@ impl PaneRuntime {
             child_pid,
             child_wait_completed: Some(child_wait_completed),
             kitty_keyboard_flags,
-            detect_reset_notify,
-            pending_release,
             preserve_processes_on_drop: false,
             detect_handle,
         })
-    }
-
-    pub fn begin_graceful_release(&self, agent: Agent) {
-        if let Ok(mut pending_release) = self.pending_release.lock() {
-            *pending_release = Some(PendingAgentRelease {
-                agent,
-                until: std::time::Instant::now() + RELEASE_REACQUIRE_SUPPRESSION,
-            });
-        }
-        self.detect_reset_notify.notify_one();
     }
 
     pub(crate) fn current_size(&self) -> (u16, u16) {
@@ -2167,8 +2073,6 @@ impl PaneRuntime {
                 child_pid: Arc::new(AtomicU32::new(0)),
                 child_wait_completed: None,
                 kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
-                detect_reset_notify: Arc::new(Notify::new()),
-                pending_release: Arc::new(Mutex::new(None)),
                 preserve_processes_on_drop: true,
                 detect_handle: tokio::spawn(async {}).abort_handle(),
             },
@@ -2492,8 +2396,6 @@ mod tests {
             child_pid: Arc::new(AtomicU32::new(0)),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
-            detect_reset_notify: Arc::new(Notify::new()),
-            pending_release: Arc::new(Mutex::new(None)),
             preserve_processes_on_drop: true,
             detect_handle: tokio::spawn(async {}).abort_handle(),
         };
@@ -2520,8 +2422,6 @@ mod tests {
             child_pid: Arc::new(AtomicU32::new(0)),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
-            detect_reset_notify: Arc::new(Notify::new()),
-            pending_release: Arc::new(Mutex::new(None)),
             preserve_processes_on_drop: true,
             detect_handle: tokio::spawn(async {}).abort_handle(),
         };
@@ -2700,7 +2600,6 @@ mod tests {
     fn process_probe_input() -> ProcessProbeInput {
         ProcessProbeInput {
             current_agent: None,
-            suppressed_agent: None,
             foreground_pgid: Some(42),
             last_foreground_pgid: Some(42),
             has_process_probe: true,
@@ -2779,45 +2678,6 @@ mod tests {
     }
 
     #[test]
-    fn pending_release_forces_initial_process_probe() {
-        assert!(should_probe_foreground_job(ProcessProbeInput {
-            current_agent: Some(Agent::Codex),
-            suppressed_agent: Some(Agent::Codex),
-            has_process_probe: false,
-            ..process_probe_input()
-        }));
-    }
-
-    #[test]
-    fn pending_release_forces_process_probe_after_runtime_identity_clears() {
-        assert!(should_probe_foreground_job(ProcessProbeInput {
-            current_agent: None,
-            suppressed_agent: Some(Agent::Codex),
-            has_process_probe: false,
-            ..process_probe_input()
-        }));
-    }
-
-    #[test]
-    fn pending_release_skips_repeated_probe_when_foreground_group_is_stable() {
-        assert!(!should_probe_foreground_job(ProcessProbeInput {
-            current_agent: None,
-            suppressed_agent: Some(Agent::Codex),
-            ..process_probe_input()
-        }));
-    }
-
-    #[test]
-    fn pending_release_probes_when_foreground_group_changes() {
-        assert!(should_probe_foreground_job(ProcessProbeInput {
-            current_agent: None,
-            suppressed_agent: Some(Agent::Codex),
-            foreground_pgid: Some(43),
-            ..process_probe_input()
-        }));
-    }
-
-    #[test]
     fn acquisition_window_catches_delayed_same_group_wrapper_startup() {
         assert!(!should_probe_foreground_job(ProcessProbeInput {
             current_agent: None,
@@ -2854,7 +2714,6 @@ mod tests {
 
         sync_content_change_acquisition(
             None,
-            None,
             false,
             true,
             now,
@@ -2866,7 +2725,6 @@ mod tests {
 
         let later = now + std::time::Duration::from_secs(1);
         sync_content_change_acquisition(
-            None,
             None,
             false,
             true,
@@ -2885,7 +2743,6 @@ mod tests {
             later + PROCESS_ACQUISITION_WINDOW + PROCESS_ACQUISITION_IDLE_RESET;
         sync_content_change_acquisition(
             None,
-            None,
             false,
             false,
             quiet_after_window,
@@ -2897,7 +2754,6 @@ mod tests {
 
         let next_burst = quiet_after_window + std::time::Duration::from_secs(1);
         sync_content_change_acquisition(
-            None,
             None,
             false,
             true,
@@ -2917,7 +2773,6 @@ mod tests {
 
         sync_content_change_acquisition(
             Some(Agent::Codex),
-            None,
             false,
             true,
             now,
@@ -2928,19 +2783,6 @@ mod tests {
         assert_eq!(last_content_change_at, None);
 
         sync_content_change_acquisition(
-            None,
-            Some(Agent::Codex),
-            false,
-            true,
-            now,
-            &mut acquisition_started_at,
-            &mut last_content_change_at,
-        );
-        assert_eq!(acquisition_started_at, None);
-        assert_eq!(last_content_change_at, None);
-
-        sync_content_change_acquisition(
-            None,
             None,
             true,
             true,
@@ -2961,7 +2803,6 @@ mod tests {
 
         sync_content_change_acquisition(
             None,
-            None,
             false,
             true,
             now,
@@ -2974,7 +2815,7 @@ mod tests {
     }
 
     #[test]
-    fn release_expiry_can_force_reacquire_probe_by_resetting_probe_state() {
+    fn reset_unidentified_probe_state_forces_process_probe() {
         assert!(should_probe_foreground_job(ProcessProbeInput {
             current_agent: None,
             has_process_probe: false,
