@@ -14,12 +14,8 @@ pub use metadata::EffectivePresentation;
 const CLAUDE_WORKING_HOLD: Duration = Duration::from_millis(1200);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveStateChange {
-    pub previous_agent_label: Option<String>,
-    pub previous_known_agent: Option<Agent>,
     pub previous_state: AgentState,
     pub previous_presentation: EffectivePresentation,
-    pub agent_label: Option<String>,
-    pub known_agent: Option<Agent>,
     pub state: AgentState,
     pub presentation: EffectivePresentation,
 }
@@ -111,29 +107,17 @@ impl TerminalState {
         _process_exited: bool,
         now: Instant,
     ) -> TerminalStateMutation {
-        let previous_agent_label = self.effective_agent_label().map(str::to_string);
-        let previous_known_agent = self.effective_known_agent();
         let previous_state = self.state;
         let previous_presentation = self.effective_presentation_for_state_at(previous_state, now);
         self.detected_agent = agent;
         self.fallback_state = fallback_state;
         TerminalStateMutation {
             effective_state_change: self.recompute_effective_state(
-                previous_agent_label,
-                previous_known_agent,
                 previous_state,
                 previous_presentation,
                 now,
             ),
         }
-    }
-
-    pub fn effective_agent_label(&self) -> Option<&str> {
-        self.detected_agent.map(crate::detect::agent_label)
-    }
-
-    pub fn effective_known_agent(&self) -> Option<Agent> {
-        self.detected_agent
     }
 
     pub fn set_manual_label(&mut self, label: String) {
@@ -159,33 +143,21 @@ impl TerminalState {
 
     fn recompute_effective_state(
         &mut self,
-        previous_agent_label: Option<String>,
-        previous_known_agent: Option<Agent>,
         previous_state: AgentState,
         previous_presentation: EffectivePresentation,
         now: Instant,
     ) -> Option<EffectiveStateChange> {
         let state = self.fallback_state;
-        let agent_label = self.effective_agent_label().map(str::to_string);
-        let known_agent = self.effective_known_agent();
-
         let presentation = self.effective_presentation_for_state_at(state, now);
 
-        if previous_agent_label == agent_label
-            && previous_state == state
-            && previous_presentation == presentation
-        {
+        if previous_state == state && previous_presentation == presentation {
             return None;
         }
 
         self.state = state;
         Some(EffectiveStateChange {
-            previous_agent_label,
-            previous_known_agent,
             previous_state,
             previous_presentation,
-            agent_label,
-            known_agent,
             state,
             presentation,
         })

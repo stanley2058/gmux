@@ -3,7 +3,7 @@
 
 use tracing::{info, warn};
 
-use crate::detect::{Agent, AgentState};
+use crate::detect::AgentState;
 use crate::events::AppEvent;
 use crate::layout::{find_in_direction, NavDirection, PaneId};
 use crate::selection::Selection;
@@ -59,13 +59,9 @@ pub fn notification_context(
 pub struct PaneStateUpdate {
     pub pane_id: PaneId,
     pub ws_idx: usize,
-    pub previous_agent_label: Option<String>,
-    pub previous_known_agent: Option<Agent>,
     pub previous_state: AgentState,
     pub previous_seen: bool,
     pub previous_presentation: crate::terminal::EffectivePresentation,
-    pub agent_label: Option<String>,
-    pub known_agent: Option<Agent>,
     pub state: AgentState,
     pub seen: bool,
     pub presentation: crate::terminal::EffectivePresentation,
@@ -1795,13 +1791,9 @@ impl AppState {
         let update = PaneStateUpdate {
             pane_id,
             ws_idx,
-            previous_agent_label: change.previous_agent_label.clone(),
-            previous_known_agent: change.previous_known_agent,
             previous_state: change.previous_state,
             previous_seen,
             previous_presentation: change.previous_presentation.clone(),
-            agent_label: change.agent_label.clone(),
-            known_agent: change.known_agent,
             state: change.state,
             seen,
             presentation: change.presentation.clone(),

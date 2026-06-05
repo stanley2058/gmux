@@ -521,13 +521,9 @@ mod tests {
         let update = crate::app::actions::PaneStateUpdate {
             pane_id: root,
             ws_idx: 0,
-            previous_agent_label: Some("codex".into()),
-            previous_known_agent: Some(Agent::Codex),
             previous_state: AgentState::Working,
             previous_seen: true,
             previous_presentation: presentation.clone(),
-            agent_label: Some("codex".into()),
-            known_agent: Some(Agent::Codex),
             state: AgentState::Working,
             seen: true,
             presentation,
