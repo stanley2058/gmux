@@ -10,7 +10,7 @@
 //! - Handles ServerShutdown gracefully (clean exit, informative message to stderr)
 //! - Handles server unreachable (clear error screen, not blank/hang)
 //! - Forwards OSC 52 clipboard writes from server to its own stdout
-//! - Displays sound/toast notifications forwarded from server
+//! - Displays toast notifications forwarded from server
 
 mod input;
 
@@ -51,8 +51,6 @@ struct ClientState {
     mouse_capture_active: bool,
     /// The terminal size we reported to the server in our last Hello/Resize.
     reported_size: (u16, u16),
-    /// Client-local sound playback config, refreshed on server request.
-    sound_config: crate::config::SoundConfig,
     /// Whether this client may write Kitty graphics bytes to its host terminal.
     kitty_graphics_enabled: bool,
     /// Direct attach prefix escape state. None for full-app clients.
@@ -520,7 +518,6 @@ fn run_client_with_mode(
     let loaded_config = crate::config::Config::load();
     let mouse_scroll_lines = loaded_config.config.ui.mouse_scroll_lines();
     let redraw_on_focus_gained = loaded_config.config.ui.redraw_on_focus_gained;
-    let sound_config = loaded_config.config.ui.sound;
     let direct_attach_requested = attach_request.is_some();
     let kitty_graphics_enabled =
         loaded_config.config.experimental.kitty_graphics && !direct_attach_requested;
@@ -613,7 +610,6 @@ fn run_client_with_mode(
             cols,
             rows,
             should_quit,
-            sound_config,
             mouse_scroll_lines,
             redraw_on_focus_gained,
             kitty_graphics_enabled,
@@ -661,7 +657,6 @@ async fn run_client_loop(
     cols: u16,
     rows: u16,
     should_quit: Arc<AtomicBool>,
-    sound_config: crate::config::SoundConfig,
     mouse_scroll_lines: usize,
     redraw_on_focus_gained: bool,
     kitty_graphics_enabled: bool,
@@ -673,7 +668,6 @@ async fn run_client_loop(
         blit_encoder: render_ansi::BlitEncoder::new(),
         mouse_capture_active,
         reported_size: (cols, rows),
-        sound_config,
         kitty_graphics_enabled,
         attach_escape,
         mouse_scroll_lines,
@@ -860,17 +854,14 @@ async fn run_client_loop(
                     return Err(ClientError::ServerShutdown { reason });
                 }
                 ServerMessage::Notify { kind, message } => {
-                    handle_notify(kind, &message, &state.sound_config);
+                    handle_notify(kind, &message);
                 }
                 ServerMessage::Clipboard { data } => {
                     forward_clipboard(&data);
                     let _ = io::stdout().flush();
                 }
-                ServerMessage::ReloadSoundConfig => {
-                    reload_local_client_config(
-                        &mut state.sound_config,
-                        &mut state.redraw_on_focus_gained,
-                    );
+                ServerMessage::ReloadClientConfig => {
+                    reload_local_client_config(&mut state.redraw_on_focus_gained);
                 }
                 ServerMessage::MouseCapture { enabled } => {
                     let desired = enabled;
@@ -971,16 +962,9 @@ fn write_to_server(stream: &mut UnixStream, msg: &ClientMessage) -> io::Result<(
 // Notifications
 // ---------------------------------------------------------------------------
 
-fn reload_local_client_config(
-    sound_config: &mut crate::config::SoundConfig,
-    redraw_on_focus_gained: &mut bool,
-) {
+fn reload_local_client_config(redraw_on_focus_gained: &mut bool) {
     match crate::config::load_live_config() {
         Ok(loaded) => {
-            for diagnostic in loaded.config.ui.sound.diagnostics() {
-                warn!(diagnostic = %diagnostic, "local sound config diagnostic");
-            }
-            *sound_config = loaded.config.ui.sound;
             *redraw_on_focus_gained = loaded.config.ui.redraw_on_focus_gained;
             debug!("reloaded local client config");
         }
@@ -990,11 +974,10 @@ fn reload_local_client_config(
     }
 }
 
-fn handle_notify(kind: NotifyKind, message: &str, sound_config: &crate::config::SoundConfig) {
+fn handle_notify(kind: NotifyKind, message: &str) {
     handle_notify_with_notifiers(
         kind,
         message,
-        sound_config,
         crate::terminal_notify::show_notification,
         crate::platform::show_desktop_notification,
     );
@@ -1003,23 +986,10 @@ fn handle_notify(kind: NotifyKind, message: &str, sound_config: &crate::config::
 fn handle_notify_with_notifiers(
     kind: NotifyKind,
     message: &str,
-    sound_config: &crate::config::SoundConfig,
     mut show_terminal_notification: impl FnMut(&str, Option<&str>) -> io::Result<bool>,
     mut show_system_notification: impl FnMut(&str, Option<&str>) -> io::Result<bool>,
 ) {
     match kind {
-        NotifyKind::Sound => {
-            let Some(sound) = sound_from_notify_message(message) else {
-                warn!(
-                    message = message,
-                    "received unknown sound notification from server"
-                );
-                return;
-            };
-            if sound_config.enabled {
-                crate::sound::play(sound, sound_config);
-            }
-        }
         NotifyKind::Toast => {
             debug!(
                 message = message,
@@ -1040,14 +1010,6 @@ fn handle_notify_with_notifiers(
                 warn!(err = %err, "failed to emit system notification");
             }
         }
-    }
-}
-
-fn sound_from_notify_message(message: &str) -> Option<crate::sound::Sound> {
-    match message {
-        "agent done" => Some(crate::sound::Sound::Done),
-        "agent attention" => Some(crate::sound::Sound::Request),
-        _ => None,
     }
 }
 
@@ -1644,27 +1606,6 @@ mod tests {
     }
 
     #[test]
-    fn sound_from_notify_message_maps_done() {
-        assert_eq!(
-            sound_from_notify_message("agent done"),
-            Some(crate::sound::Sound::Done)
-        );
-    }
-
-    #[test]
-    fn sound_from_notify_message_maps_attention() {
-        assert_eq!(
-            sound_from_notify_message("agent attention"),
-            Some(crate::sound::Sound::Request)
-        );
-    }
-
-    #[test]
-    fn sound_from_notify_message_rejects_unknown_payloads() {
-        assert_eq!(sound_from_notify_message("toast"), None);
-    }
-
-    #[test]
     fn reload_local_client_config_refreshes_redraw_on_focus_gained() {
         let _guard = crate::config::test_config_env_lock().lock().unwrap();
         let path = std::env::temp_dir().join(format!(
@@ -1678,10 +1619,9 @@ mod tests {
         std::fs::write(&path, "[ui]\nredraw_on_focus_gained = false\n").unwrap();
         let path_string = path.to_string_lossy().to_string();
         let _env = EnvVarGuard::set(crate::config::CONFIG_PATH_ENV_VAR, &path_string);
-        let mut sound_config = crate::config::SoundConfig::default();
         let mut redraw_on_focus_gained = true;
 
-        reload_local_client_config(&mut sound_config, &mut redraw_on_focus_gained);
+        reload_local_client_config(&mut redraw_on_focus_gained);
 
         assert!(!redraw_on_focus_gained);
         let _ = std::fs::remove_file(path);
@@ -1689,13 +1629,11 @@ mod tests {
 
     #[test]
     fn toast_notify_from_server_is_emitted_even_when_attach_config_was_off() {
-        let sound_config = crate::config::SoundConfig::default();
         let mut emitted = None;
 
         handle_notify_with_notifiers(
             NotifyKind::Toast,
             "pi finished: workspace 1",
-            &sound_config,
             |title, body| {
                 emitted = Some((title.to_string(), body.map(str::to_string)));
                 Ok(true)
@@ -1711,13 +1649,11 @@ mod tests {
 
     #[test]
     fn system_toast_notify_from_server_uses_system_notifier() {
-        let sound_config = crate::config::SoundConfig::default();
         let mut emitted = None;
 
         handle_notify_with_notifiers(
             NotifyKind::SystemToast,
             "pi finished: workspace 1",
-            &sound_config,
             |_, _| Ok(false),
             |title, body| {
                 emitted = Some((title.to_string(), body.map(str::to_string)));

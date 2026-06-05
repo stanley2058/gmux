@@ -46,7 +46,6 @@ mod render_prof;
 mod selection;
 mod server;
 mod session;
-mod sound;
 mod terminal;
 mod terminal_notify;
 mod terminal_theme;
@@ -207,14 +206,6 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # terminal = ask the outer terminal to show a desktop notification
 # system = ask the OS notification service directly
 # delivery = "off"
-
-# Play sounds for legacy notification events.
-[ui.sound]
-# enabled = false
-# Optional custom mp3 sound files. Relative paths are resolved from this config file's directory.
-# path = "sounds/notification.mp3"   # one mp3 file for all sound notifications
-# done_path = "sounds/done.mp3"      # overrides only finished notifications
-# request_path = "sounds/request.mp3" # overrides only needs-attention notifications
 
 [remote]
 # Whether gmux manages the ssh config used for the `gmux --remote` bridge.

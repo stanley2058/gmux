@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use tracing::warn;
 
@@ -71,17 +71,6 @@ impl Config {
             invalid_sections: Vec::new(),
         }
     }
-}
-
-pub(super) fn resolve_config_relative_path(path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-
-    config_path()
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(path)
 }
 
 pub fn config_path() -> PathBuf {
@@ -456,11 +445,11 @@ mod tests {
     #[test]
     fn remove_section_key_removes_matching_key_from_section() {
         let content =
-            "[ui.toast]\nenabled = true\ndelivery = \"gmux\"\n[ui.sound]\nenabled = true\n";
+            "[ui.toast]\nenabled = true\ndelivery = \"gmux\"\n[ui]\nmouse_capture = false\n";
         let updated = remove_section_key(content, "ui.toast", "enabled");
         assert!(!updated.contains("[ui.toast]\nenabled = true"));
         assert!(updated.contains("delivery = \"gmux\""));
-        assert!(updated.contains("[ui.sound]\nenabled = true"));
+        assert!(updated.contains("[ui]\nmouse_capture = false"));
     }
 
     #[test]

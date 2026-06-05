@@ -93,7 +93,6 @@ fn spawn_client_process(
 
     let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_gmux"));
     cmd.arg("client");
-    cmd.env("GMUX_DISABLE_SOUND", "1");
     cmd.env("XDG_CONFIG_HOME", config_home);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
     cmd.env("GMUX_SOCKET_PATH", api_socket_path);
@@ -564,7 +563,6 @@ fn server_unreachable_shows_clear_error() {
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_gmux"))
         .arg("client")
-        .env("GMUX_DISABLE_SOUND", "1")
         .env("XDG_CONFIG_HOME", &config_home)
         .env("XDG_RUNTIME_DIR", &runtime_dir)
         .env("GMUX_SOCKET_PATH", &api_socket)
@@ -938,9 +936,9 @@ fn graceful_shutdown_sends_server_shutdown_to_client() {
 
 #[test]
 fn removed_agent_report_api_does_not_notify_client() {
-    // Notification events (sound/toast) are forwarded as
-    // ServerMessage::Notify to connected clients when an agent state change
-    // is triggered via the API (pane.report_agent).
+    // Notification events are forwarded as ServerMessage::Notify to connected
+    // clients when a background event produces a toast. The removed
+    // pane.report_agent API should not produce one.
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -948,7 +946,7 @@ fn removed_agent_report_api_does_not_notify_client() {
     let api_socket = runtime_dir.join("gmux.sock");
     let client_socket = runtime_dir.join("gmux-client.sock");
 
-    // Enable toast and sound in config so the server produces notifications.
+    // Enable toast in config so the server would produce notifications.
     let app_dir = if cfg!(debug_assertions) {
         "gmux-dev"
     } else {
@@ -957,7 +955,7 @@ fn removed_agent_report_api_does_not_notify_client() {
     fs::create_dir_all(config_home.join(app_dir)).unwrap();
     fs::write(
         config_home.join(app_dir).join("config.toml"),
-        "onboarding = false\n[ui.toast]\nenabled = true\n[ui.sound]\nenabled = true\n",
+        "onboarding = false\n[ui.toast]\nenabled = true\n",
     )
     .unwrap();
     fs::create_dir_all(&runtime_dir).unwrap();

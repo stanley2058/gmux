@@ -327,8 +327,6 @@ pub struct TerminalFrame {
 /// Notification kind forwarded from server to client.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NotifyKind {
-    /// Play a sound (bell/agent-done, etc.).
-    Sound,
     /// Display a toast message through the outer terminal.
     Toast,
     /// Display a toast message through the host OS notification service.
@@ -367,7 +365,7 @@ pub enum ServerMessage {
         reason: Option<String>,
     },
 
-    /// A notification event (sound/toast) to be rendered locally by the client.
+    /// A notification event to be rendered locally by the client.
     Notify {
         /// What kind of notification.
         kind: NotifyKind,
@@ -382,7 +380,7 @@ pub enum ServerMessage {
     },
 
     /// Client-local runtime config changed on disk; refresh it without reconnecting.
-    ReloadSoundConfig,
+    ReloadClientConfig,
 
     /// Whether the client should currently capture host mouse input.
     MouseCapture {
@@ -881,14 +879,10 @@ mod tests {
 
     #[test]
     fn server_notify_roundtrip() {
-        for kind in [
-            NotifyKind::Sound,
-            NotifyKind::Toast,
-            NotifyKind::SystemToast,
-        ] {
+        for kind in [NotifyKind::Toast, NotifyKind::SystemToast] {
             let msg = ServerMessage::Notify {
                 kind,
-                message: "agent done".to_owned(),
+                message: "task finished".to_owned(),
             };
             let encoded = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).unwrap();
             let (decoded, _): (ServerMessage, _) =
@@ -935,8 +929,8 @@ mod tests {
     }
 
     #[test]
-    fn server_reload_sound_config_roundtrip() {
-        let msg = ServerMessage::ReloadSoundConfig;
+    fn server_reload_client_config_roundtrip() {
+        let msg = ServerMessage::ReloadClientConfig;
         let encoded = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).unwrap();
         let (decoded, _): (ServerMessage, _) =
             bincode::serde::decode_from_slice(&encoded, bincode::config::standard()).unwrap();

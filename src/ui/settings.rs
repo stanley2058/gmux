@@ -11,10 +11,7 @@ use super::widgets::{
     render_action_button, render_modal_choice_list, render_panel_shell, ActionButtonSpec,
 };
 use crate::{
-    app::{
-        state::{ExperimentSetting, Palette},
-        AppState,
-    },
+    app::{state::ExperimentSetting, AppState},
     config::ToastDelivery,
 };
 
@@ -93,17 +90,6 @@ pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: R
     match app.settings.section {
         SettingsSection::Theme => {
             render_settings_theme(app, frame, content_area);
-        }
-        SettingsSection::Sound => {
-            render_settings_toggle(
-                frame,
-                content_area,
-                p,
-                "sound alerts",
-                "play sounds for background activity",
-                app.sound_enabled(),
-                app.settings.list.selected,
-            );
         }
         SettingsSection::Toast => {
             render_modal_choice_list(
@@ -245,28 +231,6 @@ fn render_settings_theme(app: &AppState, frame: &mut Frame, area: Rect) {
 
     let mut state = ListState::default().with_selected(Some(app.settings.list.selected));
     frame.render_stateful_widget(list, area, &mut state);
-}
-
-fn render_settings_toggle(
-    frame: &mut Frame,
-    area: Rect,
-    p: &Palette,
-    title: &str,
-    description: &str,
-    current_value: bool,
-    selected_idx: usize,
-) {
-    render_modal_choice_list(
-        frame,
-        area,
-        title,
-        description,
-        &[("on", true), ("off", false)],
-        current_value,
-        selected_idx,
-        p,
-        1,
-    );
 }
 
 fn render_settings_experiments(app: &AppState, frame: &mut Frame, area: Rect) {

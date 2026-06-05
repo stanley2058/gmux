@@ -206,7 +206,6 @@ impl App {
             if let Some(action) = self.state.handle_mouse(&mut self.terminal_runtimes, mouse) {
                 match action {
                     SettingsAction::SaveTheme(name) => self.save_theme(&name),
-                    SettingsAction::SaveSound(enabled) => self.save_sound(enabled),
                     SettingsAction::SaveToastDelivery(delivery) => {
                         self.save_toast_delivery(delivery)
                     }

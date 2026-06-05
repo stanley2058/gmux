@@ -9,7 +9,7 @@ repository = "https://github.com/ogulcancelik/gmux"
 homepage = "https://gmux.dev"
 keywords = ["terminal", "tui", "multiplexer", "sessions"]
 categories = ["command-line-utilities"]
-include = ["src/**/*", "assets/sounds/*", "README.md", "LICENSE", "Cargo.toml"]
+include = ["src/**/*", "README.md", "LICENSE", "Cargo.toml"]
 
 [dependencies]
 base64 = "0.22.1"

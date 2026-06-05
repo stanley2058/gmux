@@ -278,30 +278,6 @@ delivery = "off"
 
 Popup notifications are for background attention. Gmux suppresses popups for the active tab.
 
-## Sound
-
-Sound notifications are enabled by default and are played by the local Gmux client.
-
-```toml
-[ui.sound]
-enabled = true
-```
-
-Set `enabled = false` on shared machines or remote servers unless you explicitly want audio.
-
-On macOS, Gmux uses `afplay`. On Linux, Gmux tries mp3-capable players in order: `paplay`, `pw-play`, `ffplay`, `mpg123`, then `mpv`. If no player is available, sound playback is skipped and Gmux logs a warning.
-
-Custom sounds must be mp3 files. Relative paths are resolved from the config file's directory.
-
-```toml
-[ui.sound]
-path = "sounds/notification.mp3"
-done_path = "sounds/done.mp3"
-request_path = "sounds/request.mp3"
-```
-
-`path` sets one sound for all sound notifications. `done_path` and `request_path` override the finished and attention sounds.
-
 ## Scrollback
 
 Set the scrollback buffer size for newly created panes:
@@ -395,7 +371,6 @@ You can also toggle it from Settings > Experiments > switch to ascii input sourc
 | `GMUX_SESSION` | Select a named session for CLI commands. |
 | `GMUX_SOCKET_PATH` | Low-level socket path override. |
 | `GMUX_LOG` | Set log filtering, for example `GMUX_LOG=gmux=debug`. |
-| `GMUX_DISABLE_SOUND` | Disable sound playback even when `[ui.sound] enabled = true`. |
 
 ## Logs
 

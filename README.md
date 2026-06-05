@@ -150,7 +150,7 @@ Print the full default config:
 gmux --default-config
 ```
 
-gmux supports theme, terminal, remote, mouse, toast, sound, and keybinding settings. Logs are written under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files.
+gmux supports theme, terminal, remote, mouse, toast, and keybinding settings. Logs are written under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files.
 
 ## socket api
 

@@ -162,7 +162,6 @@ fn spawn_client_process(
 
     let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_gmux"));
     cmd.arg("client");
-    cmd.env("GMUX_DISABLE_SOUND", "1");
     cmd.env("XDG_CONFIG_HOME", config_home);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
     cmd.env("GMUX_SOCKET_PATH", api_socket_path);

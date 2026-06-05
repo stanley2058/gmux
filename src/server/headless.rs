@@ -1195,8 +1195,8 @@ impl HeadlessServer {
         true
     }
 
-    /// Handles a single internal event with forwarding logic for clipboard,
-    /// sound, and toast notifications to connected clients.
+    /// Handles a single internal event with forwarding logic for clipboard
+    /// and toast notifications to connected clients.
     ///
     /// ALL internal events MUST be routed through this method to ensure
     /// clipboard/notify forwarding is never bypassed. Do not call
@@ -1283,20 +1283,17 @@ impl HeadlessServer {
         }
     }
 
-    /// Drains internal events, forwarding clipboard, sound, and toast
+    /// Drains internal events, forwarding clipboard and toast
     /// notifications to connected clients instead of processing them locally.
     ///
     /// In the monolithic mode:
     /// - `ClipboardWrite` events are written to stdout via `write_osc52_bytes`.
-    /// - Sound notifications are played locally via `sound::play`.
     /// - Toast notifications are set on AppState and rendered into the frame.
     ///
-    /// In the headless server, there is no stdout terminal or audio subsystem,
+    /// In the headless server, there is no stdout terminal,
     /// so we:
     /// - Forward `ClipboardWrite` as `ServerMessage::Clipboard` to the
     ///   foreground client only.
-    /// - Detect when a sound would be played and forward as
-    ///   `ServerMessage::Notify { kind: Sound }` to the foreground client.
     /// - Detect when a toast is set on AppState and forward as
     ///   `ServerMessage::Notify` to the foreground client for terminal/system delivery.
     fn drain_internal_events_with_forwarding(&mut self) -> bool {
@@ -1335,7 +1332,7 @@ impl HeadlessServer {
             return;
         }
         self.app.state.request_client_config_reload = false;
-        self.send_to_all_clients(ServerMessage::ReloadSoundConfig);
+        self.send_to_all_clients(ServerMessage::ReloadClientConfig);
     }
 
     /// Encodes a server message into a length-prefixed frame.
@@ -1840,9 +1837,8 @@ impl HeadlessServer {
 
     /// Handles a single API request with shutdown awareness.
     ///
-    /// Also forwards any toast/sound notifications that result from the API
-    /// request to connected clients. In headless mode, local sound playback is
-    /// disabled, so sound notifications need to be forwarded here.
+    /// Also forwards any toast notifications that result from the API request
+    /// to connected clients.
     fn handle_api_request_with_shutdown_check(&mut self, msg: api::ApiRequestMessage) -> bool {
         if self.shutting_down {
             // During shutdown, respond with server_unavailable.
@@ -2746,10 +2742,9 @@ pub fn run_server() -> io::Result<()> {
             event_hub,
         );
 
-        // The server runs headless — disable local notification side effects.
-        // Sound and terminal notifications are forwarded to connected clients
-        // as ServerMessage::Notify instead of emitted by the server process.
-        app.state.local_sound_playback = false;
+        // The server runs headless — disable local terminal notification side effects.
+        // Terminal notifications are forwarded to connected clients as
+        // ServerMessage::Notify instead of emitted by the server process.
         app.local_terminal_notifications = false;
 
         // Create the headless server.
@@ -2818,7 +2813,6 @@ fn run_handoff_import_server(socket_path: &Path, token: &str) -> io::Result<()> 
             &received.manifest.snapshot,
             &mut imports,
         )?;
-        app.state.local_sound_playback = false;
         app.local_terminal_notifications = false;
         crate::server::handoff::report_restored(&mut received.stream)?;
         if std::env::var("GMUX_TEST_HANDOFF_IMPORT_FAIL").as_deref() == Ok("after_restored") {
@@ -2910,7 +2904,6 @@ mod tests {
         let config = crate::config::Config::default();
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = crate::app::App::new(&config, true, None, api_rx, api::EventHub::default());
-        app.state.local_sound_playback = false;
         app.local_terminal_notifications = false;
 
         let dir = std::env::temp_dir().join(format!(
@@ -4661,7 +4654,7 @@ next_tab = ""
     fn full_render_queue_does_not_advance_terminal_ansi_baseline() {
         let mut server = test_headless_server();
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();
-        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadSoundConfig)
+        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadClientConfig)
             .expect("serialize dummy message");
         client_tx
             .render
@@ -4696,7 +4689,7 @@ next_tab = ""
         );
         assert!(matches!(
             read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::ReloadSoundConfig
+            ServerMessage::ReloadClientConfig
         ));
         assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
     }
@@ -4705,7 +4698,7 @@ next_tab = ""
     fn writer_drained_retries_pending_terminal_ansi_render() {
         let mut server = test_headless_server();
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();
-        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadSoundConfig)
+        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadClientConfig)
             .expect("serialize dummy message");
         client_tx
             .render
@@ -4730,7 +4723,7 @@ next_tab = ""
         assert!(server.clients.get(&1).unwrap().render_pending);
         assert!(matches!(
             read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::ReloadSoundConfig
+            ServerMessage::ReloadClientConfig
         ));
 
         assert!(server.handle_server_event(ServerEvent::ClientWriterDrained { client_id: 1 }));
@@ -5114,7 +5107,7 @@ next_tab = ""
     #[tokio::test]
     async fn full_redraw_pending_survives_full_render_queue_full() {
         let (mut server, client_rx, pane_id) = retained_test_server(b"aaaa");
-        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadSoundConfig)
+        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadClientConfig)
             .expect("serialize dummy message");
         server
             .clients
@@ -5134,7 +5127,7 @@ next_tab = ""
         assert!(server.clients.get(&1).unwrap().render_pending);
         assert!(matches!(
             read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::ReloadSoundConfig
+            ServerMessage::ReloadClientConfig
         ));
 
         let runtime = server
@@ -5174,8 +5167,8 @@ next_tab = ""
                 .recv_timeout(Duration::from_millis(100))
                 .expect("client config reload message"),
         ) {
-            ServerMessage::ReloadSoundConfig => {}
-            other => panic!("expected ReloadSoundConfig, got {other:?}"),
+            ServerMessage::ReloadClientConfig => {}
+            other => panic!("expected ReloadClientConfig, got {other:?}"),
         }
         assert!(!server.app.state.request_client_config_reload);
     }

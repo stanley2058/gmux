@@ -4,7 +4,7 @@ use crossterm::event::KeyModifiers;
 use serde::{de, Deserialize, Deserializer, Serialize};
 
 use super::{
-    BindingConfig, CommandKeybindConfig, SoundConfig, ThemeConfig, DEFAULT_MOBILE_WIDTH_THRESHOLD,
+    BindingConfig, CommandKeybindConfig, ThemeConfig, DEFAULT_MOBILE_WIDTH_THRESHOLD,
     DEFAULT_MOUSE_SCROLL_LINES, DEFAULT_SCROLLBACK_LIMIT_BYTES,
 };
 
@@ -366,8 +366,6 @@ pub struct UiConfig {
     pub accent: String,
     /// Optional visual toast notifications for background session events.
     pub toast: ToastConfig,
-    /// Play sounds for background notification events.
-    pub sound: SoundConfig,
 }
 
 /// Cursor shape (DECSCUSR) used for the forced IME anchor.
@@ -528,7 +526,6 @@ impl Default for UiConfig {
             pane_panel_scope: PanePanelScopeConfig::All,
             accent: "cyan".into(),
             toast: ToastConfig::default(),
-            sound: SoundConfig::default(),
         }
     }
 }

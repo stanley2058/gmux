@@ -3,7 +3,6 @@ use crossterm::event::{KeyCode, KeyModifiers};
 mod io;
 mod keybinds;
 mod model;
-mod sound;
 mod theme;
 
 pub use self::{
@@ -22,7 +21,6 @@ pub use self::{
         NewTerminalCwdConfig, PanePanelScopeConfig, ShellModeConfig, ToastConfig, ToastDelivery,
         UpdateChannelConfig,
     },
-    sound::SoundConfig,
     theme::{parse_color, CustomThemeColors, ThemeConfig},
 };
 
@@ -60,11 +58,7 @@ impl Config {
 
     pub fn collect_diagnostics(&self) -> Vec<String> {
         let (prefix_diag, _, keybind_diags, _) = self.validated_keybinds();
-        prefix_diag
-            .into_iter()
-            .chain(keybind_diags)
-            .chain(self.ui.sound.diagnostics())
-            .collect()
+        prefix_diag.into_iter().chain(keybind_diags).collect()
     }
 
     pub fn live_keybinds(&self) -> Result<LiveKeybindConfig, Vec<String>> {

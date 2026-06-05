@@ -1,4 +1,4 @@
-use crate::config::{Keybinds, NewTerminalCwdConfig, SoundConfig, ToastConfig, ToastDelivery};
+use crate::config::{Keybinds, NewTerminalCwdConfig, ToastConfig, ToastDelivery};
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::{Direction, Rect};
 use ratatui::style::Color;
@@ -689,18 +689,16 @@ pub enum PanePanelScope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
     Theme,
-    Sound,
     Toast,
     Experiments,
 }
 
 impl SettingsSection {
-    pub const ALL: &[Self] = &[Self::Theme, Self::Sound, Self::Toast, Self::Experiments];
+    pub const ALL: &[Self] = &[Self::Theme, Self::Toast, Self::Experiments];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Theme => "theme",
-            Self::Sound => "sound",
             Self::Toast => "toasts",
             Self::Experiments => "experiments",
         }
@@ -1022,7 +1020,7 @@ pub struct AppState {
     pub request_new_workspace_cwd: Option<std::path::PathBuf>,
     pub request_reload_config: bool,
     /// Set when the headless server should ask attached clients to reload
-    /// their client-local sound config from disk.
+    /// client-local runtime config from disk.
     pub request_client_config_reload: bool,
     /// Set when UI interaction requested a clipboard write that must be
     /// handled by the outer App/event loop instead of directly from AppState.
@@ -1104,8 +1102,6 @@ pub struct AppState {
     pub pane_scrollback_limit_bytes: usize,
     #[allow(dead_code)] // kept for backward compat; palette.accent is the source of truth
     pub accent: Color,
-    pub sound: SoundConfig,
-    pub local_sound_playback: bool,
     pub toast_config: ToastConfig,
     pub keybinds: Keybinds,
     /// Frame counter for spinner animations (wraps around).
@@ -1134,10 +1130,6 @@ impl AppState {
 
     pub(crate) fn remove_alias_shadowed_by_new_pane(&mut self, pane_id: PaneId) {
         self.pane_id_aliases.remove(&pane_id.raw());
-    }
-
-    pub fn sound_enabled(&self) -> bool {
-        self.sound.enabled
     }
 
     pub fn toast_delivery(&self) -> ToastDelivery {
@@ -1388,11 +1380,6 @@ impl AppState {
             new_terminal_cwd: NewTerminalCwdConfig::Follow,
             pane_scrollback_limit_bytes: crate::config::DEFAULT_SCROLLBACK_LIMIT_BYTES,
             accent: Color::Cyan,
-            sound: SoundConfig {
-                enabled: false,
-                ..SoundConfig::default()
-            },
-            local_sound_playback: false,
             toast_config: ToastConfig::default(),
             keybinds: Keybinds::default(),
             spinner_tick: 0,

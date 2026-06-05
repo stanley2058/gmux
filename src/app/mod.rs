@@ -476,8 +476,6 @@ impl App {
             new_terminal_cwd: config.terminal.new_cwd.clone(),
             pane_scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
             accent: crate::config::parse_color(&config.ui.accent),
-            sound: config.ui.sound.clone(),
-            local_sound_playback: true,
             toast_config: config.ui.toast.clone(),
             keybinds: config.keybinds(),
             spinner_tick: 0,
@@ -1042,8 +1040,6 @@ impl App {
                     config.ui.sidebar_min_width, config.ui.sidebar_max_width,
                 ));
             } else {
-                diagnostics.extend(config.ui.sound.diagnostics());
-
                 self.state.default_sidebar_width = config.ui.sidebar_width;
                 if self.state.sidebar_width_source == state::SidebarWidthSource::ConfigDefault {
                     self.state.sidebar_width = config.ui.sidebar_width;
@@ -1071,10 +1067,6 @@ impl App {
                     pane_panel_scope_from_config(config.ui.pane_panel_scope);
                 self.state.pane_panel_scroll = 0;
                 self.state.accent = crate::config::parse_color(&config.ui.accent);
-                if !self.state.local_sound_playback && self.state.sound != config.ui.sound {
-                    self.state.request_client_config_reload = true;
-                }
-                self.state.sound = config.ui.sound.clone();
                 self.state.toast_config = config.ui.toast.clone();
             }
         }

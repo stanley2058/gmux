@@ -49,14 +49,6 @@ impl App {
         }
     }
 
-    pub(super) fn save_sound(&mut self, enabled: bool) {
-        if self.update_config_file("sound setting", |content| {
-            crate::config::upsert_section_bool(content, "ui.sound", "enabled", enabled)
-        }) {
-            self.apply_config_from_disk(false);
-        }
-    }
-
     pub(super) fn save_toast_delivery(&mut self, delivery: crate::config::ToastDelivery) {
         let value = match delivery {
             crate::config::ToastDelivery::Off => "\"off\"",
