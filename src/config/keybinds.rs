@@ -274,9 +274,9 @@ pub struct Keybinds {
     pub open_notification_target: ActionKeybinds,
     pub previous_workspace: ActionKeybinds,
     pub next_workspace: ActionKeybinds,
-    pub previous_agent: ActionKeybinds,
-    pub next_agent: ActionKeybinds,
-    pub focus_agent: Vec<IndexedKeybind>,
+    pub previous_pane_panel_entry: ActionKeybinds,
+    pub next_pane_panel_entry: ActionKeybinds,
+    pub focus_pane_panel_entry: Vec<IndexedKeybind>,
     pub new_tab: ActionKeybinds,
     pub rename_tab: ActionKeybinds,
     pub previous_tab: ActionKeybinds,
@@ -453,9 +453,18 @@ impl Config {
             ),
             previous_workspace: action!("keys.previous_workspace", &self.keys.previous_workspace),
             next_workspace: action!("keys.next_workspace", &self.keys.next_workspace),
-            previous_agent: action!("keys.previous_agent", &self.keys.previous_agent),
-            next_agent: action!("keys.next_agent", &self.keys.next_agent),
-            focus_agent: indexed!("keys.focus_agent", &self.keys.focus_agent),
+            previous_pane_panel_entry: action!(
+                "keys.previous_pane_panel_entry",
+                &self.keys.previous_pane_panel_entry
+            ),
+            next_pane_panel_entry: action!(
+                "keys.next_pane_panel_entry",
+                &self.keys.next_pane_panel_entry
+            ),
+            focus_pane_panel_entry: indexed!(
+                "keys.focus_pane_panel_entry",
+                &self.keys.focus_pane_panel_entry
+            ),
             new_tab: action!("keys.new_tab", &self.keys.new_tab),
             rename_tab: action!("keys.rename_tab", &self.keys.rename_tab),
             previous_tab: action!("keys.previous_tab", &self.keys.previous_tab),
@@ -500,7 +509,7 @@ impl Config {
             &mut diagnostics,
         );
         append_legacy_indexed_bindings(
-            &mut keybinds.focus_agent,
+            &mut keybinds.focus_pane_panel_entry,
             "keys.indexed.agents",
             &self.keys.indexed.agents,
             &mut registry,

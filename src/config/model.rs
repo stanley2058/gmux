@@ -282,11 +282,14 @@ pub struct KeysConfig {
     /// Select the next workspace. Unset by default.
     pub next_workspace: BindingConfig,
     /// Focus the previous pane shown in the pane panel. Unset by default.
-    pub previous_agent: BindingConfig,
+    #[serde(alias = "previous_agent")]
+    pub previous_pane_panel_entry: BindingConfig,
     /// Focus the next pane shown in the pane panel. Unset by default.
-    pub next_agent: BindingConfig,
+    #[serde(alias = "next_agent")]
+    pub next_pane_panel_entry: BindingConfig,
     /// Focus a pane-panel entry by index 1-9. Unset by default.
-    pub focus_agent: BindingConfig,
+    #[serde(alias = "focus_agent")]
+    pub focus_pane_panel_entry: BindingConfig,
     /// Create a new tab in the active workspace. Default: "prefix+c"
     pub new_tab: BindingConfig,
     /// Rename the active tab. Default: "prefix+comma" with "prefix+shift+t" as a legacy alias.
@@ -511,9 +514,9 @@ impl Default for KeysConfig {
             open_notification_target: BindingConfig::one("prefix+o"),
             previous_workspace: BindingConfig::empty(),
             next_workspace: BindingConfig::empty(),
-            previous_agent: BindingConfig::empty(),
-            next_agent: BindingConfig::empty(),
-            focus_agent: BindingConfig::empty(),
+            previous_pane_panel_entry: BindingConfig::empty(),
+            next_pane_panel_entry: BindingConfig::empty(),
+            focus_pane_panel_entry: BindingConfig::empty(),
             new_tab: BindingConfig::one("prefix+c"),
             rename_tab: BindingConfig::Many(vec!["prefix+comma".into(), "prefix+shift+t".into()]),
             previous_tab: BindingConfig::one("prefix+p"),
@@ -724,6 +727,49 @@ agent_panel_scope = "current"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.ui.pane_panel_scope, PanePanelScopeConfig::Current);
+    }
+
+    #[test]
+    fn pane_panel_entry_key_config_parses_new_and_legacy_names() {
+        let modern = r#"
+[keys]
+previous_pane_panel_entry = "prefix+shift+p"
+next_pane_panel_entry = "prefix+shift+n"
+focus_pane_panel_entry = "prefix+alt+1..9"
+"#;
+        let config: Config = toml::from_str(modern).unwrap();
+        assert_eq!(
+            config.keys.previous_pane_panel_entry,
+            BindingConfig::one("prefix+shift+p")
+        );
+        assert_eq!(
+            config.keys.next_pane_panel_entry,
+            BindingConfig::one("prefix+shift+n")
+        );
+        assert_eq!(
+            config.keys.focus_pane_panel_entry,
+            BindingConfig::one("prefix+alt+1..9")
+        );
+
+        let legacy = r#"
+[keys]
+previous_agent = "prefix+shift+p"
+next_agent = "prefix+shift+n"
+focus_agent = "prefix+alt+1..9"
+"#;
+        let config: Config = toml::from_str(legacy).unwrap();
+        assert_eq!(
+            config.keys.previous_pane_panel_entry,
+            BindingConfig::one("prefix+shift+p")
+        );
+        assert_eq!(
+            config.keys.next_pane_panel_entry,
+            BindingConfig::one("prefix+shift+n")
+        );
+        assert_eq!(
+            config.keys.focus_pane_panel_entry,
+            BindingConfig::one("prefix+alt+1..9")
+        );
     }
 
     #[test]

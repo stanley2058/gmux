@@ -967,15 +967,15 @@ impl AppState {
         }
     }
 
-    pub fn next_agent(&mut self) {
+    pub fn next_pane_panel_entry(&mut self) {
         self.cycle_agent_entry(true);
     }
 
-    pub fn previous_agent(&mut self) {
+    pub fn previous_pane_panel_entry(&mut self) {
         self.cycle_agent_entry(false);
     }
 
-    pub fn focus_agent_entry(&mut self, idx: usize) -> bool {
+    pub fn focus_pane_panel_entry(&mut self, idx: usize) -> bool {
         let entries = crate::ui::pane_panel_entries(self);
         let Some(target) = entries.get(idx) else {
             return false;
@@ -1016,7 +1016,7 @@ impl AppState {
             (None, false) => entries.len() - 1,
         };
 
-        self.focus_agent_entry(target_idx);
+        self.focus_pane_panel_entry(target_idx);
     }
 
     fn ensure_pane_panel_entry_visible(&mut self, idx: usize) {
@@ -2853,7 +2853,7 @@ mod tests {
     }
 
     #[test]
-    fn next_agent_cycles_pane_panel_entries_in_all_scope() {
+    fn next_pane_panel_entry_cycles_pane_panel_entries_in_all_scope() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
         let first_second = first.test_split(Direction::Horizontal);
@@ -2872,21 +2872,21 @@ mod tests {
         mark_agent(&mut state, 0, 0, first_second);
         mark_agent(&mut state, 1, 0, second_root);
 
-        state.next_agent();
+        state.next_pane_panel_entry();
         assert_eq!(state.active, Some(0));
         assert_eq!(state.workspaces[0].focused_pane_id(), Some(first_second));
 
-        state.next_agent();
+        state.next_pane_panel_entry();
         assert_eq!(state.active, Some(1));
         assert_eq!(state.workspaces[1].focused_pane_id(), Some(second_root));
 
-        state.previous_agent();
+        state.previous_pane_panel_entry();
         assert_eq!(state.active, Some(0));
         assert_eq!(state.workspaces[0].focused_pane_id(), Some(first_second));
     }
 
     #[test]
-    fn focus_agent_entry_uses_pane_panel_order() {
+    fn focus_pane_panel_entry_uses_pane_panel_order() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
         let first_second = first.test_split(Direction::Horizontal);
@@ -2904,26 +2904,26 @@ mod tests {
         mark_agent(&mut state, 0, 0, first_second);
         mark_agent(&mut state, 1, 0, second_root);
 
-        assert!(state.focus_agent_entry(2));
+        assert!(state.focus_pane_panel_entry(2));
 
         assert_eq!(state.active, Some(1));
         assert_eq!(state.workspaces[1].focused_pane_id(), Some(second_root));
     }
 
     #[test]
-    fn focus_agent_entry_succeeds_for_already_focused_agent() {
+    fn focus_pane_panel_entry_succeeds_for_already_focused_pane() {
         let mut state = app_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
         state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
         mark_agent(&mut state, 0, 0, root);
 
-        assert!(state.focus_agent_entry(0));
+        assert!(state.focus_pane_panel_entry(0));
         assert_eq!(state.active, Some(0));
         assert_eq!(state.workspaces[0].focused_pane_id(), Some(root));
     }
 
     #[test]
-    fn next_agent_cycles_only_current_scope_entries() {
+    fn next_pane_panel_entry_cycles_only_current_scope_entries() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
         let first_second = first.test_split(Direction::Horizontal);
@@ -2942,14 +2942,14 @@ mod tests {
         mark_agent(&mut state, 0, 0, first_second);
         mark_agent(&mut state, 1, 0, second_root);
 
-        state.next_agent();
+        state.next_pane_panel_entry();
 
         assert_eq!(state.active, Some(0));
         assert_eq!(state.workspaces[0].focused_pane_id(), Some(first_root));
     }
 
     #[test]
-    fn previous_agent_keeps_wrapped_target_visible_in_pane_panel() {
+    fn previous_pane_panel_entry_keeps_wrapped_target_visible_in_pane_panel() {
         let mut workspace = Workspace::test_new("one");
         let root = workspace.tabs[0].root_pane;
         for idx in 1..8 {
@@ -2970,7 +2970,7 @@ mod tests {
         state.workspaces[0].tabs[0].layout.focus_pane(root);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
-        state.previous_agent();
+        state.previous_pane_panel_entry();
 
         let last_idx = state.workspaces[0].tabs.len() - 1;
         assert_eq!(state.workspaces[0].active_tab, last_idx);

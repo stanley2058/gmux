@@ -483,12 +483,12 @@ pub(crate) enum NavigateAction {
     CloseWorkspace,
     SwitchWorkspace(usize),
     SwitchTab(usize),
-    FocusAgent(usize),
+    FocusPanePanelEntry(usize),
     WorkspacePicker,
     PreviousWorkspace,
     NextWorkspace,
-    PreviousAgent,
-    NextAgent,
+    PreviousPanePanelEntry,
+    NextPanePanelEntry,
     NewTab,
     RenameTab,
     PreviousTab,
@@ -543,10 +543,10 @@ fn indexed_navigation_action(
             }
         }
     }
-    for binding in &kb.focus_agent {
+    for binding in &kb.focus_pane_panel_entry {
         if trigger_matches(binding) {
             if let Some(idx) = binding.matched_index(key) {
-                return Some(NavigateAction::FocusAgent(idx));
+                return Some(NavigateAction::FocusPanePanelEntry(idx));
             }
         }
     }
@@ -587,8 +587,14 @@ fn action_for_key(
         (&kb.close_workspace, NavigateAction::CloseWorkspace),
         (&kb.previous_workspace, NavigateAction::PreviousWorkspace),
         (&kb.next_workspace, NavigateAction::NextWorkspace),
-        (&kb.previous_agent, NavigateAction::PreviousAgent),
-        (&kb.next_agent, NavigateAction::NextAgent),
+        (
+            &kb.previous_pane_panel_entry,
+            NavigateAction::PreviousPanePanelEntry,
+        ),
+        (
+            &kb.next_pane_panel_entry,
+            NavigateAction::NextPanePanelEntry,
+        ),
         (&kb.new_tab, NavigateAction::NewTab),
         (&kb.rename_tab, NavigateAction::RenameTab),
         (&kb.previous_tab, NavigateAction::PreviousTab),
@@ -716,8 +722,8 @@ pub(super) fn execute_navigate_action_in_context(
                 leave_navigate_mode(state);
             }
         }
-        NavigateAction::FocusAgent(idx) => {
-            if state.focus_agent_entry(idx) {
+        NavigateAction::FocusPanePanelEntry(idx) => {
+            if state.focus_pane_panel_entry(idx) {
                 leave_navigate_mode(state);
             }
         }
@@ -733,12 +739,12 @@ pub(super) fn execute_navigate_action_in_context(
             state.next_workspace();
             leave_navigate_mode(state);
         }
-        NavigateAction::PreviousAgent => {
-            state.previous_agent();
+        NavigateAction::PreviousPanePanelEntry => {
+            state.previous_pane_panel_entry();
             leave_navigate_mode(state);
         }
-        NavigateAction::NextAgent => {
-            state.next_agent();
+        NavigateAction::NextPanePanelEntry => {
+            state.next_pane_panel_entry();
             leave_navigate_mode(state);
         }
         NavigateAction::NewTab => {
@@ -1475,16 +1481,16 @@ navigate_pane_right = "ctrl+l"
     }
 
     #[test]
-    fn terminal_direct_agent_shortcut_maps_to_navigation_action() {
+    fn terminal_direct_pane_panel_shortcut_maps_to_navigation_action() {
         let mut state = state_with_workspaces(&["test"]);
-        state.keybinds.next_agent = crate::config::ActionKeybinds::direct("alt+a");
+        state.keybinds.next_pane_panel_entry = crate::config::ActionKeybinds::direct("alt+a");
 
         let action = terminal_direct_navigation_action(
             &state,
             TerminalKey::new(KeyCode::Char('a'), KeyModifiers::ALT),
         );
 
-        assert_eq!(action, Some(NavigateAction::NextAgent));
+        assert_eq!(action, Some(NavigateAction::NextPanePanelEntry));
     }
 
     #[test]
