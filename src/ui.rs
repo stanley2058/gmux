@@ -1004,14 +1004,14 @@ mod tests {
     }
 
     #[test]
-    fn keybind_help_shows_unset_for_optional_actions() {
+    fn keybind_help_hides_workspace_and_agent_actions_by_default() {
         let app = crate::app::state::AppState::test_new();
         let groups = keybind_help_groups(&app);
 
-        let workspace_tab = groups
+        let tabs = groups
             .iter()
-            .find(|(name, _)| *name == "workspaces / tabs")
-            .expect("workspace tab group")
+            .find(|(name, _)| *name == "tabs")
+            .expect("tabs group")
             .1
             .clone();
         let panes = groups
@@ -1021,24 +1021,14 @@ mod tests {
             .1
             .clone();
 
-        assert!(workspace_tab
+        assert!(tabs
             .iter()
-            .any(|(key, label)| key == "unset" && label.as_ref() == "previous workspace"));
-        assert!(workspace_tab
+            .any(|(key, label)| key == "prefix+g" && label.as_ref() == "session navigator"));
+        assert!(!groups
             .iter()
-            .any(|(key, label)| key == "unset" && label.as_ref() == "next workspace"));
-        assert!(workspace_tab
-            .iter()
-            .any(|(key, label)| key == "unset" && label.as_ref() == "previous agent"));
-        assert!(workspace_tab
-            .iter()
-            .any(|(key, label)| key == "unset" && label.as_ref() == "next agent"));
-        assert!(workspace_tab
-            .iter()
-            .any(|(key, label)| key == "unset" && label.as_ref() == "focus agent 1-9"));
-        assert!(workspace_tab
-            .iter()
-            .any(|(key, label)| key == "unset" && label.as_ref() == "switch workspace 1-9"));
+            .flat_map(|(_, entries)| entries)
+            .any(|(_, label)| label.as_ref().contains("workspace")
+                || label.as_ref().contains("agent")));
         assert!(panes
             .iter()
             .any(|(key, label)| key == "prefix+h / prefix+left"

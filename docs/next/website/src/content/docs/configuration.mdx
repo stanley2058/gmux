@@ -127,22 +127,16 @@ new_tab = "prefix+c"
 next_tab = "prefix+n"
 previous_tab = "prefix+p"
 focus_pane_left = "prefix+h"
-navigate_workspace_down = "j"
 navigate_pane_down = "ctrl+j"
-split_horizontal = "prefix+minus"
+split_horizontal = "prefix+double_quote"
 ```
 
 The default keymap is prefix-first and avoids direct shortcuts that can steal input from shells, editors, tmux, or terminal apps. Common defaults include:
 
 ```toml
 [keys]
-detach = "prefix+q"
-workspace_picker = "prefix+w"
+detach = ["prefix+d", "prefix+q"]
 goto = "prefix+g"
-new_workspace = "prefix+shift+n"
-new_worktree = "prefix+shift+g"
-rename_workspace = "prefix+shift+w"
-close_workspace = "prefix+shift+d"
 navigate_workspace_up = "up"
 navigate_workspace_down = "down"
 navigate_pane_left = "h"
@@ -153,8 +147,8 @@ new_tab = "prefix+c"
 previous_tab = "prefix+p"
 next_tab = "prefix+n"
 switch_tab = "prefix+1..9"
-rename_tab = "prefix+shift+t"
-close_tab = "prefix+shift+x"
+rename_tab = ["prefix+comma", "prefix+shift+t"]
+close_tab = ["prefix+ampersand", "prefix+shift+x"]
 copy_mode = "prefix+["
 focus_pane_left = "prefix+h"
 focus_pane_down = "prefix+j"
@@ -163,8 +157,8 @@ focus_pane_right = "prefix+l"
 cycle_pane_next = "prefix+tab"
 cycle_pane_previous = "prefix+shift+tab"
 last_pane = ""
-split_vertical = "prefix+v"
-split_horizontal = "prefix+minus"
+split_vertical = ["prefix+percent", "prefix+v"]
+split_horizontal = ["prefix+double_quote", "prefix+minus"]
 close_pane = "prefix+x"
 zoom = "prefix+z"
 resize_mode = "prefix+r"
@@ -175,11 +169,7 @@ Optional actions are unset by default. Bind them with `prefix+` for prefix-mode 
 
 ```toml
 [keys]
-previous_workspace = "prefix+shift+left"
-next_workspace = "prefix+shift+right"
 last_pane = "prefix+tab"
-open_worktree = "prefix+shift+o"
-remove_worktree = "prefix+alt+d"
 next_tab = ["prefix+n", "ctrl+alt+]"]
 ```
 
@@ -200,7 +190,7 @@ switch_workspace = "prefix+shift+1..9"
 focus_agent = "prefix+alt+1..9"
 ```
 
-The legacy `[keys.indexed]` table is still parsed for compatibility, but new configs should prefer the explicit action fields.
+Workspace and agent indexed bindings are compatibility fields; new configs should prefer session, tab, and pane actions.
 
 ## Custom command keybindings
 

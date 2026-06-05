@@ -1290,12 +1290,31 @@ next_tab = "prefix+n"
     }
 
     #[test]
-    fn new_worktree_defaults_to_prefix_shift_g() {
+    fn workspace_and_worktree_keybinds_are_unset_by_default_but_still_parse() {
         let kb = Config::default().keybinds();
+        assert!(kb.new_workspace.bindings.is_empty());
+        assert!(kb.new_worktree.bindings.is_empty());
+
+        let config: Config = toml::from_str(
+            r#"
+[keys]
+new_workspace = "prefix+shift+n"
+new_worktree = "prefix+shift+g"
+"#,
+        )
+        .unwrap();
+        let kb = config.keybinds();
         assert_eq!(
             binding_triggers(&kb.new_worktree),
             vec![BindingTrigger::Prefix((
                 KeyCode::Char('g'),
+                KeyModifiers::SHIFT
+            ))]
+        );
+        assert_eq!(
+            binding_triggers(&kb.new_workspace),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('n'),
                 KeyModifiers::SHIFT
             ))]
         );
@@ -1763,6 +1782,12 @@ switch_workspace = "prefix+shift+1..9"
             .bindings
             .iter()
             .all(|binding| binding.trigger.is_prefix()));
+        assert!(kb.workspace_picker.bindings.is_empty());
+        assert!(kb.new_workspace.bindings.is_empty());
+        assert!(kb.new_worktree.bindings.is_empty());
+        assert!(kb.rename_workspace.bindings.is_empty());
+        assert!(kb.close_workspace.bindings.is_empty());
+        assert!(kb.switch_workspace.is_empty());
         assert_eq!(
             binding_triggers(&kb.split_vertical),
             vec![

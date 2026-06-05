@@ -92,8 +92,8 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # "auto" uses login shells on macOS and keeps the current behavior elsewhere.
 # shell_mode = "auto"
 
-# CWD policy for new panes, tabs, and workspaces when no explicit --cwd is provided.
-# Use "follow" to inherit the source pane/workspace, "home" for $HOME,
+# CWD policy for new panes and tabs when no explicit --cwd is provided.
+# Use "follow" to inherit the source pane or session, "home" for $HOME,
 # "current" for Gmux's process directory, or a fixed path such as "~/Projects".
 # new_cwd = "follow"
 
@@ -119,22 +119,12 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # detach = ["prefix+d", "prefix+q"]
 # reload_config = "prefix+shift+r"
 # open_notification_target = "prefix+o"
-# workspace_picker = "prefix+w"
 # goto = "prefix+g"
-# new_workspace = "prefix+shift+n"
-# new_worktree = "prefix+shift+g"
-# open_worktree = ""    # optional, unset by default
-# remove_worktree = ""  # optional, unset by default; opens confirmation
-# rename_workspace = "prefix+shift+w"
-# close_workspace = "prefix+shift+d"
-# previous_workspace = "" # optional, unset by default
-# next_workspace = ""     # optional, unset by default
 # new_tab = "prefix+c"
 # rename_tab = ["prefix+comma", "prefix+shift+t"]
 # previous_tab = "prefix+p"
 # next_tab = "prefix+n"
 # switch_tab = "prefix+1..9"
-# switch_workspace = ""   # optional indexed binding, e.g. "prefix+shift+1..9"
 # close_tab = ["prefix+ampersand", "prefix+shift+x"]
 # rename_pane = "prefix+shift+p"
 # edit_scrollback = "prefix+e"
@@ -154,8 +144,6 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 
 # Navigate-mode movement. These local shortcuts win while navigate mode is open.
 # They are independent from focus_pane_*. Do not include prefix+, esc, enter, tab, or 1..9 here.
-# navigate_workspace_up = "up"
-# navigate_workspace_down = "down"
 # navigate_pane_left = "h"      # left arrow always focuses the pane to the left
 # navigate_pane_down = "j"
 # navigate_pane_up = "k"
@@ -170,16 +158,12 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # command = "lazygit"
 
 # Legacy indexed shortcut config is still parsed for compatibility.
-# Prefer switch_tab and switch_workspace for new configs.
+# Prefer switch_tab for new configs.
 # [keys.indexed]
 # tabs = ""       # e.g. "ctrl" makes ctrl+1..9 switch tabs directly
-# workspaces = "" # e.g. "ctrl+shift" makes ctrl+shift+1..9 switch workspaces directly
-
-# [worktrees]
-# directory = "~/.gmux/worktrees"
 
 [ui]
-# Sidebar width (auto-scaled based on workspace names, this sets the default)
+# Sidebar width (auto-scaled based on session item names, this sets the default)
 # sidebar_width = 26
 
 # Minimum sidebar width when expanded (columns)
@@ -209,7 +193,7 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # Pane scrollback lines to scroll per mouse wheel notch.
 # mouse_scroll_lines = 3
 
-# Ask for confirmation before closing a workspace
+# Ask for confirmation before closing a session item.
 # confirm_close = true
 
 # Ask for a tab name before creating a new tab.
