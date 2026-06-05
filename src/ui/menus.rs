@@ -38,7 +38,7 @@ pub(super) fn render_prefix_overlay(app: &AppState, frame: &mut Frame, area: Rec
         .bg(app.palette.accent)
         .add_modifier(Modifier::BOLD);
 
-    let workspace_picker = prefix_rhs_label(&app.keybinds.workspace_picker);
+    let session_picker = prefix_rhs_label(&app.keybinds.workspace_picker);
     let help = prefix_rhs_label(&app.keybinds.help);
     let prefix = crate::config::format_key_combo((app.prefix_code, app.prefix_mods));
 
@@ -49,8 +49,8 @@ pub(super) fn render_prefix_overlay(app: &AppState, frame: &mut Frame, area: Rec
         Span::styled(" cancel  ", dim),
         Span::styled(prefix, key),
         Span::styled(" send prefix  ", dim),
-        Span::styled(workspace_picker, key),
-        Span::styled(" workspace nav  ", dim),
+        Span::styled(session_picker, key),
+        Span::styled(" session nav  ", dim),
         Span::styled(help, key),
         Span::styled(" keybinds", dim),
     ]);
@@ -118,7 +118,7 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
     let settings = prefix_rhs_label(&kb.settings);
     let goto = prefix_rhs_label(&kb.goto);
     let detach = prefix_rhs_label(&kb.detach);
-    let workspace_nav = format!(
+    let session_nav = format!(
         "{} / {}",
         keybind_label(&kb.navigate.workspace_up),
         keybind_label(&kb.navigate.workspace_down)
@@ -128,8 +128,8 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
         Span::raw(" "),
         Span::styled("esc", key),
         Span::styled(" back  ", dim),
-        Span::styled(workspace_nav, key),
-        Span::styled(" ws  ", dim),
+        Span::styled(session_nav, key),
+        Span::styled(" session  ", dim),
         Span::styled("⇥", key),
         Span::styled(" pane  ", dim),
         Span::styled(goto, key),
