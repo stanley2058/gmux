@@ -236,15 +236,14 @@ impl AppState {
 
             let expanded = !matches!(query_kind, NavigatorQueryKind::Empty)
                 || self.navigator.expanded_workspaces.contains(&ws.id);
-            let (state, seen) = ws.aggregate_state(&self.terminals);
             let pane_count = ws.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>();
             rows.push(NavigatorRow {
                 target: NavigatorTarget::Workspace { ws_idx },
                 depth: 0,
                 label: format!("{workspace_label} ({pane_count})"),
                 meta: String::new(),
-                status: state,
-                seen,
+                status: AgentState::Unknown,
+                seen: true,
                 is_current: self.active == Some(ws_idx),
                 is_workspace: true,
                 is_tab: false,
@@ -299,7 +298,6 @@ impl AppState {
         let ws = &self.workspaces[ws_idx];
         let tab = &ws.tabs[tab_idx];
         let label = tab.display_name();
-        let (status, seen) = tab_aggregate_state(tab, &self.terminals);
         let pane_count = tab.panes.len();
         let meta = format!("{pane_count} panes");
         let search_text = format!("{label} {meta}").to_lowercase();
@@ -308,8 +306,8 @@ impl AppState {
             depth: 1,
             label,
             meta,
-            status,
-            seen,
+            status: AgentState::Unknown,
+            seen: true,
             is_current: false,
             is_workspace: false,
             is_tab: true,
@@ -566,37 +564,6 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
         .and_then(|name| name.to_str())
         .map(str::to_string)
         .or_else(|| Some(command.clone()))
-}
-
-fn tab_aggregate_state(
-    tab: &crate::workspace::Tab,
-    terminals: &std::collections::HashMap<
-        crate::terminal::TerminalId,
-        crate::terminal::TerminalState,
-    >,
-) -> (AgentState, bool) {
-    let mut aggregate = AgentState::Unknown;
-    let mut seen = true;
-    for pane in tab.panes.values() {
-        let Some(terminal) = terminals.get(&pane.attached_terminal_id) else {
-            continue;
-        };
-        if state_priority(terminal.state, pane.seen) > state_priority(aggregate, seen) {
-            aggregate = terminal.state;
-            seen = pane.seen;
-        }
-    }
-    (aggregate, seen)
-}
-
-fn state_priority(state: AgentState, seen: bool) -> u8 {
-    match (state, seen) {
-        (AgentState::Blocked, _) => 5,
-        (AgentState::Working, _) => 4,
-        (AgentState::Idle, false) => 3,
-        (AgentState::Idle, true) => 2,
-        (AgentState::Unknown, _) => 1,
-    }
 }
 
 // ---------------------------------------------------------------------------

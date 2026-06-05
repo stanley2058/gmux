@@ -6,7 +6,6 @@ use ratatui::{
     Frame,
 };
 
-use super::status::state_dot;
 use crate::app::state::{Palette, ToastKind, ToastNotification};
 use crate::app::AppState;
 use crate::terminal::TerminalRuntimeRegistry;
@@ -260,8 +259,7 @@ fn render_header_status(
         return;
     };
 
-    let (state, seen) = ws.aggregate_state(&app.terminals);
-    let (dot, dot_style) = state_dot(state, seen, p);
+    let (dot, dot_style) = mobile_session_dot(true, p);
     let tab_label = format!("tab {}/{}", ws.active_tab + 1, ws.tabs.len());
     let row1 = Rect::new(area.x, area.y, area.width, 1);
     let tab_w = (tab_label.chars().count() as u16 + 1).min(area.width);
@@ -424,8 +422,7 @@ fn render_mobile_switcher_content(
         let active = Some(idx) == app.active;
         let selected = idx == app.selected;
         let bg = mobile_item_bg(selected, active, p);
-        let (state, seen) = ws.aggregate_state(&app.terminals);
-        let (dot, dot_style) = state_dot(state, seen, p);
+        let (dot, dot_style) = mobile_session_dot(active, p);
         let title = Line::from(vec![
             Span::styled("  ", Style::default().bg(bg)),
             Span::styled(dot, dot_style.bg(bg)),
@@ -658,6 +655,14 @@ fn mobile_item_bg(selected: bool, active: bool, p: &Palette) -> ratatui::style::
         p.surface_dim
     } else {
         p.panel_bg
+    }
+}
+
+fn mobile_session_dot(active: bool, p: &Palette) -> (&'static str, Style) {
+    if active {
+        ("●", Style::default().fg(p.accent))
+    } else {
+        ("○", Style::default().fg(p.overlay0))
     }
 }
 

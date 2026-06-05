@@ -2,10 +2,7 @@ use std::path::PathBuf;
 
 use tracing::error;
 
-use super::{
-    api_helpers::{pane_agent_status, tab_attention_priority},
-    App, Mode,
-};
+use super::{api_helpers::pane_agent_status, App, Mode};
 use crate::{config::NewTerminalCwdConfig, workspace::Workspace};
 
 pub(crate) fn resolve_new_terminal_cwd(
@@ -211,17 +208,6 @@ impl App {
     ) -> Option<crate::api::schema::TabInfo> {
         let ws = self.state.workspaces.get(ws_idx)?;
         let tab = ws.tabs.get(tab_idx)?;
-        let (agg_state, seen) = tab
-            .panes
-            .values()
-            .filter_map(|pane| {
-                self.state
-                    .terminals
-                    .get(&pane.attached_terminal_id)
-                    .map(|terminal| (terminal.state, pane.seen))
-            })
-            .max_by_key(|(state, seen)| tab_attention_priority(*state, *seen))
-            .unwrap_or((crate::detect::AgentState::Unknown, true));
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             workspace_id: self.public_workspace_id(ws_idx),
@@ -229,7 +215,7 @@ impl App {
             label: tab.display_name(),
             focused: self.state.active == Some(ws_idx) && ws.active_tab == tab_idx,
             pane_count: tab.panes.len(),
-            agent_status: pane_agent_status(agg_state, seen),
+            agent_status: crate::api::schema::AgentStatus::Unknown,
         })
     }
 
@@ -326,7 +312,6 @@ impl App {
 
     pub(super) fn workspace_info(&self, index: usize) -> crate::api::schema::WorkspaceInfo {
         let ws = &self.state.workspaces[index];
-        let (agg_state, seen) = ws.aggregate_state(&self.state.terminals);
         crate::api::schema::WorkspaceInfo {
             workspace_id: self.public_workspace_id(index),
             number: index + 1,
@@ -337,7 +322,7 @@ impl App {
             active_tab_id: self
                 .public_tab_id(index, ws.active_tab)
                 .unwrap_or_else(|| format!("{}:{}", ws.id, ws.active_tab + 1)),
-            agent_status: pane_agent_status(agg_state, seen),
+            agent_status: crate::api::schema::AgentStatus::Unknown,
             worktree: ws
                 .worktree_space()
                 .map(|space| crate::api::schema::WorkspaceWorktreeInfo {

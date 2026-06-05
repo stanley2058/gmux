@@ -7,10 +7,8 @@ use ratatui::{
 };
 
 use super::scrollbar::{render_scrollbar, should_show_scrollbar};
-use super::status::state_dot;
 use crate::app::state::{AgentPanelScope, Palette};
 use crate::app::{AppState, Mode};
-use crate::detect::AgentState;
 use crate::terminal::TerminalRuntimeRegistry;
 
 const WORKSPACE_SECTION_HEADER_ROWS: u16 = 2;
@@ -239,23 +237,12 @@ fn workspace_row_height(ws: &crate::workspace::Workspace) -> u16 {
     }
 }
 
-fn workspace_attention_priority(state: AgentState, seen: bool) -> u8 {
-    match (state, seen) {
-        (AgentState::Blocked, _) => 4,
-        (AgentState::Idle, false) => 3,
-        (AgentState::Working, _) => 2,
-        (AgentState::Idle, true) => 1,
-        (AgentState::Unknown, _) => 0,
-    }
-}
-
-fn space_aggregate_state(app: &AppState, key: &str) -> (AgentState, bool) {
+fn space_has_active_workspace(app: &AppState, key: &str) -> bool {
     app.workspaces
         .iter()
-        .filter(|ws| ws.worktree_space().is_some_and(|space| space.key == key))
-        .map(|ws| ws.aggregate_state(&app.terminals))
-        .max_by_key(|(state, seen)| workspace_attention_priority(*state, *seen))
-        .unwrap_or((AgentState::Unknown, true))
+        .enumerate()
+        .filter(|(_, ws)| ws.worktree_space().is_some_and(|space| space.key == key))
+        .any(|(idx, _)| Some(idx) == app.active)
 }
 
 pub(crate) fn workspace_parent_group_state(
@@ -666,15 +653,14 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         return;
     }
 
-    for (visible_idx, ws) in app.workspaces.iter().enumerate() {
+    for visible_idx in 0..app.workspaces.len() {
         let y = ws_area.y + visible_idx as u16;
         if y >= ws_area.y + ws_area.height {
             break;
         }
-        let (agg_state, agg_seen) = ws.aggregate_state(&app.terminals);
-        let (icon, icon_style) = state_dot(agg_state, agg_seen, p);
         let is_selected = visible_idx == app.selected && is_navigating;
         let is_active = Some(visible_idx) == app.active;
+        let (icon, icon_style) = session_dot(is_active, is_selected, p);
         let row_style = if is_selected {
             Style::default().bg(p.surface0)
         } else if is_active {
@@ -755,6 +741,16 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
     }
 
     render_sidebar_toggle(app, frame, area, true, p);
+}
+
+fn session_dot(active: bool, selected: bool, p: &Palette) -> (&'static str, Style) {
+    if active {
+        ("●", Style::default().fg(p.accent))
+    } else if selected {
+        ("●", Style::default().fg(p.overlay1))
+    } else {
+        ("○", Style::default().fg(p.overlay0))
+    }
 }
 
 pub(crate) fn workspace_drop_indicator_row(
@@ -862,8 +858,6 @@ fn render_workspace_list(
         let is_active = Some(i) == app.active;
         let is_dragged = dragged_ws_idx == Some(i);
         let highlighted = selected || is_active || is_dragged;
-        let (agg_state, agg_seen) = ws.aggregate_state(&app.terminals);
-
         if highlighted {
             let bg = if selected {
                 p.surface0
@@ -889,7 +883,7 @@ fn render_workspace_list(
             Style::default().fg(p.subtext0)
         };
 
-        let (icon, icon_style) = state_dot(agg_state, agg_seen, p);
+        let (icon, icon_style) = session_dot(is_active, selected, p);
         let label = ws.display_name_from(&app.terminals, terminal_runtimes);
         let mut line1 = Vec::new();
         let mut show_workspace_icon = true;
@@ -898,8 +892,7 @@ fn render_workspace_list(
         } else if let Some((key, collapsed)) = workspace_parent_group_state(app, i) {
             let icon = if collapsed { "▸" } else { "▾" };
             let (state_icon, state_style) = if collapsed {
-                let (state, seen) = space_aggregate_state(app, &key);
-                state_dot(state, seen, p)
+                session_dot(space_has_active_workspace(app, &key), selected, p)
             } else {
                 (icon, Style::default().fg(p.accent))
             };

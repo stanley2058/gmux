@@ -7,10 +7,7 @@ use ratatui::{
 };
 
 use super::widgets::panel_contrast_fg;
-use crate::{
-    app::state::{CopyFeedback, Palette, ToastKind, ToastNotification},
-    detect::AgentState,
-};
+use crate::app::state::{CopyFeedback, Palette, ToastKind, ToastNotification};
 
 pub(crate) fn copy_feedback_rect(area: Rect, feedback: &CopyFeedback, offset_rows: u16) -> Rect {
     if area.width == 0 || area.height == 0 {
@@ -151,15 +148,5 @@ pub(super) fn render_config_diagnostic(frame: &mut Frame, area: Rect, message: &
 
         frame.render_widget(Clear, notif_area);
         frame.render_widget(Paragraph::new(Span::styled(text, style)), notif_area);
-    }
-}
-
-pub(super) fn state_dot(state: AgentState, seen: bool, p: &Palette) -> (&'static str, Style) {
-    match (state, seen) {
-        (AgentState::Blocked, _) => ("●", Style::default().fg(p.red)),
-        (AgentState::Working, _) => ("●", Style::default().fg(p.yellow)),
-        (AgentState::Idle, false) => ("●", Style::default().fg(p.teal)),
-        (AgentState::Idle, true) => ("○", Style::default().fg(p.green)),
-        (AgentState::Unknown, _) => ("·", Style::default().fg(p.overlay0)),
     }
 }

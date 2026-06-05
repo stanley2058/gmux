@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn expanded_sidebar_workspace_rows_show_state_before_name_without_numbers() {
+    fn expanded_sidebar_workspace_rows_show_session_marker_before_name_without_numbers() {
         let mut app = crate::app::state::AppState::test_new();
         let mut ws = Workspace::test_new("one");
         let repo = temp_git_repo("main");
@@ -673,7 +673,7 @@ mod tests {
         let line1 = buffer_row_text(buffer, card, card.y);
         let line2 = buffer_row_text(buffer, card, card.y + 1);
 
-        assert!(line1.starts_with(" · one"));
+        assert!(line1.starts_with(" ● one"));
         assert!(!line1.contains("1 one"));
         assert_eq!(line2, "   main");
 
