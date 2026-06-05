@@ -2170,7 +2170,7 @@ fn top_level_tab_and_pane_aliases_work() {
 
     let split = run_cli(
         &socket_path,
-        &["split-pane", &root_pane_id, "-h", "--focus"],
+        &["split-pane", "-t", &root_pane_id, "-h", "--focus"],
     );
     assert!(
         split.status.success(),
@@ -2187,6 +2187,45 @@ fn top_level_tab_and_pane_aliases_work() {
     assert!(closed.status.success());
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
+
+    let command_split = run_cli(
+        &socket_path,
+        &["split-pane", "--no-focus", "printf split-command-ok"],
+    );
+    assert!(
+        command_split.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&command_split.stderr)
+    );
+    let command_split_json: serde_json::Value =
+        serde_json::from_slice(&command_split.stdout).unwrap();
+    let command_pane_id = command_split_json["result"]["pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let waited_command = run_cli(
+        &socket_path,
+        &[
+            "wait",
+            "output",
+            &command_pane_id,
+            "--match",
+            "split-command-ok",
+            "--source",
+            "recent",
+            "--lines",
+            "40",
+            "--timeout",
+            "5000",
+        ],
+    );
+    assert!(
+        waited_command.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&waited_command.stderr)
+    );
+    let closed_command_pane = run_cli(&socket_path, &["kill-pane", &command_pane_id]);
+    assert!(closed_command_pane.status.success());
 
     let closed_tab = run_cli(&socket_path, &["kill-tab", "2"]);
     assert!(closed_tab.status.success());

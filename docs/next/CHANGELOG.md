@@ -15,6 +15,7 @@
 - Added `gmux integration install droid` for Factory Droid hooks that report session ids through Gmux's socket API. When native agent session restore is enabled, Gmux can resume Droid panes with `droid --resume <id>`.
 
 ### Changed
+- `gmux split-pane` now defaults to the focused pane and accepts `-t`, `-c`, and optional command arguments.
 - Removed workspace and worktree actions from the default keymap and keybind help so the default UX presents sessions, tabs, and panes.
 
 ## [0.6.8] - 2026-06-04

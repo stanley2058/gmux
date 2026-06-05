@@ -4,8 +4,9 @@ use serde::Serialize;
 
 use crate::api::client::{ApiClient, ApiClientError};
 use crate::api::schema::{
-    AgentStatus, Method, OutputMatch, PaneAgentState, PaneListParams, PaneWaitForOutputParams,
-    ReadFormat, ReadSource, Request, SplitDirection, Subscription,
+    AgentStatus, Method, OutputMatch, PaneAgentState, PaneListParams, PaneSendInputParams,
+    PaneSplitParams, PaneWaitForOutputParams, ReadFormat, ReadSource, Request, SplitDirection,
+    Subscription,
 };
 
 mod agent;
@@ -393,28 +394,41 @@ fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")
     ) {
-        eprintln!("usage: gmux split-pane <pane_id> [-h|-v|--direction right|down] [--cwd PATH] [--focus|--no-focus]");
+        eprintln!("usage: gmux split-pane [-t pane] [-h|-v|--direction right|down] [-c|--cwd PATH] [--focus|--no-focus] [command ...]");
         return Ok(0);
     }
 
-    let Some(pane_id) = args.first() else {
-        eprintln!("usage: gmux split-pane <pane_id> [-h|-v|--direction right|down] [--cwd PATH] [--focus|--no-focus]");
-        return Ok(2);
-    };
-
-    let mut pane_args = vec!["split".to_string(), pane_id.clone()];
-    let mut has_direction = false;
-    let mut index = 1;
+    let mut target = None;
+    let mut direction = None;
+    let mut cwd = None;
+    let mut focus = true;
+    let mut command = Vec::new();
+    let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "-t" | "--target" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                target = Some(value.clone());
+                index += 2;
+            }
+            value if value.starts_with("--target=") => {
+                target = Some(
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                );
+                index += 1;
+            }
             "-h" | "--horizontal" => {
-                pane_args.extend(["--direction".to_string(), "right".to_string()]);
-                has_direction = true;
+                direction = Some(SplitDirection::Right);
                 index += 1;
             }
             "-v" | "--vertical" => {
-                pane_args.extend(["--direction".to_string(), "down".to_string()]);
-                has_direction = true;
+                direction = Some(SplitDirection::Down);
                 index += 1;
             }
             "--direction" => {
@@ -422,21 +436,95 @@ fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {
                     eprintln!("missing value for --direction");
                     return Ok(2);
                 };
-                pane_args.extend(["--direction".to_string(), value.clone()]);
-                has_direction = true;
+                direction = Some(parse_split_direction(value)?);
                 index += 2;
             }
-            other => {
-                pane_args.push(other.to_string());
+            "-c" | "--cwd" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                cwd = Some(value.clone());
+                index += 2;
+            }
+            value if value.starts_with("--cwd=") => {
+                cwd = Some(
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                );
                 index += 1;
+            }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
+            "--" => {
+                command.extend(args[index + 1..].iter().cloned());
+                break;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+            value if index == 0 && target.is_none() && looks_like_pane_target(value) => {
+                target = Some(value.to_string());
+                index += 1;
+            }
+            _ => {
+                command.extend(args[index..].iter().cloned());
+                break;
             }
         }
     }
-    if !has_direction {
-        pane_args.extend(["--direction".to_string(), "down".to_string()]);
+
+    let pane_id = match pane_target_or_focused(target)? {
+        Ok(pane_id) => pane_id,
+        Err(code) => return Ok(code),
+    };
+    let response = send_request(&Request {
+        id: "cli:split-pane".into(),
+        method: Method::PaneSplit(PaneSplitParams {
+            workspace_id: None,
+            target_pane_id: pane_id,
+            direction: direction.unwrap_or(SplitDirection::Down),
+            cwd,
+            focus,
+        }),
+    })?;
+    if response.get("error").is_some() {
+        return print_response(&response);
     }
 
-    pane::run_pane_command(&pane_args)
+    if !command.is_empty() {
+        let Some(new_pane_id) = response["result"]["pane"]["pane_id"].as_str() else {
+            eprintln!("split response did not include pane id");
+            return Ok(1);
+        };
+        let send_response = send_request(&Request {
+            id: "cli:split-pane:command".into(),
+            method: Method::PaneSendInput(PaneSendInputParams {
+                pane_id: new_pane_id.to_string(),
+                text: command.join(" "),
+                keys: vec!["Enter".into()],
+            }),
+        })?;
+        if send_response.get("error").is_some() {
+            eprintln!("{}", serde_json::to_string(&send_response).unwrap());
+            return Ok(1);
+        }
+    }
+
+    print_response(&response)
+}
+
+fn looks_like_pane_target(value: &str) -> bool {
+    value.starts_with("p_") || value.contains('-')
 }
 
 fn kill_pane_alias(args: &[String]) -> std::io::Result<i32> {

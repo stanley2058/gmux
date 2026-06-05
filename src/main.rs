@@ -385,7 +385,7 @@ fn main() -> io::Result<()> {
         println!("       gmux capture-pane [-t pane] [-S lines] [-e]");
         println!("       gmux send-text [-t pane] <text>");
         println!("       gmux send-keys [-t pane] <key> [key ...]");
-        println!("       gmux split-pane <pane_id> [-h|-v]");
+        println!("       gmux split-pane [-t pane] [-h|-v] [command ...]");
         println!("       gmux kill-pane <pane_id>");
         println!("       gmux update [--handoff]");
         println!("       gmux channel set <stable|preview>");
@@ -412,7 +412,7 @@ fn main() -> io::Result<()> {
             ("gmux capture-pane", "Print pane output"),
             ("gmux send-text", "Send text to a pane"),
             ("gmux send-keys", "Send key names to a pane"),
-            ("gmux split-pane <pane_id>", "Split a pane"),
+            ("gmux split-pane", "Split the focused or targeted pane"),
             ("gmux kill-pane <pane_id>", "Close a pane"),
             (
                 "gmux status [server|client]",

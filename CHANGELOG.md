@@ -8,6 +8,7 @@
 - Added tmux-style top-level CLI aliases for sessions, tabs, and panes, including `gmux new`, `gmux attach`, `gmux ls`, `gmux kill-session`, `gmux new-tab`, `gmux split-pane`, and `gmux kill-pane`.
 
 ### Changed
+- `gmux split-pane` now defaults to the focused pane and accepts `-t`, `-c`, and optional command arguments.
 - Removed workspace and worktree actions from the default keymap and keybind help so the default UX presents sessions, tabs, and panes.
 
 ## [0.6.8] - 2026-06-04
