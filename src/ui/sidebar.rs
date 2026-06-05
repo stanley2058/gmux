@@ -7,14 +7,14 @@ use ratatui::{
 };
 
 use super::scrollbar::{render_scrollbar, should_show_scrollbar};
-use crate::app::state::{AgentPanelScope, Palette};
+use crate::app::state::{Palette, PanePanelScope};
 use crate::app::{AppState, Mode};
 use crate::terminal::TerminalRuntimeRegistry;
 
 const WORKSPACE_SECTION_HEADER_ROWS: u16 = 2;
 const AGENT_PANEL_HEADER_ROWS: u16 = 3;
 
-pub(crate) struct AgentPanelEntry {
+pub(crate) struct PanePanelEntry {
     pub ws_idx: usize,
     pub tab_idx: usize,
     pub pane_id: crate::layout::PaneId,
@@ -62,7 +62,7 @@ pub(crate) fn sidebar_section_divider_rect(area: Rect, split_ratio: f32) -> Rect
     Rect::new(content.x, content.y + ws_h, content.width, 1)
 }
 
-fn agent_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
+fn pane_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
     if matches!(
         app.mode,
         Mode::Navigate
@@ -82,19 +82,19 @@ fn agent_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
     }
 }
 
-fn agent_panel_toggle_label(scope: AgentPanelScope) -> &'static str {
+fn pane_panel_toggle_label(scope: PanePanelScope) -> &'static str {
     match scope {
-        AgentPanelScope::CurrentWorkspace => "current",
-        AgentPanelScope::AllWorkspaces => "all",
+        PanePanelScope::CurrentWorkspace => "current",
+        PanePanelScope::AllWorkspaces => "all",
     }
 }
 
-pub(crate) fn agent_panel_toggle_rect(area: Rect, scope: AgentPanelScope) -> Rect {
+pub(crate) fn pane_panel_toggle_rect(area: Rect, scope: PanePanelScope) -> Rect {
     if area.width == 0 || area.height < 2 {
         return Rect::default();
     }
 
-    let label = agent_panel_toggle_label(scope);
+    let label = pane_panel_toggle_label(scope);
     let width = label.chars().count() as u16;
     Rect::new(
         area.x + area.width.saturating_sub(width),
@@ -104,21 +104,21 @@ pub(crate) fn agent_panel_toggle_rect(area: Rect, scope: AgentPanelScope) -> Rec
     )
 }
 
-pub(crate) fn agent_panel_entries(app: &AppState) -> Vec<AgentPanelEntry> {
-    agent_panel_entries_with_runtimes(app, None)
+pub(crate) fn pane_panel_entries(app: &AppState) -> Vec<PanePanelEntry> {
+    pane_panel_entries_with_runtimes(app, None)
 }
 
-pub(crate) fn agent_panel_entries_from(
+pub(crate) fn pane_panel_entries_from(
     app: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
-) -> Vec<AgentPanelEntry> {
-    agent_panel_entries_with_runtimes(app, Some(terminal_runtimes))
+) -> Vec<PanePanelEntry> {
+    pane_panel_entries_with_runtimes(app, Some(terminal_runtimes))
 }
 
-fn agent_panel_entries_with_runtimes(
+fn pane_panel_entries_with_runtimes(
     app: &AppState,
     terminal_runtimes: Option<&TerminalRuntimeRegistry>,
-) -> Vec<AgentPanelEntry> {
+) -> Vec<PanePanelEntry> {
     let empty_runtimes;
     let terminal_runtimes = match terminal_runtimes {
         Some(terminal_runtimes) => terminal_runtimes,
@@ -128,9 +128,9 @@ fn agent_panel_entries_with_runtimes(
         }
     };
 
-    match app.agent_panel_scope {
-        AgentPanelScope::CurrentWorkspace => {
-            let Some(ws_idx) = agent_panel_current_workspace_idx(app) else {
+    match app.pane_panel_scope {
+        PanePanelScope::CurrentWorkspace => {
+            let Some(ws_idx) = pane_panel_current_workspace_idx(app) else {
                 return Vec::new();
             };
             let Some(ws) = app.workspaces.get(ws_idx) else {
@@ -138,7 +138,7 @@ fn agent_panel_entries_with_runtimes(
             };
             ws.pane_details(&app.terminals)
                 .into_iter()
-                .map(|detail| AgentPanelEntry {
+                .map(|detail| PanePanelEntry {
                     ws_idx,
                     tab_idx: detail.tab_idx,
                     pane_id: detail.pane_id,
@@ -148,7 +148,7 @@ fn agent_panel_entries_with_runtimes(
                 })
                 .collect()
         }
-        AgentPanelScope::AllWorkspaces => app
+        PanePanelScope::AllWorkspaces => app
             .workspaces
             .iter()
             .enumerate()
@@ -157,7 +157,7 @@ fn agent_panel_entries_with_runtimes(
                 let workspace_label = ws.display_name_from(&app.terminals, terminal_runtimes);
                 ws.pane_details(&app.terminals)
                     .into_iter()
-                    .map(move |detail| AgentPanelEntry {
+                    .map(move |detail| PanePanelEntry {
                         ws_idx,
                         tab_idx: detail.tab_idx,
                         pane_id: detail.pane_id,
@@ -185,7 +185,7 @@ fn truncate_text(text: &str, max_width: usize) -> String {
     format!("{prefix}…")
 }
 
-fn format_agent_panel_primary_label(entry: &AgentPanelEntry, max_width: usize) -> String {
+fn format_pane_panel_primary_label(entry: &PanePanelEntry, max_width: usize) -> String {
     let Some(tab_label) = entry.primary_tab_label.as_deref() else {
         return truncate_text(&entry.primary_label, max_width);
     };
@@ -492,7 +492,7 @@ pub(crate) fn workspace_list_scrollbar_rect(app: &AppState, area: Rect) -> Optio
     ))
 }
 
-pub(crate) fn agent_panel_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
+pub(crate) fn pane_panel_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
     if area.width == 0 || area.height <= AGENT_PANEL_HEADER_ROWS {
         return Rect::default();
     }
@@ -503,8 +503,8 @@ pub(crate) fn agent_panel_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
     Rect::new(area.x, body_y, body_width, body_height)
 }
 
-fn agent_panel_visible_count(area: Rect) -> usize {
-    let body = agent_panel_body_rect(area, false);
+fn pane_panel_visible_count(area: Rect) -> usize {
+    let body = pane_panel_body_rect(area, false);
     if body.width == 0 || body.height < 2 {
         return 0;
     }
@@ -521,12 +521,12 @@ fn agent_panel_visible_count(area: Rect) -> usize {
     visible
 }
 
-pub(crate) fn agent_panel_scroll_metrics(app: &AppState, area: Rect) -> crate::pane::ScrollMetrics {
-    let viewport_rows = agent_panel_visible_count(area);
-    let total_rows = agent_panel_entries(app).len();
+pub(crate) fn pane_panel_scroll_metrics(app: &AppState, area: Rect) -> crate::pane::ScrollMetrics {
+    let viewport_rows = pane_panel_visible_count(area);
+    let total_rows = pane_panel_entries(app).len();
     let max_offset_from_bottom = total_rows.saturating_sub(viewport_rows);
     let offset_from_bottom = total_rows
-        .saturating_sub(app.agent_panel_scroll)
+        .saturating_sub(app.pane_panel_scroll)
         .saturating_sub(viewport_rows);
 
     crate::pane::ScrollMetrics {
@@ -536,9 +536,9 @@ pub(crate) fn agent_panel_scroll_metrics(app: &AppState, area: Rect) -> crate::p
     }
 }
 
-pub(crate) fn agent_panel_scrollbar_rect(app: &AppState, area: Rect) -> Option<Rect> {
-    let metrics = agent_panel_scroll_metrics(app, area);
-    let body = agent_panel_body_rect(area, true);
+pub(crate) fn pane_panel_scrollbar_rect(app: &AppState, area: Rect) -> Option<Rect> {
+    let metrics = pane_panel_scroll_metrics(app, area);
+    let body = pane_panel_body_rect(area, true);
     (should_show_scrollbar(metrics) && body.width > 0 && body.height > 0).then_some(Rect::new(
         area.x + area.width.saturating_sub(1),
         body.y,
@@ -808,7 +808,7 @@ pub(super) fn render_sidebar(
     let (ws_area, detail_area) = expanded_sidebar_sections(area, app.sidebar_section_split);
 
     render_workspace_list(app, terminal_runtimes, frame, ws_area, is_navigating);
-    render_agent_detail(app, terminal_runtimes, frame, detail_area);
+    render_pane_detail(app, terminal_runtimes, frame, detail_area);
     render_sidebar_toggle(app, frame, area, false, p);
 }
 
@@ -1018,7 +1018,7 @@ fn render_workspace_list(
     }
 }
 
-fn render_agent_detail(
+fn render_pane_detail(
     app: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
     frame: &mut Frame,
@@ -1043,11 +1043,11 @@ fn render_agent_detail(
         )])),
         Rect::new(area.x, area.y + 1, area.width, 1),
     );
-    let toggle_rect = agent_panel_toggle_rect(area, app.agent_panel_scope);
+    let toggle_rect = pane_panel_toggle_rect(area, app.pane_panel_scope);
     if toggle_rect != Rect::default() {
         frame.render_widget(
             Paragraph::new(Span::styled(
-                agent_panel_toggle_label(app.agent_panel_scope),
+                pane_panel_toggle_label(app.pane_panel_scope),
                 Style::default().fg(p.overlay0).add_modifier(Modifier::BOLD),
             ))
             .alignment(Alignment::Right),
@@ -1055,17 +1055,17 @@ fn render_agent_detail(
         );
     }
 
-    let details = agent_panel_entries_from(app, terminal_runtimes);
-    let metrics = agent_panel_scroll_metrics(app, area);
-    let scrollbar_rect = agent_panel_scrollbar_rect(app, area);
-    let body = agent_panel_body_rect(area, should_show_scrollbar(metrics));
+    let details = pane_panel_entries_from(app, terminal_runtimes);
+    let metrics = pane_panel_scroll_metrics(app, area);
+    let scrollbar_rect = pane_panel_scrollbar_rect(app, area);
+    let body = pane_panel_body_rect(area, should_show_scrollbar(metrics));
     if body == Rect::default() {
         return;
     }
 
     let mut row_y = body.y;
     let body_bottom = body.y + body.height;
-    for detail in details.iter().skip(app.agent_panel_scroll) {
+    for detail in details.iter().skip(app.pane_panel_scroll) {
         if row_y.saturating_add(1) >= body_bottom {
             break;
         }
@@ -1086,7 +1086,7 @@ fn render_agent_detail(
         let detail_style = Style::default().fg(p.overlay0).add_modifier(Modifier::DIM);
 
         let primary_label =
-            format_agent_panel_primary_label(detail, body.width.saturating_sub(1) as usize);
+            format_pane_panel_primary_label(detail, body.width.saturating_sub(1) as usize);
         let name_line = Line::from(vec![
             Span::styled(" ", Style::default()),
             Span::styled(primary_label, name_style),
@@ -1199,7 +1199,7 @@ mod tests {
     }
 
     #[test]
-    fn all_workspaces_agent_panel_entries_use_workspace_and_optional_tab_labels() {
+    fn all_workspaces_pane_panel_entries_use_workspace_and_optional_tab_labels() {
         let mut app = crate::app::state::AppState::test_new();
         let first = Workspace::test_new("one");
         let first_pane = first.tabs[0].root_pane;
@@ -1225,9 +1225,9 @@ mod tests {
             .detected_agent = Some(Agent::Claude);
         app.active = Some(0);
         app.selected = 0;
-        app.agent_panel_scope = AgentPanelScope::AllWorkspaces;
+        app.pane_panel_scope = PanePanelScope::AllWorkspaces;
 
-        let entries = agent_panel_entries(&app);
+        let entries = pane_panel_entries(&app);
         assert_eq!(entries[0].primary_label, "one");
         assert!(entries[0].primary_tab_label.is_none());
         assert!(entries.iter().any(|entry| {
@@ -1236,7 +1236,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_workspaces_agent_panel_entries_use_live_root_runtime_cwd_for_workspace_label() {
+    async fn all_workspaces_pane_panel_entries_use_live_root_runtime_cwd_for_workspace_label() {
         let unique = format!(
             "gmux-agent-panel-runtime-cwd-{}-{}",
             std::process::id(),
@@ -1267,7 +1267,7 @@ mod tests {
         terminal.detected_agent = Some(Agent::Pi);
         app.active = Some(0);
         app.selected = 0;
-        app.agent_panel_scope = AgentPanelScope::AllWorkspaces;
+        app.pane_panel_scope = PanePanelScope::AllWorkspaces;
 
         let (events, _) = tokio::sync::mpsc::channel(4);
         let runtime = crate::terminal::TerminalRuntime::spawn(
@@ -1291,7 +1291,7 @@ mod tests {
 
         let mut runtime_registry = TerminalRuntimeRegistry::new();
         runtime_registry.insert(terminal_id, runtime);
-        let entries = agent_panel_entries_from(&app, &runtime_registry);
+        let entries = pane_panel_entries_from(&app, &runtime_registry);
         let primary_label = entries[0].primary_label.clone();
 
         for (_, runtime) in runtime_registry.drain() {
@@ -1304,7 +1304,7 @@ mod tests {
 
     #[test]
     fn all_workspaces_primary_label_truncates_workspace_and_tab() {
-        let entry = AgentPanelEntry {
+        let entry = PanePanelEntry {
             ws_idx: 0,
             tab_idx: 0,
             pane_id: crate::layout::PaneId::from_raw(1),
@@ -1313,7 +1313,7 @@ mod tests {
             custom_status: None,
         };
 
-        let label = format_agent_panel_primary_label(&entry, 18);
+        let label = format_pane_panel_primary_label(&entry, 18);
 
         assert_eq!(label, "agent-bro… · test…");
     }

@@ -815,7 +815,7 @@ pub(crate) enum CopyModeSelection {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum AgentPanelScope {
+pub enum PanePanelScope {
     CurrentWorkspace,
     #[default]
     AllWorkspaces,
@@ -973,7 +973,7 @@ pub(crate) enum DragTarget {
     WorkspaceListScrollbar {
         grab_row_offset: u16,
     },
-    AgentPanelScrollbar {
+    PanePanelScrollbar {
         grab_row_offset: u16,
     },
     PaneSplit {
@@ -1219,7 +1219,7 @@ pub struct AppState {
     pub navigator: NavigatorState,
     pub copy_mode: Option<CopyModeState>,
     pub workspace_scroll: usize,
-    pub agent_panel_scroll: usize,
+    pub pane_panel_scroll: usize,
     pub tab_scroll: usize,
     pub tab_scroll_follow_active: bool,
     pub mobile_switcher_scroll: usize,
@@ -1255,7 +1255,7 @@ pub struct AppState {
     pub sidebar_collapsed: bool,
     /// Ratio of sidebar height allocated to the workspaces section.
     pub sidebar_section_split: f32,
-    pub agent_panel_scope: AgentPanelScope,
+    pub pane_panel_scope: PanePanelScope,
     /// Capture mouse input for Gmux's own mouse UI. When false, Gmux only
     /// captures mouse while the focused pane app requests mouse reporting.
     pub mouse_capture: bool,
@@ -1519,7 +1519,7 @@ impl AppState {
             navigator: NavigatorState::default(),
             copy_mode: None,
             workspace_scroll: 0,
-            agent_panel_scroll: 0,
+            pane_panel_scroll: 0,
             tab_scroll: 0,
             tab_scroll_follow_active: true,
             mobile_switcher_scroll: 0,
@@ -1564,7 +1564,7 @@ impl AppState {
             sidebar_width_auto: false,
             sidebar_collapsed: false,
             sidebar_section_split: 0.5,
-            agent_panel_scope: AgentPanelScope::AllWorkspaces,
+            pane_panel_scope: PanePanelScope::AllWorkspaces,
             mouse_capture: true,
             right_click_passthrough_modifiers: None,
             right_click_passthrough: None,

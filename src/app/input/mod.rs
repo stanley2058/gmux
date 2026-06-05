@@ -204,7 +204,7 @@ impl App {
 
         let handled_pane_double_click = self.handle_pane_double_click(mouse);
 
-        let previous_agent_panel_scope = self.state.agent_panel_scope;
+        let previous_pane_panel_scope = self.state.pane_panel_scope;
         if !handled_pane_double_click {
             if let Some(action) = self.state.handle_mouse(&mut self.terminal_runtimes, mouse) {
                 match action {
@@ -222,8 +222,8 @@ impl App {
                 }
             }
         }
-        if self.state.agent_panel_scope != previous_agent_panel_scope {
-            self.save_agent_panel_scope(self.state.agent_panel_scope);
+        if self.state.pane_panel_scope != previous_pane_panel_scope {
+            self.save_pane_panel_scope(self.state.pane_panel_scope);
         }
 
         if let Some(content) = self.state.request_clipboard_write.take() {
@@ -488,7 +488,7 @@ fn capture_snapshot(state: &AppState) -> crate::persist::SessionSnapshot {
         &terminal_runtimes,
         state.active,
         state.selected,
-        state.agent_panel_scope,
+        state.pane_panel_scope,
         state.sidebar_width,
         state.sidebar_section_split,
         state.collapsed_space_keys.clone(),

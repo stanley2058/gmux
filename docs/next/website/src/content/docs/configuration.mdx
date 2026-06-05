@@ -259,8 +259,7 @@ redraw_on_focus_gained = true
 mouse_scroll_lines = 3
 confirm_close = true
 prompt_new_tab_name = true
-show_agent_labels_on_pane_borders = false
-agent_panel_scope = "all"
+pane_panel_scope = "all"
 accent = "cyan"
 ```
 
@@ -268,7 +267,7 @@ accent = "cyan"
 
 `mobile_width_threshold` controls the terminal width at or below which Gmux uses the mobile single-column layout. The default is 64 columns; increase it for foldables, tablets, or wide phone terminals.
 
-`agent_panel_scope` can be `all` or `current`. Use `current` if you only want the agent panel to show agents in the active workspace.
+`pane_panel_scope` can be `all` or `current`. Use `current` if you only want the pane panel to show panes in the active session.
 
 `confirm_close` controls whether closing a workspace asks for confirmation. `prompt_new_tab_name` controls whether new tabs ask for a label first.
 
@@ -279,8 +278,6 @@ Set `right_click_passthrough_modifier = "ctrl"` if you want Ctrl-right-click, ho
 Set `redraw_on_focus_gained = false` to avoid the visible full-screen refresh when switching back to Gmux. The default is `true` because a full redraw recovers from rare stale or dirty host terminal surfaces.
 
 Set `mouse_scroll_lines` to change how many pane scrollback lines each mouse wheel notch scrolls. The default is 3. Pane apps that request mouse reporting still receive wheel events directly.
-
-Set `show_agent_labels_on_pane_borders = true` if you want detected agent labels in split pane borders when no manual pane label is set.
 
 ## Notifications
 

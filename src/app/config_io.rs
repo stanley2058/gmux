@@ -94,20 +94,20 @@ impl App {
         }
     }
 
-    pub(super) fn save_agent_panel_scope(&mut self, scope: crate::app::state::AgentPanelScope) {
+    pub(super) fn save_pane_panel_scope(&mut self, scope: crate::app::state::PanePanelScope) {
         let value = match scope {
-            crate::app::state::AgentPanelScope::CurrentWorkspace => {
-                crate::config::AgentPanelScopeConfig::Current.as_str()
+            crate::app::state::PanePanelScope::CurrentWorkspace => {
+                crate::config::PanePanelScopeConfig::Current.as_str()
             }
-            crate::app::state::AgentPanelScope::AllWorkspaces => {
-                crate::config::AgentPanelScopeConfig::All.as_str()
+            crate::app::state::PanePanelScope::AllWorkspaces => {
+                crate::config::PanePanelScopeConfig::All.as_str()
             }
         };
-        if self.update_config_file("agent panel scope", |content| {
+        if self.update_config_file("pane panel scope", |content| {
             crate::config::upsert_section_value(
                 content,
                 "ui",
-                "agent_panel_scope",
+                "pane_panel_scope",
                 &format!("\"{value}\""),
             )
         }) {

@@ -13,7 +13,7 @@ impl AppState {
         crate::ui::workspace_list_rect(sidebar, self.sidebar_section_split)
     }
 
-    pub(super) fn agent_panel_rect(&self) -> Rect {
+    pub(super) fn pane_panel_rect(&self) -> Rect {
         let sidebar = self.view.sidebar_rect;
         if self.sidebar_collapsed || sidebar.width <= 1 || sidebar.height == 0 {
             return Rect::default();
@@ -102,14 +102,14 @@ impl AppState {
         );
     }
 
-    pub(super) fn agent_panel_scrollbar_target_at(
+    pub(super) fn pane_panel_scrollbar_target_at(
         &self,
         col: u16,
         row: u16,
     ) -> Option<ScrollbarClickTarget> {
-        let area = self.agent_panel_rect();
-        let metrics = crate::ui::agent_panel_scroll_metrics(self, area);
-        let track = crate::ui::agent_panel_scrollbar_rect(self, area)?;
+        let area = self.pane_panel_rect();
+        let metrics = crate::ui::pane_panel_scroll_metrics(self, area);
+        let track = crate::ui::pane_panel_scrollbar_rect(self, area)?;
         if col < track.x
             || col >= track.x + track.width
             || row < track.y
@@ -126,14 +126,14 @@ impl AppState {
         }
     }
 
-    pub(super) fn agent_panel_offset_for_drag_row(
+    pub(super) fn pane_panel_offset_for_drag_row(
         &self,
         row: u16,
         grab_row_offset: u16,
     ) -> Option<usize> {
-        let area = self.agent_panel_rect();
-        let metrics = crate::ui::agent_panel_scroll_metrics(self, area);
-        let track = crate::ui::agent_panel_scrollbar_rect(self, area)?;
+        let area = self.pane_panel_rect();
+        let metrics = crate::ui::pane_panel_scroll_metrics(self, area);
+        let track = crate::ui::pane_panel_scrollbar_rect(self, area)?;
         Some(crate::ui::scrollbar_offset_from_drag_row(
             metrics,
             track,
@@ -142,24 +142,24 @@ impl AppState {
         ))
     }
 
-    pub(super) fn set_agent_panel_offset_from_bottom(&mut self, offset_from_bottom: usize) {
-        let area = self.agent_panel_rect();
-        let metrics = crate::ui::agent_panel_scroll_metrics(self, area);
-        self.agent_panel_scroll = metrics
+    pub(super) fn set_pane_panel_offset_from_bottom(&mut self, offset_from_bottom: usize) {
+        let area = self.pane_panel_rect();
+        let metrics = crate::ui::pane_panel_scroll_metrics(self, area);
+        self.pane_panel_scroll = metrics
             .max_offset_from_bottom
             .saturating_sub(offset_from_bottom);
     }
 
-    pub(super) fn scroll_agent_panel(&mut self, delta: i16) {
-        let area = self.agent_panel_rect();
-        let max_scroll = crate::ui::agent_panel_scroll_metrics(self, area).max_offset_from_bottom;
+    pub(super) fn scroll_pane_panel(&mut self, delta: i16) {
+        let area = self.pane_panel_rect();
+        let max_scroll = crate::ui::pane_panel_scroll_metrics(self, area).max_offset_from_bottom;
         if delta.is_negative() {
-            self.agent_panel_scroll = self
-                .agent_panel_scroll
+            self.pane_panel_scroll = self
+                .pane_panel_scroll
                 .saturating_sub(delta.unsigned_abs() as usize);
         } else {
-            self.agent_panel_scroll = self
-                .agent_panel_scroll
+            self.pane_panel_scroll = self
+                .pane_panel_scroll
                 .saturating_add(delta as usize)
                 .min(max_scroll);
         }
@@ -348,7 +348,7 @@ impl AppState {
         }
     }
 
-    pub(super) fn collapsed_agent_detail_target_at(
+    pub(super) fn collapsed_pane_detail_target_at(
         &self,
         row: u16,
     ) -> Option<(usize, usize, crate::layout::PaneId)> {
@@ -432,7 +432,7 @@ impl AppState {
         best.map(|(insert_idx, _)| insert_idx)
     }
 
-    pub(super) fn on_agent_panel_scope_toggle(&self, col: u16, row: u16) -> bool {
+    pub(super) fn on_pane_panel_scope_toggle(&self, col: u16, row: u16) -> bool {
         if self.sidebar_collapsed {
             return false;
         }
@@ -441,7 +441,7 @@ impl AppState {
             self.view.sidebar_rect,
             self.sidebar_section_split,
         );
-        let rect = crate::ui::agent_panel_toggle_rect(detail_area, self.agent_panel_scope);
+        let rect = crate::ui::pane_panel_toggle_rect(detail_area, self.pane_panel_scope);
         rect.width > 0
             && col >= rect.x
             && col < rect.x + rect.width
@@ -449,7 +449,7 @@ impl AppState {
             && row < rect.y + rect.height
     }
 
-    pub(super) fn agent_detail_target_at(
+    pub(super) fn pane_detail_target_at(
         &self,
         row: u16,
     ) -> Option<(usize, usize, crate::layout::PaneId)> {
@@ -457,20 +457,18 @@ impl AppState {
             return None;
         }
 
-        let detail_area = self.agent_panel_rect();
-        let metrics = crate::ui::agent_panel_scroll_metrics(self, detail_area);
-        let body = crate::ui::agent_panel_body_rect(
-            detail_area,
-            crate::ui::should_show_scrollbar(metrics),
-        );
+        let detail_area = self.pane_panel_rect();
+        let metrics = crate::ui::pane_panel_scroll_metrics(self, detail_area);
+        let body =
+            crate::ui::pane_panel_body_rect(detail_area, crate::ui::should_show_scrollbar(metrics));
         if body.height < 2 || row < body.y || row >= body.y + body.height {
             return None;
         }
 
         let mut row_y = body.y;
-        for detail in crate::ui::agent_panel_entries(self)
+        for detail in crate::ui::pane_panel_entries(self)
             .into_iter()
-            .skip(self.agent_panel_scroll)
+            .skip(self.pane_panel_scroll)
         {
             if row_y.saturating_add(1) >= body.y + body.height {
                 break;
@@ -496,7 +494,7 @@ mod tests {
 
     use super::super::{app_for_mouse_test, capture_snapshot, mouse, unique_temp_path};
     use crate::{
-        app::state::{AgentPanelScope, DragTarget, Mode},
+        app::state::{DragTarget, Mode, PanePanelScope},
         detect::Agent,
         workspace::Workspace,
     };
@@ -665,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_agent_detail_row_switches_to_correct_tab_and_pane() {
+    fn clicking_pane_detail_row_switches_to_correct_tab_and_pane() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         ws.tabs[0].set_custom_name("main".into());
@@ -711,39 +709,33 @@ mod tests {
     }
 
     #[test]
-    fn clicking_agent_panel_toggle_switches_scope() {
+    fn clicking_pane_panel_toggle_switches_scope() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
-        app.state.agent_panel_scroll = 3;
+        app.state.pane_panel_scroll = 3;
 
         let (_, detail_area) = crate::ui::expanded_sidebar_sections(
             app.state.view.sidebar_rect,
             app.state.sidebar_section_split,
         );
-        let toggle = crate::ui::agent_panel_toggle_rect(detail_area, app.state.agent_panel_scope);
+        let toggle = crate::ui::pane_panel_toggle_rect(detail_area, app.state.pane_panel_scope);
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             toggle.x,
             toggle.y,
         ));
 
-        assert_eq!(
-            app.state.agent_panel_scope,
-            AgentPanelScope::CurrentWorkspace
-        );
-        assert_eq!(app.state.agent_panel_scroll, 0);
+        assert_eq!(app.state.pane_panel_scope, PanePanelScope::CurrentWorkspace);
+        assert_eq!(app.state.pane_panel_scroll, 0);
         let snapshot = capture_snapshot(&app.state);
-        assert_eq!(
-            snapshot.agent_panel_scope,
-            AgentPanelScope::CurrentWorkspace
-        );
+        assert_eq!(snapshot.pane_panel_scope, PanePanelScope::CurrentWorkspace);
     }
 
     #[test]
-    fn clicking_all_workspaces_agent_row_switches_to_correct_workspace() {
+    fn clicking_all_workspaces_pane_row_switches_to_correct_workspace() {
         let mut app = app_for_mouse_test();
         let first = Workspace::test_new("one");
         let first_pane = first.tabs[0].root_pane;
@@ -772,7 +764,7 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
-        app.state.agent_panel_scope = AgentPanelScope::AllWorkspaces;
+        app.state.pane_panel_scope = PanePanelScope::AllWorkspaces;
 
         let (_, detail_area) = crate::ui::expanded_sidebar_sections(
             app.state.view.sidebar_rect,
@@ -794,7 +786,7 @@ mod tests {
     }
 
     #[test]
-    fn scrolling_agent_panel_with_wheel_updates_agent_panel_scroll() {
+    fn scrolling_pane_panel_with_wheel_updates_pane_panel_scroll() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         let first_pane = ws.tabs[0].root_pane;
@@ -834,9 +826,9 @@ mod tests {
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
 
-        let detail_area = app.state.agent_panel_rect();
+        let detail_area = app.state.pane_panel_rect();
         assert!(crate::ui::should_show_scrollbar(
-            crate::ui::agent_panel_scroll_metrics(&app.state, detail_area)
+            crate::ui::pane_panel_scroll_metrics(&app.state, detail_area)
         ));
 
         app.handle_mouse(mouse(
@@ -845,12 +837,12 @@ mod tests {
             detail_area.y + 4,
         ));
 
-        assert_eq!(app.state.agent_panel_scroll, 1);
+        assert_eq!(app.state.pane_panel_scroll, 1);
         assert_eq!(app.state.selected, 0);
     }
 
     #[test]
-    fn clicking_scrolled_agent_detail_row_switches_to_correct_tab_and_pane() {
+    fn clicking_scrolled_pane_detail_row_switches_to_correct_tab_and_pane() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         let first_pane = ws.tabs[0].root_pane;
@@ -894,10 +886,10 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
-        app.state.agent_panel_scroll = 1;
+        app.state.pane_panel_scroll = 1;
 
-        let detail_area = app.state.agent_panel_rect();
-        let body = crate::ui::agent_panel_body_rect(detail_area, true);
+        let detail_area = app.state.pane_panel_rect();
+        let body = crate::ui::pane_panel_body_rect(detail_area, true);
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             body.x + 1,
@@ -913,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_collapsed_agent_row_switches_to_correct_tab_and_pane() {
+    fn clicking_collapsed_pane_row_switches_to_correct_tab_and_pane() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         let first_pane = ws.tabs[0].root_pane;

@@ -651,10 +651,10 @@ impl AppState {
             crate::logging::workspace_focused(&workspace_id);
             self.mark_session_dirty();
             if matches!(
-                self.agent_panel_scope,
-                crate::app::state::AgentPanelScope::CurrentWorkspace
+                self.pane_panel_scope,
+                crate::app::state::PanePanelScope::CurrentWorkspace
             ) {
-                self.agent_panel_scroll = 0;
+                self.pane_panel_scroll = 0;
             }
             self.ensure_workspace_visible(idx);
             if let Some(ws) = self.workspaces.get_mut(idx) {
@@ -694,11 +694,11 @@ impl AppState {
         self.mark_session_dirty();
         if workspace_changed
             && matches!(
-                self.agent_panel_scope,
-                crate::app::state::AgentPanelScope::CurrentWorkspace
+                self.pane_panel_scope,
+                crate::app::state::PanePanelScope::CurrentWorkspace
             )
         {
-            self.agent_panel_scroll = 0;
+            self.pane_panel_scroll = 0;
         }
         self.ensure_workspace_visible(ws_idx);
         if let Some(ws) = self.workspaces.get_mut(ws_idx) {
@@ -976,7 +976,7 @@ impl AppState {
     }
 
     pub fn focus_agent_entry(&mut self, idx: usize) -> bool {
-        let entries = crate::ui::agent_panel_entries(self);
+        let entries = crate::ui::pane_panel_entries(self);
         let Some(target) = entries.get(idx) else {
             return false;
         };
@@ -985,19 +985,19 @@ impl AppState {
 
         if self.active == Some(ws_idx) && self.workspaces[ws_idx].focused_pane_id() == Some(pane_id)
         {
-            self.ensure_agent_panel_entry_visible(idx);
+            self.ensure_pane_panel_entry_visible(idx);
             return true;
         }
 
         if self.focus_pane_in_workspace(ws_idx, pane_id) {
-            self.ensure_agent_panel_entry_visible(idx);
+            self.ensure_pane_panel_entry_visible(idx);
             return true;
         }
         false
     }
 
     fn cycle_agent_entry(&mut self, forward: bool) {
-        let entries = crate::ui::agent_panel_entries(self);
+        let entries = crate::ui::pane_panel_entries(self);
         if entries.is_empty() {
             return;
         }
@@ -1019,7 +1019,7 @@ impl AppState {
         self.focus_agent_entry(target_idx);
     }
 
-    fn ensure_agent_panel_entry_visible(&mut self, idx: usize) {
+    fn ensure_pane_panel_entry_visible(&mut self, idx: usize) {
         if self.sidebar_collapsed {
             return;
         }
@@ -1028,21 +1028,21 @@ impl AppState {
             self.view.sidebar_rect,
             self.sidebar_section_split,
         );
-        let metrics = crate::ui::agent_panel_scroll_metrics(self, detail_area);
+        let metrics = crate::ui::pane_panel_scroll_metrics(self, detail_area);
         let visible = metrics.viewport_rows;
         if visible == 0 {
             return;
         }
 
-        if idx < self.agent_panel_scroll {
-            self.agent_panel_scroll = idx;
-        } else if idx >= self.agent_panel_scroll.saturating_add(visible) {
-            self.agent_panel_scroll = idx.saturating_add(1).saturating_sub(visible);
+        if idx < self.pane_panel_scroll {
+            self.pane_panel_scroll = idx;
+        } else if idx >= self.pane_panel_scroll.saturating_add(visible) {
+            self.pane_panel_scroll = idx.saturating_add(1).saturating_sub(visible);
         }
 
         let max_scroll =
-            crate::ui::agent_panel_scroll_metrics(self, detail_area).max_offset_from_bottom;
-        self.agent_panel_scroll = self.agent_panel_scroll.min(max_scroll);
+            crate::ui::pane_panel_scroll_metrics(self, detail_area).max_offset_from_bottom;
+        self.pane_panel_scroll = self.pane_panel_scroll.min(max_scroll);
     }
 
     pub(crate) fn terminal_ids_for_workspace(
@@ -2574,7 +2574,7 @@ mod tests {
             row.target,
             crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == shell
         )));
-        let agent_row = rows
+        let pane_row = rows
             .iter()
             .find(|row| {
                 matches!(
@@ -2583,7 +2583,7 @@ mod tests {
                 )
             })
             .expect("detected pane should still appear in the navigator");
-        assert_eq!(agent_row.meta, "shell");
+        assert_eq!(pane_row.meta, "shell");
     }
 
     #[test]
@@ -2853,7 +2853,7 @@ mod tests {
     }
 
     #[test]
-    fn next_agent_cycles_agent_panel_entries_in_all_scope() {
+    fn next_agent_cycles_pane_panel_entries_in_all_scope() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
         let first_second = first.test_split(Direction::Horizontal);
@@ -2867,7 +2867,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.agent_panel_scope = crate::app::state::AgentPanelScope::AllWorkspaces;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
         mark_agent(&mut state, 0, 0, first_root);
         mark_agent(&mut state, 0, 0, first_second);
         mark_agent(&mut state, 1, 0, second_root);
@@ -2886,7 +2886,7 @@ mod tests {
     }
 
     #[test]
-    fn focus_agent_entry_uses_agent_panel_order() {
+    fn focus_agent_entry_uses_pane_panel_order() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
         let first_second = first.test_split(Direction::Horizontal);
@@ -2899,7 +2899,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.agent_panel_scope = crate::app::state::AgentPanelScope::AllWorkspaces;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
         mark_agent(&mut state, 0, 0, first_root);
         mark_agent(&mut state, 0, 0, first_second);
         mark_agent(&mut state, 1, 0, second_root);
@@ -2914,7 +2914,7 @@ mod tests {
     fn focus_agent_entry_succeeds_for_already_focused_agent() {
         let mut state = app_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
-        state.agent_panel_scope = crate::app::state::AgentPanelScope::AllWorkspaces;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
         mark_agent(&mut state, 0, 0, root);
 
         assert!(state.focus_agent_entry(0));
@@ -2937,7 +2937,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.agent_panel_scope = crate::app::state::AgentPanelScope::CurrentWorkspace;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::CurrentWorkspace;
         mark_agent(&mut state, 0, 0, first_root);
         mark_agent(&mut state, 0, 0, first_second);
         mark_agent(&mut state, 1, 0, second_root);
@@ -2949,7 +2949,7 @@ mod tests {
     }
 
     #[test]
-    fn previous_agent_keeps_wrapped_target_visible_in_agent_panel() {
+    fn previous_agent_keeps_wrapped_target_visible_in_pane_panel() {
         let mut workspace = Workspace::test_new("one");
         let root = workspace.tabs[0].root_pane;
         for idx in 1..8 {
@@ -2962,7 +2962,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.agent_panel_scope = crate::app::state::AgentPanelScope::CurrentWorkspace;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::CurrentWorkspace;
         for tab_idx in 0..state.workspaces[0].tabs.len() {
             let pane_id = state.workspaces[0].tabs[tab_idx].root_pane;
             mark_agent(&mut state, 0, tab_idx, pane_id);
@@ -2974,7 +2974,7 @@ mod tests {
 
         let last_idx = state.workspaces[0].tabs.len() - 1;
         assert_eq!(state.workspaces[0].active_tab, last_idx);
-        assert!(state.agent_panel_scroll > 0);
+        assert!(state.pane_panel_scroll > 0);
     }
 
     #[test]

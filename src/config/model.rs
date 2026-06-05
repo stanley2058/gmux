@@ -51,13 +51,13 @@ pub enum ToastDelivery {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum AgentPanelScopeConfig {
+pub enum PanePanelScopeConfig {
     Current,
     #[default]
     All,
 }
 
-impl AgentPanelScopeConfig {
+impl PanePanelScopeConfig {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Current => "current",
@@ -281,11 +281,11 @@ pub struct KeysConfig {
     pub previous_workspace: BindingConfig,
     /// Select the next workspace. Unset by default.
     pub next_workspace: BindingConfig,
-    /// Focus the previous agent shown in the agent panel. Unset by default.
+    /// Focus the previous pane shown in the pane panel. Unset by default.
     pub previous_agent: BindingConfig,
-    /// Focus the next agent shown in the agent panel. Unset by default.
+    /// Focus the next pane shown in the pane panel. Unset by default.
     pub next_agent: BindingConfig,
-    /// Focus an agent by index 1-9. Unset by default.
+    /// Focus a pane-panel entry by index 1-9. Unset by default.
     pub focus_agent: BindingConfig,
     /// Create a new tab in the active workspace. Default: "prefix+c"
     pub new_tab: BindingConfig,
@@ -383,8 +383,9 @@ pub struct UiConfig {
     pub prompt_new_tab_name: bool,
     /// Show agent labels in split pane borders when no manual pane label is set. Default: false.
     pub show_agent_labels_on_pane_borders: bool,
-    /// Agent sidebar scope. Saved values are "current" or "all". Default: "all".
-    pub agent_panel_scope: AgentPanelScopeConfig,
+    /// Pane detail panel scope. Saved values are "current" or "all". Default: "all".
+    #[serde(alias = "agent_panel_scope")]
+    pub pane_panel_scope: PanePanelScopeConfig,
     /// Accent color for highlights, borders, and navigation UI.
     /// Accepts hex (#89b4fa), named colors (cyan, blue), or RGB (rgb(137,180,250)).
     pub accent: String,
@@ -570,7 +571,7 @@ impl Default for UiConfig {
             confirm_close: true,
             prompt_new_tab_name: true,
             show_agent_labels_on_pane_borders: false,
-            agent_panel_scope: AgentPanelScopeConfig::All,
+            pane_panel_scope: PanePanelScopeConfig::All,
             accent: "cyan".into(),
             toast: ToastConfig::default(),
             sound: SoundConfig::default(),
@@ -706,13 +707,23 @@ resume_agents_on_restore = true
     }
 
     #[test]
-    fn agent_panel_scope_config_parses() {
+    fn pane_panel_scope_config_parses() {
         let toml = r#"
 [ui]
-agent_panel_scope = "all"
+pane_panel_scope = "all"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
-        assert_eq!(config.ui.agent_panel_scope, AgentPanelScopeConfig::All);
+        assert_eq!(config.ui.pane_panel_scope, PanePanelScopeConfig::All);
+    }
+
+    #[test]
+    fn legacy_agent_panel_scope_config_still_parses() {
+        let toml = r#"
+[ui]
+agent_panel_scope = "current"
+"#;
+        let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.ui.pane_panel_scope, PanePanelScopeConfig::Current);
     }
 
     #[test]

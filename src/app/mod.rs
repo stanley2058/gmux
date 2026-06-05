@@ -181,12 +181,12 @@ fn auto_updates_enabled(no_session: bool) -> bool {
     !no_session && !cfg!(debug_assertions)
 }
 
-fn agent_panel_scope_from_config(
-    scope: crate::config::AgentPanelScopeConfig,
-) -> state::AgentPanelScope {
+fn pane_panel_scope_from_config(
+    scope: crate::config::PanePanelScopeConfig,
+) -> state::PanePanelScope {
     match scope {
-        crate::config::AgentPanelScopeConfig::Current => state::AgentPanelScope::CurrentWorkspace,
-        crate::config::AgentPanelScopeConfig::All => state::AgentPanelScope::AllWorkspaces,
+        crate::config::PanePanelScopeConfig::Current => state::PanePanelScope::CurrentWorkspace,
+        crate::config::PanePanelScopeConfig::All => state::PanePanelScope::AllWorkspaces,
     }
 }
 
@@ -266,7 +266,7 @@ impl App {
             workspaces,
             active,
             selected,
-            _restored_agent_panel_scope,
+            _restored_pane_panel_scope,
             sidebar_width,
             sidebar_width_source,
             sidebar_section_split,
@@ -276,7 +276,7 @@ impl App {
                 Vec::new(),
                 None,
                 0,
-                state::AgentPanelScope::CurrentWorkspace,
+                state::PanePanelScope::CurrentWorkspace,
                 config.ui.sidebar_width,
                 state::SidebarWidthSource::ConfigDefault,
                 0.5_f32,
@@ -309,7 +309,7 @@ impl App {
                     Vec::new(),
                     None,
                     0,
-                    snap.agent_panel_scope,
+                    snap.pane_panel_scope,
                     snap.sidebar_width.unwrap_or(config.ui.sidebar_width),
                     if snap.sidebar_width.is_some() {
                         state::SidebarWidthSource::Persisted
@@ -327,7 +327,7 @@ impl App {
                     ws,
                     active,
                     selected,
-                    snap.agent_panel_scope,
+                    snap.pane_panel_scope,
                     snap.sidebar_width.unwrap_or(config.ui.sidebar_width),
                     if snap.sidebar_width.is_some() {
                         state::SidebarWidthSource::Persisted
@@ -343,7 +343,7 @@ impl App {
                 Vec::new(),
                 None,
                 0,
-                state::AgentPanelScope::CurrentWorkspace,
+                state::PanePanelScope::CurrentWorkspace,
                 config.ui.sidebar_width,
                 state::SidebarWidthSource::ConfigDefault,
                 0.5_f32,
@@ -351,7 +351,7 @@ impl App {
             )
         };
 
-        let agent_panel_scope = agent_panel_scope_from_config(config.ui.agent_panel_scope);
+        let pane_panel_scope = pane_panel_scope_from_config(config.ui.pane_panel_scope);
 
         // Validate sidebar bounds before they reach any `u16::clamp(min, max)`
         // call: `clamp` panics when `min > max`. On bad config, fall back to
@@ -447,7 +447,7 @@ impl App {
             navigator: state::NavigatorState::default(),
             copy_mode: None,
             workspace_scroll: 0,
-            agent_panel_scroll: 0,
+            pane_panel_scroll: 0,
             tab_scroll: 0,
             tab_scroll_follow_active: true,
             mobile_switcher_scroll: 0,
@@ -492,7 +492,7 @@ impl App {
             sidebar_width_auto: false,
             sidebar_collapsed: false,
             sidebar_section_split,
-            agent_panel_scope,
+            pane_panel_scope,
             mouse_capture: config.ui.mouse_capture,
             right_click_passthrough_modifiers: config.ui.right_click_passthrough_modifiers(),
             right_click_passthrough: None,
@@ -641,7 +641,7 @@ impl App {
         app.state.selected = snapshot
             .selected
             .min(app.state.workspaces.len().saturating_sub(1));
-        app.state.agent_panel_scope = snapshot.agent_panel_scope;
+        app.state.pane_panel_scope = snapshot.pane_panel_scope;
         if let Some(width) = snapshot.sidebar_width {
             app.state.sidebar_width = width;
             app.state.sidebar_width_source = state::SidebarWidthSource::Persisted;
@@ -1148,9 +1148,9 @@ impl App {
                 self.state.prompt_new_tab_name = config.ui.prompt_new_tab_name;
                 self.state.show_agent_labels_on_pane_borders =
                     config.ui.show_agent_labels_on_pane_borders;
-                self.state.agent_panel_scope =
-                    agent_panel_scope_from_config(config.ui.agent_panel_scope);
-                self.state.agent_panel_scroll = 0;
+                self.state.pane_panel_scope =
+                    pane_panel_scope_from_config(config.ui.pane_panel_scope);
+                self.state.pane_panel_scroll = 0;
                 self.state.accent = crate::config::parse_color(&config.ui.accent);
                 if !self.state.local_sound_playback && self.state.sound != config.ui.sound {
                     self.state.request_client_config_reload = true;
@@ -1764,16 +1764,16 @@ mod tests {
     }
 
     #[test]
-    fn startup_uses_configured_agent_panel_scope() {
+    fn startup_uses_configured_pane_panel_scope() {
         let mut config = Config::default();
-        config.ui.agent_panel_scope = crate::config::AgentPanelScopeConfig::Current;
+        config.ui.pane_panel_scope = crate::config::PanePanelScopeConfig::Current;
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let app = App::new(&config, true, None, api_rx, crate::api::EventHub::default());
 
         assert_eq!(
-            app.state.agent_panel_scope,
-            state::AgentPanelScope::CurrentWorkspace
+            app.state.pane_panel_scope,
+            state::PanePanelScope::CurrentWorkspace
         );
     }
 
@@ -1898,7 +1898,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
             &path,
-            "[terminal]\ndefault_shell = \"nu\"\nshell_mode = \"non_login\"\nnew_cwd = \"home\"\n[keys]\nnew_workspace = \"prefix+m\"\nprefix = \"ctrl+a\"\n[ui]\nagent_panel_scope = \"current\"\nredraw_on_focus_gained = false\nright_click_passthrough_modifier = \"ctrl\"\n[ui.toast]\ndelivery = \"gmux\"\n[experimental]\nswitch_ascii_input_source_in_prefix = true\n",
+            "[terminal]\ndefault_shell = \"nu\"\nshell_mode = \"non_login\"\nnew_cwd = \"home\"\n[keys]\nnew_workspace = \"prefix+m\"\nprefix = \"ctrl+a\"\n[ui]\npane_panel_scope = \"current\"\nredraw_on_focus_gained = false\nright_click_passthrough_modifier = \"ctrl\"\n[ui.toast]\ndelivery = \"gmux\"\n[experimental]\nswitch_ascii_input_source_in_prefix = true\n",
         )
         .unwrap();
         std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
@@ -1919,8 +1919,8 @@ mod tests {
             crate::config::ToastDelivery::Gmux
         );
         assert_eq!(
-            app.state.agent_panel_scope,
-            state::AgentPanelScope::CurrentWorkspace
+            app.state.pane_panel_scope,
+            state::PanePanelScope::CurrentWorkspace
         );
         assert!(!app.state.redraw_on_focus_gained);
         assert_eq!(
@@ -2260,7 +2260,7 @@ mod tests {
     }
 
     #[test]
-    fn save_agent_panel_scope_persists_then_applies_live_config() {
+    fn save_pane_panel_scope_persists_then_applies_live_config() {
         let _guard = config_env_lock().lock().unwrap();
         let path = temp_config_path("save-agent-panel-scope");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -2269,18 +2269,18 @@ mod tests {
 
         let mut app = test_app();
         assert_eq!(
-            app.state.agent_panel_scope,
-            state::AgentPanelScope::AllWorkspaces
+            app.state.pane_panel_scope,
+            state::PanePanelScope::AllWorkspaces
         );
 
-        app.save_agent_panel_scope(state::AgentPanelScope::CurrentWorkspace);
+        app.save_pane_panel_scope(state::PanePanelScope::CurrentWorkspace);
 
         assert_eq!(
-            app.state.agent_panel_scope,
-            state::AgentPanelScope::CurrentWorkspace
+            app.state.pane_panel_scope,
+            state::PanePanelScope::CurrentWorkspace
         );
         let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("agent_panel_scope = \"current\""));
+        assert!(content.contains("pane_panel_scope = \"current\""));
         assert!(app.state.config_diagnostic.is_none());
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);

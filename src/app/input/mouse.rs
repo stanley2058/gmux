@@ -5,8 +5,8 @@ use tracing::warn;
 
 use crate::{
     app::state::{
-        AgentPanelScope, AppState, ContextMenuKind, ContextMenuState, DragState, DragTarget,
-        MenuListState, Mode, RightClickPassthroughGesture, TabPressState, ViewLayout,
+        AppState, ContextMenuKind, ContextMenuState, DragState, DragTarget, MenuListState, Mode,
+        PanePanelScope, RightClickPassthroughGesture, TabPressState, ViewLayout,
         WorkspacePressState,
     },
     layout::{PaneInfo, SplitBorder},
@@ -469,7 +469,7 @@ impl AppState {
                         }
 
                         if let Some((ws_idx, _tab_idx, pane_id)) =
-                            self.collapsed_agent_detail_target_at(mouse.row)
+                            self.collapsed_pane_detail_target_at(mouse.row)
                         {
                             self.focus_pane_in_workspace(ws_idx, pane_id);
                             self.mode = Mode::Terminal;
@@ -535,34 +535,33 @@ impl AppState {
                         return None;
                     }
 
-                    if self.on_agent_panel_scope_toggle(mouse.column, mouse.row) {
-                        self.agent_panel_scope = match self.agent_panel_scope {
-                            AgentPanelScope::CurrentWorkspace => AgentPanelScope::AllWorkspaces,
-                            AgentPanelScope::AllWorkspaces => AgentPanelScope::CurrentWorkspace,
+                    if self.on_pane_panel_scope_toggle(mouse.column, mouse.row) {
+                        self.pane_panel_scope = match self.pane_panel_scope {
+                            PanePanelScope::CurrentWorkspace => PanePanelScope::AllWorkspaces,
+                            PanePanelScope::AllWorkspaces => PanePanelScope::CurrentWorkspace,
                         };
-                        self.agent_panel_scroll = 0;
+                        self.pane_panel_scroll = 0;
                         self.mark_session_dirty();
                         return None;
                     }
 
                     if let Some(target) =
-                        self.agent_panel_scrollbar_target_at(mouse.column, mouse.row)
+                        self.pane_panel_scrollbar_target_at(mouse.column, mouse.row)
                     {
                         match target {
                             ScrollbarClickTarget::Thumb { grab_row_offset } => {
                                 self.drag = Some(DragState {
-                                    target: DragTarget::AgentPanelScrollbar { grab_row_offset },
+                                    target: DragTarget::PanePanelScrollbar { grab_row_offset },
                                 });
                             }
                             ScrollbarClickTarget::Track { offset_from_bottom } => {
-                                self.set_agent_panel_offset_from_bottom(offset_from_bottom);
+                                self.set_pane_panel_offset_from_bottom(offset_from_bottom);
                             }
                         }
                         return None;
                     }
 
-                    if let Some((ws_idx, _tab_idx, pane_id)) =
-                        self.agent_detail_target_at(mouse.row)
+                    if let Some((ws_idx, _tab_idx, pane_id)) = self.pane_detail_target_at(mouse.row)
                     {
                         self.focus_pane_in_workspace(ws_idx, pane_id);
                         self.mode = Mode::Terminal;
@@ -678,11 +677,11 @@ impl AppState {
                                 self.set_workspace_list_offset_from_bottom(offset_from_bottom);
                             }
                         }
-                        DragTarget::AgentPanelScrollbar { grab_row_offset } => {
+                        DragTarget::PanePanelScrollbar { grab_row_offset } => {
                             if let Some(offset_from_bottom) =
-                                self.agent_panel_offset_for_drag_row(mouse.row, *grab_row_offset)
+                                self.pane_panel_offset_for_drag_row(mouse.row, *grab_row_offset)
                             {
-                                self.set_agent_panel_offset_from_bottom(offset_from_bottom);
+                                self.set_pane_panel_offset_from_bottom(offset_from_bottom);
                             }
                         }
                         DragTarget::PaneSplit {
@@ -840,15 +839,15 @@ impl AppState {
             }
 
             MouseEventKind::ScrollUp if in_sidebar => {
-                let agent_area = self.agent_panel_rect();
-                let over_agent_panel = agent_area != Rect::default()
+                let agent_area = self.pane_panel_rect();
+                let over_pane_panel = agent_area != Rect::default()
                     && mouse.row >= agent_area.y
                     && mouse.row < agent_area.y + agent_area.height;
-                if over_agent_panel {
-                    if crate::ui::should_show_scrollbar(crate::ui::agent_panel_scroll_metrics(
+                if over_pane_panel {
+                    if crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
                         self, agent_area,
                     )) {
-                        self.scroll_agent_panel(-1);
+                        self.scroll_pane_panel(-1);
                     }
                 } else if crate::ui::should_show_scrollbar(
                     crate::ui::workspace_list_scroll_metrics(self, self.workspace_list_rect()),
@@ -859,15 +858,15 @@ impl AppState {
                 }
             }
             MouseEventKind::ScrollDown if in_sidebar => {
-                let agent_area = self.agent_panel_rect();
-                let over_agent_panel = agent_area != Rect::default()
+                let agent_area = self.pane_panel_rect();
+                let over_pane_panel = agent_area != Rect::default()
                     && mouse.row >= agent_area.y
                     && mouse.row < agent_area.y + agent_area.height;
-                if over_agent_panel {
-                    if crate::ui::should_show_scrollbar(crate::ui::agent_panel_scroll_metrics(
+                if over_pane_panel {
+                    if crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
                         self, agent_area,
                     )) {
-                        self.scroll_agent_panel(1);
+                        self.scroll_pane_panel(1);
                     }
                 } else if crate::ui::should_show_scrollbar(
                     crate::ui::workspace_list_scroll_metrics(self, self.workspace_list_rect()),

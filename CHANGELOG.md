@@ -13,6 +13,7 @@
 - Removed agent rows from the mobile switcher so the mobile surface focuses on sessions, tabs, and app actions.
 - Removed agent state filters and agent metadata from the session navigator.
 - Removed agent-state row indicators from the session navigator.
+- Renamed the sidebar detail scope setting from `agent_panel_scope` to `pane_panel_scope`, while keeping the old key as a compatibility alias.
 - Updated the sidebar detail panel to present generic panes instead of agent status cards.
 - Updated sidebar and mobile session markers to use active-session indicators instead of agent status rollups.
 - Updated the mobile header and toast copy to use pane-focused wording instead of agent status summaries.
