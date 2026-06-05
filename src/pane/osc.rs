@@ -380,7 +380,7 @@ fn foreground_job_is_shell(job: &crate::platform::ForegroundJob, shell_pid: u32)
 }
 
 pub(super) fn current_transient_default_color_owner(shell_pid: u32) -> Option<u32> {
-    let job = crate::detect::foreground_job(shell_pid)?;
+    let job = crate::platform::foreground_job(shell_pid)?;
     (!foreground_job_is_shell(&job, shell_pid)).then_some(job.process_group_id)
 }
 

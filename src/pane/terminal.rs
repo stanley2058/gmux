@@ -382,7 +382,7 @@ impl GhosttyPaneTerminal {
             }
         }
 
-        let foreground_job = crate::detect::foreground_job(shell_pid);
+        let foreground_job = crate::platform::foreground_job(shell_pid);
         let Ok(mut core) = self.core.lock() else {
             return false;
         };
@@ -440,7 +440,7 @@ impl GhosttyPaneTerminal {
             .unwrap_or(false);
         let filtered_bytes = if shell_pid > 0 {
             let foreground_job = (!alternate_screen && contains_scrollback_clear_sequence(bytes))
-                .then(|| crate::detect::foreground_job(shell_pid))
+                .then(|| crate::platform::foreground_job(shell_pid))
                 .flatten();
             maybe_filter_primary_screen_scrollback_clear(
                 bytes,

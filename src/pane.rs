@@ -60,7 +60,7 @@ fn foreground_member_cwd_different_from_shell(
     shell_pid: u32,
     shell_cwd: Option<&std::path::PathBuf>,
 ) -> Option<std::path::PathBuf> {
-    let job = crate::detect::foreground_job(shell_pid)?;
+    let job = crate::platform::foreground_job(shell_pid)?;
     for process in job.processes {
         if process.pid == shell_pid {
             continue;
