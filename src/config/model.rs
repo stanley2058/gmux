@@ -384,8 +384,6 @@ pub struct UiConfig {
     pub confirm_close: bool,
     /// Ask for a tab name before creating a new tab. Default: true.
     pub prompt_new_tab_name: bool,
-    /// Show agent labels in split pane borders when no manual pane label is set. Default: false.
-    pub show_agent_labels_on_pane_borders: bool,
     /// Pane detail panel scope. Saved values are "current" or "all". Default: "all".
     #[serde(alias = "agent_panel_scope")]
     pub pane_panel_scope: PanePanelScopeConfig,
@@ -573,7 +571,6 @@ impl Default for UiConfig {
             mouse_scroll_lines: None,
             confirm_close: true,
             prompt_new_tab_name: true,
-            show_agent_labels_on_pane_borders: false,
             pane_panel_scope: PanePanelScopeConfig::All,
             accent: "cyan".into(),
             toast: ToastConfig::default(),
@@ -770,19 +767,6 @@ focus_agent = "prefix+alt+1..9"
             config.keys.focus_pane_panel_entry,
             BindingConfig::one("prefix+alt+1..9")
         );
-    }
-
-    #[test]
-    fn pane_border_agent_labels_default_off_and_parse() {
-        let default_config = Config::default();
-        assert!(!default_config.ui.show_agent_labels_on_pane_borders);
-
-        let toml = r#"
-[ui]
-show_agent_labels_on_pane_borders = true
-"#;
-        let config: Config = toml::from_str(toml).unwrap();
-        assert!(config.ui.show_agent_labels_on_pane_borders);
     }
 
     #[test]

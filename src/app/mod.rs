@@ -500,7 +500,6 @@ impl App {
             mouse_scroll_lines: config.ui.mouse_scroll_lines(),
             confirm_close: config.ui.confirm_close,
             prompt_new_tab_name: config.ui.prompt_new_tab_name,
-            show_agent_labels_on_pane_borders: config.ui.show_agent_labels_on_pane_borders,
             pane_history_persistence: config.experimental.pane_history,
             reveal_hidden_cursor_for_cjk_ime: config.experimental.reveal_hidden_cursor_for_cjk_ime,
             cjk_ime_agent_filter_configured: !config.experimental.cjk_ime_agents.is_empty(),
@@ -1146,8 +1145,6 @@ impl App {
                     config.ui.right_click_passthrough_modifiers();
                 self.state.confirm_close = config.ui.confirm_close;
                 self.state.prompt_new_tab_name = config.ui.prompt_new_tab_name;
-                self.state.show_agent_labels_on_pane_borders =
-                    config.ui.show_agent_labels_on_pane_borders;
                 self.state.pane_panel_scope =
                     pane_panel_scope_from_config(config.ui.pane_panel_scope);
                 self.state.pane_panel_scroll = 0;

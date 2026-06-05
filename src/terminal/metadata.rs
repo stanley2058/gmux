@@ -241,11 +241,6 @@ impl TerminalState {
             .title
     }
 
-    pub fn effective_display_agent(&self) -> Option<String> {
-        self.effective_presentation_for_state_at(self.state, Instant::now())
-            .display_agent
-    }
-
     pub fn effective_presentation(&self) -> EffectivePresentation {
         self.effective_presentation_for_state_at(self.state, Instant::now())
     }
@@ -692,11 +687,7 @@ mod tests {
             seq: None,
         });
 
-        assert_eq!(
-            terminal.border_label(false).as_deref(),
-            Some("Prompt title")
-        );
-        assert_eq!(terminal.border_label(true).as_deref(), Some("Prompt title"));
+        assert_eq!(terminal.border_label().as_deref(), Some("Prompt title"));
     }
 
     #[test]

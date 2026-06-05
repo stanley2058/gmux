@@ -13,6 +13,7 @@
 - Removed agent rows from the mobile switcher so the mobile surface focuses on sessions, tabs, and app actions.
 - Removed agent state filters and agent metadata from the session navigator.
 - Removed agent-state row indicators from the session navigator.
+- Removed agent label fallback from pane border titles; pane borders now use neutral title or manual labels only.
 - Renamed pane-panel key settings from `previous_agent`, `next_agent`, and `focus_agent` to `previous_pane_panel_entry`, `next_pane_panel_entry`, and `focus_pane_panel_entry`, while keeping the old keys as compatibility aliases.
 - Renamed the sidebar detail scope setting from `agent_panel_scope` to `pane_panel_scope`, while keeping the old key as a compatibility alias.
 - Updated the sidebar detail panel to present generic panes instead of agent status cards.

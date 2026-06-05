@@ -718,17 +718,8 @@ impl TerminalState {
             || self.launch_argv.is_some()
     }
 
-    pub fn border_label(&self, show_agent_labels: bool) -> Option<String> {
-        self.effective_title().or_else(|| {
-            self.manual_label.clone().or_else(|| {
-                show_agent_labels
-                    .then(|| {
-                        self.effective_display_agent()
-                            .or_else(|| self.effective_agent_label().map(str::to_string))
-                    })
-                    .flatten()
-            })
-        })
+    pub fn border_label(&self) -> Option<String> {
+        self.effective_title().or_else(|| self.manual_label.clone())
     }
 
     fn recompute_effective_state(
@@ -1464,23 +1455,21 @@ mod tests {
     }
 
     #[test]
-    fn border_label_prefers_manual_label_over_agent_label() {
+    fn border_label_uses_title_and_manual_label_only() {
         let mut terminal = test_terminal();
         terminal.set_detected_state(Some(Agent::Claude), AgentState::Idle);
 
-        assert_eq!(terminal.border_label(false), None);
-        assert_eq!(terminal.border_label(true).as_deref(), Some("claude"));
+        assert_eq!(terminal.border_label(), None);
 
         terminal.set_manual_label(" reviewer ".into());
-        assert_eq!(terminal.border_label(false).as_deref(), Some("reviewer"));
-        assert_eq!(terminal.border_label(true).as_deref(), Some("reviewer"));
+        assert_eq!(terminal.border_label().as_deref(), Some("reviewer"));
 
         terminal.set_manual_label("   ".into());
-        assert_eq!(terminal.border_label(true).as_deref(), Some("claude"));
+        assert_eq!(terminal.border_label(), None);
 
         terminal.set_manual_label("reviewer".into());
         terminal.clear_manual_label();
-        assert_eq!(terminal.border_label(true).as_deref(), Some("claude"));
+        assert_eq!(terminal.border_label(), None);
     }
 
     #[test]
