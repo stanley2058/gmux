@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use tracing::error;
 
-use super::{api_helpers::pane_agent_status, App, Mode};
+use super::{App, Mode};
 use crate::{config::NewTerminalCwdConfig, workspace::Workspace};
 
 pub(crate) fn resolve_new_terminal_cwd(
@@ -204,7 +204,6 @@ impl App {
             label: tab.display_name(),
             focused: self.state.active == Some(ws_idx) && ws.active_tab == tab_idx,
             pane_count: tab.panes.len(),
-            agent_status: crate::api::schema::AgentStatus::Unknown,
         })
     }
 
@@ -243,7 +242,6 @@ impl App {
             && ws
                 .focused_pane_id()
                 .is_some_and(|focused| focused == pane_id);
-        let presentation = terminal.effective_presentation();
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
@@ -257,13 +255,7 @@ impl App {
                 .foreground_cwd_for_pane(pane_id, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
             label: terminal.manual_label.clone(),
-            agent: terminal.effective_agent_label().map(str::to_string),
-            title: presentation.title,
-            display_agent: presentation.display_agent,
-            agent_status: pane_agent_status(terminal.state, pane.seen),
-            custom_status: presentation.custom_status,
-            state_labels: presentation.state_labels,
-            agent_session: None,
+            title: terminal.effective_title(),
             revision: terminal.revision,
         })
     }

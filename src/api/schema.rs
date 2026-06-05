@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -404,7 +402,6 @@ pub struct TabInfo {
     pub label: String,
     pub focused: bool,
     pub pane_count: usize,
-    pub agent_status: AgentStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -421,27 +418,8 @@ pub struct PaneInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub display_agent: Option<String>,
-    pub agent_status: AgentStatus,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_status: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub state_labels: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_session: Option<AgentSessionInfo>,
     pub revision: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AgentSessionInfo {
-    pub source: String,
-    pub agent: String,
-    pub kind: String,
-    pub value: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -526,16 +504,6 @@ pub enum EventData {
         pane_id: String,
         workspace_id: String,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentStatus {
-    Idle,
-    Working,
-    Blocked,
-    Done,
-    Unknown,
 }
 
 fn default_true() -> bool {
@@ -836,7 +804,6 @@ mod tests {
                     label: "review".into(),
                     focused: false,
                     pane_count: 1,
-                    agent_status: AgentStatus::Unknown,
                 },
                 root_pane: PaneInfo {
                     pane_id: "w_1-3".into(),
@@ -847,13 +814,7 @@ mod tests {
                     cwd: Some("/tmp/review".into()),
                     foreground_cwd: None,
                     label: None,
-                    agent: None,
                     title: None,
-                    display_agent: None,
-                    agent_status: AgentStatus::Unknown,
-                    custom_status: None,
-                    state_labels: HashMap::new(),
-                    agent_session: None,
                     revision: 0,
                 },
             },

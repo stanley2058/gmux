@@ -360,16 +360,14 @@ fn pane_report_agent(socket_path: &Path, pane_id: &str, agent: &str, state: &str
     assert_eq!(response["error"]["code"], "invalid_request");
 }
 
-fn pane_agent_status(socket_path: &Path, pane_id: &str) -> Option<String> {
+fn pane_has_agent_status(socket_path: &Path, pane_id: &str) -> bool {
     let response = send_json_request(
         socket_path,
         "pane_get",
         "pane.get",
         json!({ "pane_id": pane_id }),
     );
-    response["result"]["pane"]["agent_status"]
-        .as_str()
-        .map(|status| status.to_string())
+    response["result"]["pane"].get("agent_status").is_some()
 }
 
 // ---------------------------------------------------------------------------
@@ -794,22 +792,23 @@ fn cross_area_removed_agent_report_survives_detach_and_reattach() {
         .expect("root pane id")
         .to_string();
 
-    let initial_status = pane_agent_status(&api_socket, &pane_id);
+    assert!(
+        !pane_has_agent_status(&api_socket, &pane_id),
+        "pane info should not expose agent status"
+    );
 
     pane_report_agent(&api_socket, &pane_id, "pi", "working", "cross-area-test");
-    assert_eq!(
-        pane_agent_status(&api_socket, &pane_id),
-        initial_status,
-        "removed pane.report_agent should not change pane status before detach"
+    assert!(
+        !pane_has_agent_status(&api_socket, &pane_id),
+        "removed pane.report_agent should not restore pane status before detach"
     );
 
     send_client_detach(&mut client_a);
     drop(client_a);
 
-    assert_eq!(
-        pane_agent_status(&api_socket, &pane_id),
-        initial_status,
-        "removed report state should remain unchanged while detached"
+    assert!(
+        !pane_has_agent_status(&api_socket, &pane_id),
+        "removed report state should remain absent while detached"
     );
 
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
@@ -825,9 +824,8 @@ fn cross_area_removed_agent_report_survives_detach_and_reattach() {
     );
 
     pane_report_agent(&api_socket, &pane_id, "pi", "idle", "cross-area-test");
-    assert_eq!(
-        pane_agent_status(&api_socket, &pane_id),
-        initial_status,
+    assert!(
+        !pane_has_agent_status(&api_socket, &pane_id),
         "removed pane.report_agent should remain inert after reattach"
     );
 

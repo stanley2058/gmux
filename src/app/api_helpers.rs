@@ -45,16 +45,3 @@ pub(super) fn encode_api_keys(
     }
     Ok(encoded_keys)
 }
-
-pub(super) fn pane_agent_status(
-    state: crate::detect::AgentState,
-    seen: bool,
-) -> crate::api::schema::AgentStatus {
-    match (state, seen) {
-        (crate::detect::AgentState::Idle, false) => crate::api::schema::AgentStatus::Done,
-        (crate::detect::AgentState::Idle, true) => crate::api::schema::AgentStatus::Idle,
-        (crate::detect::AgentState::Working, _) => crate::api::schema::AgentStatus::Working,
-        (crate::detect::AgentState::Blocked, _) => crate::api::schema::AgentStatus::Blocked,
-        (crate::detect::AgentState::Unknown, _) => crate::api::schema::AgentStatus::Unknown,
-    }
-}
