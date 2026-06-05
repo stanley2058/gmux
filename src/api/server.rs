@@ -271,12 +271,6 @@ fn api_method_name(method: &Method) -> &'static str {
         Method::ServerStop(_) => "server.stop",
         Method::ServerLiveHandoff(_) => "server.live_handoff",
         Method::ServerReloadConfig(_) => "server.reload_config",
-        Method::WorkspaceCreate(_) => "workspace.create",
-        Method::WorkspaceList(_) => "workspace.list",
-        Method::WorkspaceGet(_) => "workspace.get",
-        Method::WorkspaceFocus(_) => "workspace.focus",
-        Method::WorkspaceRename(_) => "workspace.rename",
-        Method::WorkspaceClose(_) => "workspace.close",
         Method::TabCreate(_) => "tab.create",
         Method::TabList(_) => "tab.list",
         Method::TabGet(_) => "tab.get",
@@ -686,7 +680,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let request = Request {
             id: "req_2".into(),
-            method: Method::WorkspaceList(crate::api::schema::EmptyParams::default()),
+            method: Method::TabList(crate::api::schema::TabListParams::default()),
         };
 
         let request_for_thread = request.clone();
@@ -777,7 +771,7 @@ mod tests {
         let (mut client, server) = UnixStream::pair().unwrap();
         client
             .write_all(
-                br#"{"id":"sub_1","method":"events.subscribe","params":{"subscriptions":[{"type":"workspace.created"}]}}"#,
+                br#"{"id":"sub_1","method":"events.subscribe","params":{"subscriptions":[{"type":"tab.created"}]}}"#,
             )
             .unwrap();
         client.write_all(b"\n").unwrap();
@@ -809,7 +803,7 @@ mod tests {
         let (mut client, server) = UnixStream::pair().unwrap();
         client
             .write_all(
-                br#"{"id":"sub_2","method":"events.subscribe","params":{"subscriptions":[{"type":"workspace.created"}]}}"#,
+                br#"{"id":"sub_2","method":"events.subscribe","params":{"subscriptions":[{"type":"tab.created"}]}}"#,
             )
             .unwrap();
         client.write_all(b"\n").unwrap();

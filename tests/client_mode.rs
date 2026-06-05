@@ -858,9 +858,9 @@ fn pane_spawn_cwd_fallback_in_server() {
         "server should respond to ping after startup: {response}"
     );
 
-    // Create a workspace via the API — this tests pane creation in the server.
+    // Create an initial tab via the API — this tests pane creation in the server.
     let mut ws_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let request = r#"{"id":"2","method":"workspace.create","params":{"label":"cwd-test"}}"#;
+    let request = r#"{"id":"2","method":"tab.create","params":{"label":"cwd-test"}}"#;
     writeln!(ws_stream, "{}", request).unwrap();
 
     let mut reader = BufReader::new(ws_stream);
@@ -868,8 +868,8 @@ fn pane_spawn_cwd_fallback_in_server() {
     reader.read_line(&mut response).unwrap();
 
     assert!(
-        response.contains("workspace_created") || response.contains("ok"),
-        "workspace creation should succeed: {response}"
+        response.contains("tab_created") || response.contains("ok"),
+        "tab creation should succeed: {response}"
     );
 
     cleanup_spawned_gmux(spawned, base);
@@ -1007,35 +1007,17 @@ fn removed_agent_report_api_does_not_notify_client() {
         .unwrap();
     while read_server_message(&mut stream).is_ok() {}
 
-    // Create a workspace via the API.
+    // Create an initial tab via the API.
     let mut ws_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let request = r#"{"id":"1","method":"workspace.create","params":{}}"#;
+    let request = r#"{"id":"1","method":"tab.create","params":{}}"#;
     writeln!(ws_stream, "{}", request).unwrap();
     let mut reader = BufReader::new(ws_stream);
     let mut ws_response = String::new();
     reader.read_line(&mut ws_response).unwrap();
-
-    // Extract the workspace ID and pane ID from the response.
-    let ws_id = ws_response
-        .split('"')
-        .find(|s| s.starts_with("w_"))
-        .unwrap_or("w_1")
-        .to_string();
-
-    // Get pane list to find a pane ID.
-    let mut pane_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let pane_request =
-        format!(r#"{{"id":"2","method":"pane.list","params":{{"workspace_id":"{ws_id}"}}}}"#);
-    writeln!(pane_stream, "{}", pane_request).unwrap();
-    let mut pane_reader = BufReader::new(pane_stream);
-    let mut pane_response = String::new();
-    pane_reader.read_line(&mut pane_response).unwrap();
-
-    // Extract first pane ID (format: p_<ws>_<pane>).
-    let pane_id = pane_response
-        .split('"')
-        .find(|s| s.starts_with("p_"))
-        .unwrap_or("p_1_1")
+    let ws_response: serde_json::Value = serde_json::from_str(&ws_response).unwrap();
+    let pane_id = ws_response["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
         .to_string();
 
     // Legacy report calls are no longer socket API methods and must not emit

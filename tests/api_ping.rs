@@ -275,7 +275,7 @@ fn ping_over_socket_returns_version() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn workspace_list_and_create_round_trip() {
+fn workspace_methods_are_not_socket_api() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -285,28 +285,57 @@ fn workspace_list_and_create_round_trip() {
     let child = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let empty = send_request(
-        &socket_path,
-        r#"{"id":"req_2","method":"workspace.list","params":{}}"#,
-    );
-    assert_eq!(empty["id"], "req_2");
-    assert_eq!(empty["result"]["type"], "workspace_list");
-    assert_eq!(empty["result"]["workspaces"].as_array().unwrap().len(), 0);
+    let requests = [
+        format!(
+            r#"{{"id":"req_ws_removed_create","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            base.display()
+        ),
+        r#"{"id":"req_ws_removed_list","method":"workspace.list","params":{}}"#.to_string(),
+        r#"{"id":"req_ws_removed_get","method":"workspace.get","params":{"workspace_id":"1"}}"#
+            .to_string(),
+        r#"{"id":"req_ws_removed_focus","method":"workspace.focus","params":{"workspace_id":"1"}}"#
+            .to_string(),
+        r#"{"id":"req_ws_removed_rename","method":"workspace.rename","params":{"workspace_id":"1","label":"demo"}}"#
+            .to_string(),
+        r#"{"id":"req_ws_removed_close","method":"workspace.close","params":{"workspace_id":"1"}}"#
+            .to_string(),
+        r#"{"id":"req_ws_removed_sub","method":"events.subscribe","params":{"subscriptions":[{"type":"workspace.created"}]}}"#
+            .to_string(),
+    ];
+    for request in requests {
+        let response = send_request(&socket_path, &request);
+        assert_eq!(response["error"]["code"], "invalid_request");
+    }
+
+    cleanup_spawned_gmux(child, base);
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn pane_methods_round_trip_over_socket() {
+    let _lock = test_lock();
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("gmux.sock");
+
+    let child = spawn_gmux(&config_home, &runtime_dir, &socket_path);
+    wait_for_socket(&socket_path, Duration::from_secs(5));
 
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_3","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_3","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
     assert_eq!(created["id"], "req_3");
-    assert_eq!(created["result"]["type"], "workspace_created");
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    assert_eq!(created["result"]["type"], "tab_created");
+    let workspace_id = created["result"]["tab"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
-    let active_tab_id = created["result"]["workspace"]["active_tab_id"]
+    let active_tab_id = created["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -320,29 +349,10 @@ fn workspace_list_and_create_round_trip() {
         .to_string();
     assert!(root_terminal_id.starts_with("term_"));
     assert_ne!(root_terminal_id, root_pane_id);
-    assert_eq!(created["result"]["workspace"]["number"], 1);
-    assert_eq!(created["result"]["workspace"]["focused"], true);
-    assert_eq!(created["result"]["workspace"]["tab_count"], 1);
-    assert_eq!(created["result"]["tab"]["tab_id"], active_tab_id);
+    assert_eq!(created["result"]["tab"]["number"], 1);
+    assert_eq!(created["result"]["tab"]["focused"], true);
     assert_eq!(created["result"]["root_pane"]["tab_id"], active_tab_id);
     assert_eq!(active_tab_id, format!("{workspace_id}:1"));
-
-    let listed = send_request(
-        &socket_path,
-        r#"{"id":"req_4","method":"workspace.list","params":{}}"#,
-    );
-    let workspaces = listed["result"]["workspaces"].as_array().unwrap();
-    assert_eq!(workspaces.len(), 1);
-    assert_eq!(workspaces[0]["workspace_id"], workspace_id);
-
-    let fetched = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_5","method":"workspace.get","params":{{"workspace_id":"{}"}}}}"#,
-            workspace_id
-        ),
-    );
-    assert_eq!(fetched["result"]["workspace"]["workspace_id"], workspace_id);
 
     let panes = send_request(
         &socket_path,
@@ -529,15 +539,15 @@ fn tab_methods_round_trip_over_socket() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_t1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_t1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    let workspace_id = created["result"]["tab"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
-    let first_tab_id = created["result"]["workspace"]["active_tab_id"]
+    let first_tab_id = created["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -652,7 +662,7 @@ fn pane_info_reports_foreground_cwd_without_changing_pane_cwd() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"fg_ws","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"fg_ws","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
@@ -763,7 +773,7 @@ fn agent_methods_are_not_socket_api() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"agent_ws","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"agent_ws","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
@@ -846,11 +856,11 @@ fn tab_create_with_no_focus_preserves_active_tab() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_nf_1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_nf_1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    let workspace_id = created["result"]["tab"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -927,7 +937,7 @@ fn events_subscribe_streams_workspace_tab_and_agent_events() {
 
     let mut reader = open_subscription(
         &socket_path,
-        r#"{"id":"sub_life_a","method":"events.subscribe","params":{"subscriptions":[{"type":"workspace.created"},{"type":"workspace.focused"},{"type":"tab.created"},{"type":"tab.focused"},{"type":"tab.renamed"},{"type":"pane.created"},{"type":"pane.focused"},{"type":"pane.agent_detected"}]}}"#,
+        r#"{"id":"sub_life_a","method":"events.subscribe","params":{"subscriptions":[{"type":"tab.created"},{"type":"tab.focused"},{"type":"tab.renamed"},{"type":"pane.created"},{"type":"pane.focused"},{"type":"pane.agent_detected"}]}}"#,
     );
 
     let ack = reader.read_json_line(Duration::from_secs(2));
@@ -937,24 +947,14 @@ fn events_subscribe_streams_workspace_tab_and_agent_events() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_l1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_l1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    let workspace_id = created["result"]["tab"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
-
-    let workspace_created =
-        wait_for_event(&mut reader, "workspace_created", Duration::from_secs(2));
-    assert_eq!(
-        workspace_created["data"]["workspace"]["workspace_id"],
-        workspace_id
-    );
-    let workspace_focused =
-        wait_for_event(&mut reader, "workspace_focused", Duration::from_secs(2));
-    assert_eq!(workspace_focused["data"]["workspace_id"], workspace_id);
 
     let first_tab_id = format!("{workspace_id}:1");
     let tab_created = wait_for_event(&mut reader, "tab_created", Duration::from_secs(2));
@@ -1039,15 +1039,14 @@ fn events_subscribe_streams_pane_split_and_close_events() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_pc_1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_pc_1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    let pane_id = created["result"]["root_pane"]["pane_id"]
         .as_str()
         .unwrap()
         .to_string();
-    let pane_id = format!("{workspace_id}-1");
 
     let mut reader = open_subscription(
         &socket_path,
@@ -1100,7 +1099,7 @@ fn events_subscribe_streams_pane_split_and_close_events() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn events_subscribe_streams_tab_and_workspace_close_events() {
+fn events_subscribe_streams_tab_close_events() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -1113,11 +1112,11 @@ fn events_subscribe_streams_tab_and_workspace_close_events() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_tc_1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_tc_1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    let workspace_id = created["result"]["tab"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -1136,7 +1135,7 @@ fn events_subscribe_streams_tab_and_workspace_close_events() {
 
     let mut reader = open_subscription(
         &socket_path,
-        r#"{"id":"sub_life_c","method":"events.subscribe","params":{"subscriptions":[{"type":"workspace.renamed"},{"type":"tab.closed"},{"type":"workspace.closed"}]}}"#,
+        r#"{"id":"sub_life_c","method":"events.subscribe","params":{"subscriptions":[{"type":"tab.closed"}]}}"#,
     );
 
     let ack = reader.read_json_line(Duration::from_secs(2));
@@ -1154,32 +1153,6 @@ fn events_subscribe_streams_tab_and_workspace_close_events() {
 
     let tab_closed = wait_for_event(&mut reader, "tab_closed", Duration::from_secs(2));
     assert_eq!(tab_closed["data"]["tab_id"], second_tab_id);
-
-    let renamed_ws = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_tc_4","method":"workspace.rename","params":{{"workspace_id":"{}","label":"renamed"}}}}"#,
-            workspace_id
-        ),
-    );
-    assert_eq!(renamed_ws["result"]["workspace"]["label"], "renamed");
-
-    let workspace_renamed =
-        wait_for_event(&mut reader, "workspace_renamed", Duration::from_secs(2));
-    assert_eq!(workspace_renamed["data"]["workspace_id"], workspace_id);
-    assert_eq!(workspace_renamed["data"]["label"], "renamed");
-
-    let closed_ws = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"req_tc_5","method":"workspace.close","params":{{"workspace_id":"{}"}}}}"#,
-            workspace_id
-        ),
-    );
-    assert_eq!(closed_ws["result"]["type"], "ok");
-
-    let workspace_closed = wait_for_event(&mut reader, "workspace_closed", Duration::from_secs(2));
-    assert_eq!(workspace_closed["data"]["workspace_id"], workspace_id);
 
     cleanup_spawned_gmux(child, base);
 }
@@ -1199,14 +1172,11 @@ fn pane_agent_report_methods_are_not_socket_api() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_removed_report_ws","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_removed_report_ws","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let pane_id = created["result"]["workspace"]["workspace_id"]
-        .as_str()
-        .map(|workspace_id| format!("{}-1", workspace_id))
-        .unwrap();
+    let pane_id = created["result"]["root_pane"]["pane_id"].as_str().unwrap();
 
     let report = send_request(
         &socket_path,
@@ -1284,11 +1254,11 @@ fn events_subscribe_streams_output_and_agent_status_events() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_20","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_20","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    assert!(created["result"]["workspace"]["workspace_id"].is_string());
+    assert!(created["result"]["tab"]["workspace_id"].is_string());
 
     let panes = send_request(
         &socket_path,
@@ -1407,15 +1377,18 @@ fn pane_info_and_subscriptions_expose_idle_agent_status() {
     let created = send_request(
         &socket_path,
         &format!(
-            r#"{{"id":"req_status_1","method":"workspace.create","params":{{"cwd":"{}","focus":true}}}}"#,
+            r#"{{"id":"req_status_1","method":"tab.create","params":{{"cwd":"{}","focus":true}}}}"#,
             base.display()
         ),
     );
-    let workspace_id = created["result"]["workspace"]["workspace_id"]
+    let workspace_id = created["result"]["tab"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
-    let background_pane_id = format!("{}-1", workspace_id);
+    let background_pane_id = created["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let tab_created = send_request(
         &socket_path,
@@ -1486,7 +1459,7 @@ fn pane_info_and_subscriptions_expose_idle_agent_status() {
     assert_eq!(initial_status_event["data"]["agent_status"], "idle");
     assert_eq!(initial_status_event["data"]["agent"], "pi");
 
-    let focused_tab_id = created["result"]["workspace"]["active_tab_id"]
+    let focused_tab_id = created["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();

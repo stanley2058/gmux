@@ -20,18 +20,6 @@ pub enum Method {
     ServerLiveHandoff(ServerLiveHandoffParams),
     #[serde(rename = "server.reload_config")]
     ServerReloadConfig(EmptyParams),
-    #[serde(rename = "workspace.create")]
-    WorkspaceCreate(WorkspaceCreateParams),
-    #[serde(rename = "workspace.list")]
-    WorkspaceList(EmptyParams),
-    #[serde(rename = "workspace.get")]
-    WorkspaceGet(WorkspaceTarget),
-    #[serde(rename = "workspace.focus")]
-    WorkspaceFocus(WorkspaceTarget),
-    #[serde(rename = "workspace.rename")]
-    WorkspaceRename(WorkspaceRenameParams),
-    #[serde(rename = "workspace.close")]
-    WorkspaceClose(WorkspaceTarget),
     #[serde(rename = "tab.create")]
     TabCreate(TabCreateParams),
     #[serde(rename = "tab.list")]
@@ -77,11 +65,6 @@ pub struct EmptyParams {}
 pub struct PingParams {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceTarget {
-    pub workspace_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaneTarget {
     pub pane_id: String,
 }
@@ -89,22 +72,6 @@ pub struct PaneTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabTarget {
     pub tab_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceCreateParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cwd: Option<String>,
-    #[serde(default)]
-    pub focus: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkspaceRenameParams {
-    pub workspace_id: String,
-    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,16 +197,6 @@ pub struct EventsSubscribeParams {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Subscription {
-    #[serde(rename = "workspace.created")]
-    WorkspaceCreated {},
-    #[serde(rename = "workspace.updated")]
-    WorkspaceUpdated {},
-    #[serde(rename = "workspace.renamed")]
-    WorkspaceRenamed {},
-    #[serde(rename = "workspace.closed")]
-    WorkspaceClosed {},
-    #[serde(rename = "workspace.focused")]
-    WorkspaceFocused {},
     #[serde(rename = "tab.created")]
     TabCreated {},
     #[serde(rename = "tab.closed")]
@@ -424,17 +381,6 @@ pub enum ResponseResult {
         protocol: u32,
         #[serde(default)]
         capabilities: Option<ServerCapabilities>,
-    },
-    WorkspaceInfo {
-        workspace: WorkspaceInfo,
-    },
-    WorkspaceCreated {
-        workspace: WorkspaceInfo,
-        tab: TabInfo,
-        root_pane: PaneInfo,
-    },
-    WorkspaceList {
-        workspaces: Vec<WorkspaceInfo>,
     },
     TabInfo {
         tab: TabInfo,
@@ -713,7 +659,8 @@ mod tests {
     fn request_uses_dot_method_names() {
         let request = Request {
             id: "req_1".into(),
-            method: Method::WorkspaceCreate(WorkspaceCreateParams {
+            method: Method::TabCreate(TabCreateParams {
+                workspace_id: None,
                 cwd: Some("/tmp".into()),
                 focus: true,
                 label: Some("api".into()),
@@ -721,7 +668,7 @@ mod tests {
         };
 
         let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["method"], "workspace.create");
+        assert_eq!(json["method"], "tab.create");
     }
 
     #[test]

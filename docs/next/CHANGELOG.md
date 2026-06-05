@@ -37,6 +37,7 @@
 - Aligned top-level tab and pane aliases with tmux-style target flags, including `gmux new-tab -n/-c`, `gmux rename-tab -t`, and `gmux kill-pane -t`.
 - `gmux split-pane` now defaults to the focused pane and accepts `-t`, `-c`, and optional command arguments.
 - Removed workspace and worktree actions from the default keymap and keybind help so the default UX presents sessions, tabs, and panes.
+- Removed public `workspace.*` socket API methods; use `tab.create`, `tab.list`, `tab.focus`, `tab.rename`, `tab.close`, and pane methods instead.
 
 ## [0.6.8] - 2026-06-04
 

@@ -732,14 +732,14 @@ fn auto_detect_respects_nested_guard_before_auto_attach() {
         let mut stream = UnixStream::connect(&api_socket).unwrap();
         writeln!(
             stream,
-            r#"{{"id":"ws_before","method":"workspace.list","params":{{}}}}"#
+            r#"{{"id":"tabs_before","method":"tab.list","params":{{}}}}"#
         )
         .unwrap();
         stream
     });
-    let baseline_count = baseline["result"]["workspaces"]
+    let baseline_count = baseline["result"]["tabs"]
         .as_array()
-        .map(|workspaces| workspaces.len())
+        .map(|tabs| tabs.len())
         .unwrap_or(0);
 
     let output = Command::new(env!("CARGO_BIN_EXE_gmux"))
@@ -765,14 +765,14 @@ fn auto_detect_respects_nested_guard_before_auto_attach() {
         let mut stream = UnixStream::connect(&api_socket).unwrap();
         writeln!(
             stream,
-            r#"{{"id":"ws_after","method":"workspace.list","params":{{}}}}"#
+            r#"{{"id":"tabs_after","method":"tab.list","params":{{}}}}"#
         )
         .unwrap();
         stream
     });
-    let after_count = after["result"]["workspaces"]
+    let after_count = after["result"]["tabs"]
         .as_array()
-        .map(|workspaces| workspaces.len())
+        .map(|tabs| tabs.len())
         .unwrap_or(0);
     assert_eq!(
         after_count, baseline_count,

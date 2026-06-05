@@ -197,16 +197,55 @@ fn ping_socket(socket_path: &Path) -> String {
 }
 
 fn workspace_create(socket_path: &Path, label: &str) -> Value {
-    send_json_request(
+    let mut response = send_json_request(
         socket_path,
         "workspace_create",
-        "workspace.create",
+        "tab.create",
         json!({ "label": label, "focus": true }),
-    )
+    );
+    if let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) {
+        if let (Some(workspace_id), Some(tab_id)) = (
+            result
+                .get("tab")
+                .and_then(|tab| tab.get("workspace_id"))
+                .cloned(),
+            result.get("tab").and_then(|tab| tab.get("tab_id")).cloned(),
+        ) {
+            result.insert(
+                "workspace".to_string(),
+                json!({
+                    "workspace_id": workspace_id,
+                    "active_tab_id": tab_id,
+                    "label": label,
+                }),
+            );
+        }
+    }
+    response
 }
 
 fn workspace_list(socket_path: &Path) -> Value {
-    send_json_request(socket_path, "workspace_list", "workspace.list", json!({}))
+    let tabs = send_json_request(socket_path, "workspace_list", "tab.list", json!({}));
+    let mut workspaces = Vec::new();
+    if let Some(tabs) = tabs["result"]["tabs"].as_array() {
+        for tab in tabs {
+            let Some(workspace_id) = tab["workspace_id"].as_str() else {
+                continue;
+            };
+            workspaces.push(json!({
+                "workspace_id": workspace_id,
+                "active_tab_id": tab["tab_id"],
+                "label": tab["label"],
+            }));
+        }
+    }
+    json!({
+        "id": "workspace_list",
+        "result": {
+            "type": "workspace_list",
+            "workspaces": workspaces,
+        },
+    })
 }
 
 fn workspace_count(socket_path: &Path) -> usize {
@@ -219,7 +258,7 @@ fn workspace_count(socket_path: &Path) -> usize {
 fn workspace_id_by_label(response: &Value, label: &str) -> String {
     response["result"]["workspaces"]
         .as_array()
-        .expect("workspace.list should return workspaces array")
+        .expect("tab.list should return tabs array")
         .iter()
         .find(|workspace| workspace["label"] == label)
         .and_then(|workspace| workspace["workspace_id"].as_str())
@@ -815,11 +854,11 @@ fn cross_area_client_and_api_workspace_views_are_consistent() {
 
     let before = workspace_count(&api_socket);
 
-    // Create a workspace via API while the client is attached.
+    // Create a tab via API while the client is attached.
     let created = workspace_create(&api_socket, "api-visible-workspace");
     let created_workspace_id = created["result"]["workspace"]["workspace_id"]
         .as_str()
-        .expect("workspace.create should return workspace_id")
+        .expect("tab.create should return workspace_id")
         .to_string();
 
     // The attached client must receive a frame that includes the new workspace

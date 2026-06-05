@@ -438,7 +438,7 @@ fn live_server_holds_one_pty_master_fd_per_pane() {
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );
@@ -554,7 +554,7 @@ fn live_handoff_preserves_pane_process_io() {
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );
@@ -748,7 +748,7 @@ pathlib.Path({received:?}).write_text(data.hex())
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );
@@ -839,7 +839,7 @@ pathlib.Path({received:?}).write_text(data.hex())
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );
@@ -984,7 +984,7 @@ fn live_handoff_keeps_shell_pane_after_foreground_process_exits() {
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );
@@ -1057,7 +1057,7 @@ fn live_handoff_preserves_python_http_server() {
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": web_root, "focus": true}
         }),
     );
@@ -1139,7 +1139,7 @@ fn live_handoff_preserves_http_servers_across_multiple_sessions() {
             api_socket,
             serde_json::json!({
                 "id": "test:workspace:create",
-                "method": "workspace.create",
+                "method": "tab.create",
                 "params": {"cwd": web_root, "focus": true}
             }),
         );
@@ -1215,7 +1215,7 @@ fn live_handoff_bad_expected_protocol_rolls_back_old_server() {
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );
@@ -1301,7 +1301,7 @@ fn live_handoff_import_failure_rolls_back_old_server_at(failure_point: &str) {
         &api_socket,
         serde_json::json!({
             "id": "test:workspace:create",
-            "method": "workspace.create",
+            "method": "tab.create",
             "params": {"cwd": "/tmp", "focus": true}
         }),
     );

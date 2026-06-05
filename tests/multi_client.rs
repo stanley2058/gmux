@@ -249,25 +249,23 @@ fn send_json_request(socket_path: &Path, request: &str) -> Value {
 fn create_workspace_and_root_pane(socket_path: &Path, label: &str) -> (String, String) {
     let response = send_json_request(
         socket_path,
-        &format!(
-            "{{\"id\":\"ws_create\",\"method\":\"workspace.create\",\"params\":{{\"label\":\"{label}\",\"focus\":true}}}}"
-        ),
+        &format!("{{\"id\":\"ws_create\",\"method\":\"tab.create\",\"params\":{{\"label\":\"{label}\",\"focus\":true}}}}"),
     );
 
     if response.get("error").is_some() {
-        panic!("workspace.create failed: {response}");
+        panic!("tab.create failed: {response}");
     }
 
     let workspace_id = response
-        .pointer("/result/workspace/workspace_id")
+        .pointer("/result/tab/workspace_id")
         .and_then(Value::as_str)
-        .expect("workspace.create should return workspace id")
+        .expect("tab.create should return workspace id")
         .to_string();
 
     let pane_id = response
         .pointer("/result/root_pane/pane_id")
         .and_then(Value::as_str)
-        .expect("workspace.create should return root pane id")
+        .expect("tab.create should return root pane id")
         .to_string();
 
     (workspace_id, pane_id)

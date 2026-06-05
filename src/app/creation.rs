@@ -233,17 +233,6 @@ impl App {
         })
     }
 
-    pub(super) fn workspace_created_result(
-        &self,
-        ws_idx: usize,
-    ) -> Option<crate::api::schema::ResponseResult> {
-        Some(crate::api::schema::ResponseResult::WorkspaceCreated {
-            workspace: self.workspace_info(ws_idx),
-            tab: self.tab_info(ws_idx, 0)?,
-            root_pane: self.root_pane_info(ws_idx, 0)?,
-        })
-    }
-
     pub(super) fn tab_created_result(
         &self,
         ws_idx: usize,

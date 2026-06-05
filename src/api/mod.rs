@@ -22,10 +22,6 @@ pub(crate) fn request_changes_ui(request: &Request) -> bool {
     matches!(
         &request.method,
         Method::ServerReloadConfig(_)
-            | Method::WorkspaceCreate(_)
-            | Method::WorkspaceFocus(_)
-            | Method::WorkspaceRename(_)
-            | Method::WorkspaceClose(_)
             | Method::TabCreate(_)
             | Method::TabFocus(_)
             | Method::TabRename(_)

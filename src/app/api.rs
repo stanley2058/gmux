@@ -4,7 +4,6 @@ use std::time::{Duration, Instant};
 mod panes;
 mod responses;
 mod tabs;
-mod workspaces;
 
 use super::{api_helpers::pane_agent_status, App, Mode, OverlayPaneState, ToastKind};
 use crate::events::AppEvent;
@@ -480,20 +479,6 @@ impl App {
                         diagnostics: report.diagnostics,
                     },
                 }
-            }
-            Method::WorkspaceList(_) => return self.handle_workspace_list(request.id),
-            Method::WorkspaceGet(target) => return self.handle_workspace_get(request.id, target),
-            Method::WorkspaceCreate(params) => {
-                return self.handle_workspace_create(request.id, params);
-            }
-            Method::WorkspaceFocus(target) => {
-                return self.handle_workspace_focus(request.id, target)
-            }
-            Method::WorkspaceRename(params) => {
-                return self.handle_workspace_rename(request.id, params);
-            }
-            Method::WorkspaceClose(target) => {
-                return self.handle_workspace_close(request.id, target)
             }
             Method::TabList(params) => return self.handle_tab_list(request.id, params),
             Method::TabGet(target) => return self.handle_tab_get(request.id, target),

@@ -131,19 +131,58 @@ fn send_json_request(socket_path: &PathBuf, request: &str) -> Value {
 }
 
 fn workspace_create(socket_path: &PathBuf, label: &str) -> Value {
-    send_json_request(
+    let mut response = send_json_request(
         socket_path,
         &format!(
-            r#"{{"id":"workspace_create","method":"workspace.create","params":{{"label":"{label}"}}}}"#
+            r#"{{"id":"workspace_create","method":"tab.create","params":{{"label":"{label}"}}}}"#
         ),
-    )
+    );
+    if let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) {
+        if let (Some(workspace_id), Some(tab_id)) = (
+            result
+                .get("tab")
+                .and_then(|tab| tab.get("workspace_id"))
+                .cloned(),
+            result.get("tab").and_then(|tab| tab.get("tab_id")).cloned(),
+        ) {
+            result.insert(
+                "workspace".to_string(),
+                serde_json::json!({
+                    "workspace_id": workspace_id,
+                    "active_tab_id": tab_id,
+                    "label": label,
+                }),
+            );
+        }
+    }
+    response
 }
 
 fn workspace_list(socket_path: &PathBuf) -> Value {
-    send_json_request(
+    let tabs = send_json_request(
         socket_path,
-        r#"{"id":"workspace_list","method":"workspace.list","params":{}}"#,
-    )
+        r#"{"id":"workspace_list","method":"tab.list","params":{}}"#,
+    );
+    let mut workspaces = Vec::new();
+    if let Some(tabs) = tabs["result"]["tabs"].as_array() {
+        for tab in tabs {
+            let Some(workspace_id) = tab["workspace_id"].as_str() else {
+                continue;
+            };
+            workspaces.push(serde_json::json!({
+                "workspace_id": workspace_id,
+                "active_tab_id": tab["tab_id"],
+                "label": tab["label"],
+            }));
+        }
+    }
+    serde_json::json!({
+        "id": "workspace_list",
+        "result": {
+            "type": "workspace_list",
+            "workspaces": workspaces,
+        },
+    })
 }
 
 fn pane_list(socket_path: &PathBuf, workspace_id: &str) -> Value {
@@ -227,7 +266,7 @@ fn read_pane_tty_size_after_marker(
 fn workspace_id_by_label(response: &Value, label: &str) -> String {
     response["result"]["workspaces"]
         .as_array()
-        .expect("workspace.list should return an array")
+        .expect("tab.list should return an array")
         .iter()
         .find(|workspace| workspace["label"] == label)
         .and_then(|workspace| workspace["workspace_id"].as_str())
@@ -400,16 +439,16 @@ fn reattach_after_detach_shows_current_state() {
     // Drain initial frames.
     drain_messages(&mut stream_a);
 
-    // Create a workspace via API while client A is attached.
+    // Create an initial tab via API while client A is attached.
     let mut ws_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let request = r#"{"id":"1","method":"workspace.create","params":{"label":"reattach-test"}}"#;
+    let request = r#"{"id":"1","method":"tab.create","params":{"label":"reattach-test"}}"#;
     writeln!(ws_stream, "{}", request).unwrap();
     let mut reader = BufReader::new(ws_stream);
     let mut ws_response = String::new();
     reader.read_line(&mut ws_response).unwrap();
     assert!(
-        ws_response.contains("workspace_created") || ws_response.contains("ok"),
-        "workspace creation should succeed: {ws_response}"
+        ws_response.contains("tab_created") || ws_response.contains("ok"),
+        "tab creation should succeed: {ws_response}"
     );
 
     // Client A detaches (send ClientMessage::Detach).
@@ -466,16 +505,12 @@ fn reattach_after_detach_shows_current_state() {
         "reattached client should receive a Frame with current state"
     );
 
-    // Verify the workspace still exists via API.
-    let mut list_stream = UnixStream::connect(&api_socket).expect("connect to API");
-    let list_request = r#"{"id":"2","method":"workspace.list","params":{}}"#;
-    writeln!(list_stream, "{}", list_request).unwrap();
-    let mut list_reader = BufReader::new(list_stream);
-    let mut list_response = String::new();
-    list_reader.read_line(&mut list_response).unwrap();
+    // Verify the tab still exists via API.
+    let list_response =
+        send_json_request(&api_socket, r#"{"id":"2","method":"tab.list","params":{}}"#).to_string();
     assert!(
         list_response.contains("reattach-test"),
-        "workspace should still exist after detach/reattach: {list_response}"
+        "tab should still exist after detach/reattach: {list_response}"
     );
 
     cleanup_spawned_gmux(spawned, base);
@@ -740,9 +775,9 @@ fn output_accumulated_while_detached_visible_on_reattach() {
     );
 
     // Use API to send text to a pane while no client is attached.
-    // First create a workspace and find its pane.
+    // First create a tab and find its pane.
     let ws_create_response = workspace_create(&api_socket, "scrollback-test");
-    assert_eq!(ws_create_response["result"]["type"], "workspace_created");
+    assert_eq!(ws_create_response["result"]["type"], "tab_created");
 
     // Find the workspace and pane IDs.
     let ws_response = workspace_list(&api_socket);

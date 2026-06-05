@@ -62,8 +62,6 @@ Raw socket method names use dot notation:
 | Pane | `pane.split`, `pane.list`, `pane.get`, `pane.rename`, `pane.send_text`, `pane.send_keys`, `pane.send_input`, `pane.read`, `pane.close`, `pane.wait_for_output` |
 | Events | `events.subscribe`, `events.wait` |
 
-Some raw compatibility methods still use the internal session container while Gmux collapses its protocol to sessions, tabs, and panes. Prefer the CLI wrappers above unless you are maintaining an older protocol client.
-
 ## Socket transport
 
 Gmux uses newline-delimited JSON over a Unix domain socket.

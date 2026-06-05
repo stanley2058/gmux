@@ -2419,17 +2419,15 @@ mod tests {
     fn read_only_api_requests_do_not_force_rerender() {
         let read_only = crate::api::schema::Request {
             id: "req_1".into(),
-            method: crate::api::schema::Method::WorkspaceList(
-                crate::api::schema::EmptyParams::default(),
-            ),
+            method: crate::api::schema::Method::TabList(crate::api::schema::TabListParams {
+                workspace_id: None,
+            }),
         };
         let mutating = crate::api::schema::Request {
             id: "req_2".into(),
-            method: crate::api::schema::Method::WorkspaceFocus(
-                crate::api::schema::WorkspaceTarget {
-                    workspace_id: "w_1".into(),
-                },
-            ),
+            method: crate::api::schema::Method::TabFocus(crate::api::schema::TabTarget {
+                tab_id: "w_1:1".into(),
+            }),
         };
         let pane_rename = crate::api::schema::Request {
             id: "req_3".into(),
@@ -2441,31 +2439,6 @@ mod tests {
         assert!(!crate::api::request_changes_ui(&read_only));
         assert!(crate::api::request_changes_ui(&mutating));
         assert!(crate::api::request_changes_ui(&pane_rename));
-    }
-
-    #[test]
-    fn workspace_create_response_includes_initial_tab_and_root_pane() {
-        let mut app = test_app();
-        app.state.workspaces = vec![Workspace::test_new("api-root-pane")];
-        app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
-
-        let crate::api::schema::ResponseResult::WorkspaceCreated {
-            workspace,
-            tab,
-            root_pane,
-        } = app.workspace_created_result(0).unwrap()
-        else {
-            panic!("expected workspace_created response");
-        };
-
-        assert_eq!(workspace.label, "api-root-pane");
-        assert_eq!(tab.workspace_id, workspace.workspace_id);
-        assert_eq!(root_pane.workspace_id, workspace.workspace_id);
-        assert_eq!(root_pane.tab_id, tab.tab_id);
-        assert!(root_pane.terminal_id.starts_with("term_"));
-        assert_ne!(root_pane.terminal_id, root_pane.pane_id);
     }
 
     #[test]
