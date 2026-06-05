@@ -16,7 +16,7 @@
 let
   manifest = lib.importTOML ../Cargo.toml;
   zigDeps = callPackage ../vendor/libghostty-vt/build.zig.zon.nix {
-    name = "herdr-libghostty-vt-zig-cache";
+    name = "gmux-libghostty-vt-zig-cache";
     inherit zstd;
     linkFarm =
       name: entries:
@@ -48,7 +48,7 @@ let
   '';
 in
 rustPlatform.buildRustPackage {
-  pname = "herdr";
+  pname = "gmux";
   version = manifest.package.version;
 
   src = lib.fileset.toSource {
@@ -102,9 +102,9 @@ rustPlatform.buildRustPackage {
 
   meta = {
     description = "Terminal workspace manager for AI coding agents";
-    homepage = "https://herdr.dev";
+    homepage = "https://gmux.dev";
     license = lib.licenses.agpl3Plus;
-    mainProgram = "herdr";
+    mainProgram = "gmux";
     platforms = lib.platforms.linux ++ lib.platforms.darwin;
   };
 }

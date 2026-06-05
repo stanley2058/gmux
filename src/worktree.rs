@@ -255,7 +255,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        std::env::temp_dir().join(format!("herdr-{name}-{}-{nanos}", std::process::id()))
+        std::env::temp_dir().join(format!("gmux-{name}-{}-{nanos}", std::process::id()))
     }
 
     fn run_git(repo: &Path, args: &[&str]) {
@@ -277,8 +277,8 @@ mod tests {
         let repo = unique_temp_path(name);
         std::fs::create_dir_all(&repo).unwrap();
         run_git(&repo, &["init", "--quiet"]);
-        run_git(&repo, &["config", "user.email", "herdr@example.invalid"]);
-        run_git(&repo, &["config", "user.name", "Herdr Test"]);
+        run_git(&repo, &["config", "user.email", "gmux@example.invalid"]);
+        run_git(&repo, &["config", "user.name", "Gmux Test"]);
         std::fs::write(repo.join("README.md"), "test\n").unwrap();
         run_git(&repo, &["add", "README.md"]);
         run_git(&repo, &["commit", "--quiet", "-m", "initial"]);
@@ -355,8 +355,8 @@ prunable stale
         let old_home = std::env::var_os("HOME");
         std::env::set_var("HOME", "/home/me");
         assert_eq!(
-            expand_tilde_path("~/.herdr/worktrees"),
-            PathBuf::from("/home/me/.herdr/worktrees")
+            expand_tilde_path("~/.gmux/worktrees"),
+            PathBuf::from("/home/me/.gmux/worktrees")
         );
         assert_eq!(
             expand_tilde_path("/tmp/worktrees"),
@@ -373,19 +373,19 @@ prunable stale
     fn default_checkout_path_appends_repo_and_branch_slug() {
         assert_eq!(
             default_checkout_path(
-                Path::new("/home/me/.herdr/worktrees"),
-                "herdr",
+                Path::new("/home/me/.gmux/worktrees"),
+                "gmux",
                 "worktree/brave-river",
             ),
-            PathBuf::from("/home/me/.herdr/worktrees/herdr/worktree-brave-river")
+            PathBuf::from("/home/me/.gmux/worktrees/gmux/worktree-brave-river")
         );
     }
 
     #[test]
     fn worktree_remove_command_preserves_branch_by_not_deleting_it() {
         let command = build_worktree_remove_command(
-            Path::new("/repo/herdr"),
-            Path::new("/w/herdr/issue-137"),
+            Path::new("/repo/gmux"),
+            Path::new("/w/gmux/issue-137"),
             false,
         );
         assert_eq!(command.program, "git");
@@ -393,10 +393,10 @@ prunable stale
             command.args,
             vec![
                 "-C",
-                "/repo/herdr",
+                "/repo/gmux",
                 "worktree",
                 "remove",
-                "/w/herdr/issue-137"
+                "/w/gmux/issue-137"
             ]
         );
     }
@@ -404,19 +404,19 @@ prunable stale
     #[test]
     fn forced_worktree_remove_command_uses_git_force_flag() {
         let command = build_worktree_remove_command(
-            Path::new("/repo/herdr"),
-            Path::new("/w/herdr/issue-137"),
+            Path::new("/repo/gmux"),
+            Path::new("/w/gmux/issue-137"),
             true,
         );
         assert_eq!(
             command.args,
             vec![
                 "-C",
-                "/repo/herdr",
+                "/repo/gmux",
                 "worktree",
                 "remove",
                 "--force",
-                "/w/herdr/issue-137"
+                "/w/gmux/issue-137"
             ]
         );
     }
@@ -424,21 +424,21 @@ prunable stale
     #[test]
     fn dirty_remove_error_detection_matches_git_force_hint() {
         assert!(is_dirty_worktree_remove_error(
-            "fatal: '/w/herdr' contains modified or untracked files, use --force to delete it"
+            "fatal: '/w/gmux' contains modified or untracked files, use --force to delete it"
         ));
         assert!(!is_dirty_worktree_remove_error(
-            "fatal: '/w/herdr' is a missing but already registered worktree"
+            "fatal: '/w/gmux' is a missing but already registered worktree"
         ));
         assert!(!is_dirty_worktree_remove_error(
-            "fatal: '/w/herdr' contains a locked worktree, use --force only if you know why"
+            "fatal: '/w/gmux' contains a locked worktree, use --force only if you know why"
         ));
     }
 
     #[test]
     fn worktree_add_command_creates_new_branch_from_base() {
         let command = build_worktree_add_new_branch_command(
-            Path::new("/repo/herdr"),
-            Path::new("/w/herdr/worktree-brave-river"),
+            Path::new("/repo/gmux"),
+            Path::new("/w/gmux/worktree-brave-river"),
             "worktree/brave-river",
             "HEAD",
         );
@@ -447,12 +447,12 @@ prunable stale
             command.args,
             vec![
                 "-C",
-                "/repo/herdr",
+                "/repo/gmux",
                 "worktree",
                 "add",
                 "-b",
                 "worktree/brave-river",
-                "/w/herdr/worktree-brave-river",
+                "/w/gmux/worktree-brave-river",
                 "HEAD"
             ]
         );

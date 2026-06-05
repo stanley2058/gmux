@@ -1,7 +1,7 @@
-"""Hermes plugin installed by Herdr to report agent lifecycle state."""
+"""Hermes plugin installed by Gmux to report agent lifecycle state."""
 
-# HERDR_INTEGRATION_ID=hermes
-# HERDR_INTEGRATION_VERSION=2
+# GMUX_INTEGRATION_ID=hermes
+# GMUX_INTEGRATION_VERSION=2
 
 from __future__ import annotations
 
@@ -11,15 +11,15 @@ import random
 import socket
 import time
 
-_SOURCE = "herdr:hermes"
+_SOURCE = "gmux:hermes"
 _AGENT = "hermes"
 
 
 def _base_params() -> tuple[str, str] | None:
-    if os.environ.get("HERDR_ENV") != "1":
+    if os.environ.get("GMUX_ENV") != "1":
         return None
-    pane_id = os.environ.get("HERDR_PANE_ID", "").strip()
-    socket_path = os.environ.get("HERDR_SOCKET_PATH", "").strip()
+    pane_id = os.environ.get("GMUX_PANE_ID", "").strip()
+    socket_path = os.environ.get("GMUX_SOCKET_PATH", "").strip()
     if not pane_id or not socket_path:
         return None
     return pane_id, socket_path

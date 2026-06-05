@@ -6,9 +6,9 @@ use super::{model::LoadedConfig, Config, CONFIG_PATH_ENV_VAR};
 
 pub fn app_dir_name() -> &'static str {
     if cfg!(debug_assertions) {
-        "herdr-dev"
+        "gmux-dev"
     } else {
-        "herdr"
+        "gmux"
     }
 }
 
@@ -464,10 +464,10 @@ mod tests {
     #[test]
     fn remove_section_key_removes_matching_key_from_section() {
         let content =
-            "[ui.toast]\nenabled = true\ndelivery = \"herdr\"\n[ui.sound]\nenabled = true\n";
+            "[ui.toast]\nenabled = true\ndelivery = \"gmux\"\n[ui.sound]\nenabled = true\n";
         let updated = remove_section_key(content, "ui.toast", "enabled");
         assert!(!updated.contains("[ui.toast]\nenabled = true"));
-        assert!(updated.contains("delivery = \"herdr\""));
+        assert!(updated.contains("delivery = \"gmux\""));
         assert!(updated.contains("[ui.sound]\nenabled = true"));
     }
 

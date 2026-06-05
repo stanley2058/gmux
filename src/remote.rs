@@ -20,12 +20,12 @@ const BRIDGE_SOCKET_PERMISSION_MODE: u32 = 0o600;
 const REMOTE_SERVER_SHUTDOWN_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
 const REMOTE_SERVER_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const CURRENT_PROTOCOL: u32 = crate::protocol::PROTOCOL_VERSION;
-const STABLE_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/latest.json";
-const PREVIEW_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/preview.json";
-const REMOTE_BINARY_ENV_VAR: &str = "HERDR_REMOTE_BINARY";
-pub(crate) const REATTACH_COMMAND_ENV_VAR: &str = "HERDR_REATTACH_COMMAND";
+const STABLE_UPDATE_MANIFEST_URL: &str = "https://gmux.dev/latest.json";
+const PREVIEW_UPDATE_MANIFEST_URL: &str = "https://gmux.dev/preview.json";
+const REMOTE_BINARY_ENV_VAR: &str = "GMUX_REMOTE_BINARY";
+pub(crate) const REATTACH_COMMAND_ENV_VAR: &str = "GMUX_REATTACH_COMMAND";
 
-pub(crate) const REMOTE_KEYBINDINGS_ENV_VAR: &str = "HERDR_REMOTE_KEYBINDINGS";
+pub(crate) const REMOTE_KEYBINDINGS_ENV_VAR: &str = "GMUX_REMOTE_KEYBINDINGS";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteKeybindings {
@@ -157,7 +157,7 @@ pub(crate) fn run_remote(remote: RemoteLaunch) -> io::Result<()> {
     let local_socket = local_forward_socket_path(&remote.target, &session_name);
     let program = std::env::args()
         .next()
-        .unwrap_or_else(|| "herdr".to_string());
+        .unwrap_or_else(|| "gmux".to_string());
     let reattach_command = reattach_command(
         &program,
         &remote.target,
@@ -165,10 +165,10 @@ pub(crate) fn run_remote(remote: RemoteLaunch) -> io::Result<()> {
         remote.keybindings,
         remote.live_handoff,
     );
-    let prepared_remote = prepare_remote_herdr(&remote.target, remote.live_handoff)?;
+    let prepared_remote = prepare_remote_gmux(&remote.target, remote.live_handoff)?;
     ensure_remote_server_ready(
         &remote.target,
-        &prepared_remote.remote_herdr,
+        &prepared_remote.remote_gmux,
         prepared_remote.installed_or_replaced,
         prepared_remote.stop_after_install_approved,
         remote.live_handoff,
@@ -180,7 +180,7 @@ pub(crate) fn run_remote(remote: RemoteLaunch) -> io::Result<()> {
         .manage_ssh_config;
     let _bridge = SshStdioBridge::start(
         remote.target,
-        prepared_remote.remote_herdr,
+        prepared_remote.remote_gmux,
         local_socket.clone(),
         session_name,
         manage_ssh_config,
@@ -197,7 +197,7 @@ pub(crate) fn run_remote_client_bridge() -> io::Result<()> {
         io::Error::new(
             err.kind(),
             format!(
-                "failed to connect to remote Herdr client socket {}: {err}",
+                "failed to connect to remote Gmux client socket {}: {err}",
                 socket_path.display()
             ),
         )
@@ -228,7 +228,7 @@ fn ensure_remote_server_running() -> io::Result<()> {
             return Ok(());
         }
         return Err(io::Error::other(
-            "remote herdr server must restart before this bridge can attach; rerun `herdr --remote` from an interactive terminal to approve stopping it",
+            "remote gmux server must restart before this bridge can attach; rerun `gmux --remote` from an interactive terminal to approve stopping it",
         ));
     }
 
@@ -283,15 +283,15 @@ impl RemotePlatform {
 }
 
 #[derive(Debug, Clone)]
-struct RemoteHerdr {
+struct RemoteGmux {
     install_suffix: String,
     shell_path: String,
     platform: RemotePlatform,
 }
 
-impl RemoteHerdr {
+impl RemoteGmux {
     fn for_platform(platform: RemotePlatform) -> Self {
-        let install_suffix = ".local/bin/herdr".to_string();
+        let install_suffix = ".local/bin/gmux".to_string();
         let shell_path = format!("\"$HOME/{install_suffix}\"");
         Self {
             install_suffix,
@@ -424,8 +424,8 @@ struct RemoteReleaseAsset {
     sha256: Option<String>,
 }
 
-struct PreparedRemoteHerdr {
-    remote_herdr: RemoteHerdr,
+struct PreparedRemoteGmux {
+    remote_gmux: RemoteGmux,
     installed_or_replaced: bool,
     stop_after_install_approved: bool,
 }
@@ -452,29 +452,26 @@ impl InstallSource {
     }
 }
 
-fn prepare_remote_herdr(
-    target: &str,
-    live_handoff_enabled: bool,
-) -> io::Result<PreparedRemoteHerdr> {
+fn prepare_remote_gmux(target: &str, live_handoff_enabled: bool) -> io::Result<PreparedRemoteGmux> {
     let platform = detect_remote_platform(target)?;
-    let remote_herdr = RemoteHerdr::for_platform(platform);
+    let remote_gmux = RemoteGmux::for_platform(platform);
     let override_binary = remote_binary_override_path()?;
-    let path_remote_herdr = remote_binary_on_path_any(target, &remote_herdr)?;
+    let path_remote_gmux = remote_binary_on_path_any(target, &remote_gmux)?;
 
     if override_binary.is_none() {
-        if let Some(path_remote_herdr) = path_remote_herdr
+        if let Some(path_remote_gmux) = path_remote_gmux
             .as_ref()
             .filter(|candidate| remote_binary_matches(target, candidate).unwrap_or(false))
         {
-            return Ok(PreparedRemoteHerdr {
-                remote_herdr: path_remote_herdr.clone(),
+            return Ok(PreparedRemoteGmux {
+                remote_gmux: path_remote_gmux.clone(),
                 installed_or_replaced: false,
                 stop_after_install_approved: false,
             });
         }
-        if remote_binary_matches(target, &remote_herdr)? {
-            return Ok(PreparedRemoteHerdr {
-                remote_herdr,
+        if remote_binary_matches(target, &remote_gmux)? {
+            return Ok(PreparedRemoteGmux {
+                remote_gmux,
                 installed_or_replaced: false,
                 stop_after_install_approved: false,
             });
@@ -482,38 +479,38 @@ fn prepare_remote_herdr(
     }
 
     let mut stop_after_install_approved = false;
-    if let Some(status_probe_herdr) = path_remote_herdr.as_ref().or_else(|| {
-        remote_binary_exists(target, &remote_herdr)
+    if let Some(status_probe_gmux) = path_remote_gmux.as_ref().or_else(|| {
+        remote_binary_exists(target, &remote_gmux)
             .ok()
-            .and_then(|exists| exists.then_some(&remote_herdr))
+            .and_then(|exists| exists.then_some(&remote_gmux))
     }) {
         stop_after_install_approved = confirm_remote_install_with_running_server(
             target,
-            status_probe_herdr,
+            status_probe_gmux,
             live_handoff_enabled,
         )?;
     }
     confirm_remote_install(
         target,
-        &remote_herdr,
-        &install_source_description(&remote_herdr.platform, override_binary.as_deref()),
+        &remote_gmux,
+        &install_source_description(&remote_gmux.platform, override_binary.as_deref()),
     )?;
-    let source = resolve_install_source(&remote_herdr.platform, override_binary)?;
-    let install_result = install_remote_herdr(target, &remote_herdr, &source.path);
+    let source = resolve_install_source(&remote_gmux.platform, override_binary)?;
+    let install_result = install_remote_gmux(target, &remote_gmux, &source.path);
     source.cleanup();
     install_result?;
 
-    if !remote_binary_matches(target, &remote_herdr)? {
+    if !remote_binary_matches(target, &remote_gmux)? {
         return Err(io::Error::other(format!(
-            "installed remote herdr at {}, but it did not report version {}",
-            remote_herdr.shell_path,
+            "installed remote gmux at {}, but it did not report version {}",
+            remote_gmux.shell_path,
             current_version()
         )));
     }
     warn_if_remote_bin_not_on_path(target)?;
 
-    Ok(PreparedRemoteHerdr {
-        remote_herdr,
+    Ok(PreparedRemoteGmux {
+        remote_gmux,
         installed_or_replaced: true,
         stop_after_install_approved,
     })
@@ -540,33 +537,30 @@ fn detect_remote_platform(target: &str) -> io::Result<RemotePlatform> {
 
 fn remote_binary_on_path_any(
     target: &str,
-    remote_herdr: &RemoteHerdr,
-) -> io::Result<Option<RemoteHerdr>> {
-    let output = ssh_user_shell_output(target, "command -v herdr")?;
+    remote_gmux: &RemoteGmux,
+) -> io::Result<Option<RemoteGmux>> {
+    let output = ssh_user_shell_output(target, "command -v gmux")?;
     if !output.status.success() {
         return Ok(None);
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(remote_herdr_from_path_discovery(remote_herdr, &stdout))
+    Ok(remote_gmux_from_path_discovery(remote_gmux, &stdout))
 }
 
-fn remote_herdr_from_path_discovery(
-    remote_herdr: &RemoteHerdr,
-    stdout: &str,
-) -> Option<RemoteHerdr> {
+fn remote_gmux_from_path_discovery(remote_gmux: &RemoteGmux, stdout: &str) -> Option<RemoteGmux> {
     let mut lines = stdout.lines();
     let path = lines.next()?;
     if !path.starts_with('/') {
         return None;
     }
-    Some(remote_herdr.clone().with_shell_path(shell_quote(path)))
+    Some(remote_gmux.clone().with_shell_path(shell_quote(path)))
 }
 
-fn remote_binary_matches(target: &str, remote_herdr: &RemoteHerdr) -> io::Result<bool> {
+fn remote_binary_matches(target: &str, remote_gmux: &RemoteGmux) -> io::Result<bool> {
     let command = format!(
         "test -x {0} && {0} --version && {0} status client --json",
-        remote_herdr.shell_path
+        remote_gmux.shell_path
     );
     let output = ssh_sh_output(target, &command)?;
     if !output.status.success() {
@@ -577,14 +571,14 @@ fn remote_binary_matches(target: &str, remote_herdr: &RemoteHerdr) -> io::Result
     let mut lines = stdout.lines();
     let version = lines.next().unwrap_or_default().trim();
     let status = lines.next().unwrap_or_default();
-    Ok(version == format!("herdr {}", current_version())
+    Ok(version == format!("gmux {}", current_version())
         && parse_client_status_json(status)
             .map(|status| status.protocol == CURRENT_PROTOCOL)
             .unwrap_or(false))
 }
 
-fn remote_binary_exists(target: &str, remote_herdr: &RemoteHerdr) -> io::Result<bool> {
-    let command = format!("test -x {}", remote_herdr.shell_path);
+fn remote_binary_exists(target: &str, remote_gmux: &RemoteGmux) -> io::Result<bool> {
+    let command = format!("test -x {}", remote_gmux.shell_path);
     Ok(ssh_sh_output(target, &command)?.status.success())
 }
 
@@ -640,7 +634,7 @@ fn install_source_description_for(
     }
 
     if local_binary_can_seed_remote {
-        "the current local herdr binary".to_string()
+        "the current local gmux binary".to_string()
     } else {
         format!(
             "the {} {} asset for {}",
@@ -698,12 +692,12 @@ enum RemoteServerRestartReason {
 
 fn ensure_remote_server_ready(
     target: &str,
-    remote_herdr: &RemoteHerdr,
+    remote_gmux: &RemoteGmux,
     remote_binary_changed: bool,
     stop_after_install_approved: bool,
     live_handoff_enabled: bool,
 ) -> io::Result<()> {
-    let status = remote_server_status(target, remote_herdr)?;
+    let status = remote_server_status(target, remote_gmux)?;
     let RemoteServerStatus::Running {
         version,
         protocol,
@@ -720,7 +714,7 @@ fn ensure_remote_server_ready(
     };
 
     if live_handoff_enabled && live_handoff {
-        match live_handoff_remote_server(target, remote_herdr) {
+        match live_handoff_remote_server(target, remote_gmux) {
             Ok(()) => return Ok(()),
             Err(err) => {
                 eprintln!("remote live handoff failed: {err}");
@@ -730,12 +724,12 @@ fn ensure_remote_server_ready(
     }
 
     if stop_after_install_approved {
-        stop_remote_server(target, remote_herdr)?;
+        stop_remote_server(target, remote_gmux)?;
         return Ok(());
     }
 
     if confirm_remote_server_stop(target, version.as_deref(), protocol, reason)? {
-        stop_remote_server(target, remote_herdr)?;
+        stop_remote_server(target, remote_gmux)?;
     }
     Ok(())
 }
@@ -759,21 +753,21 @@ fn remote_server_restart_reason(
 
 fn confirm_remote_install_with_running_server(
     target: &str,
-    remote_herdr: &RemoteHerdr,
+    remote_gmux: &RemoteGmux,
     live_handoff_enabled: bool,
 ) -> io::Result<bool> {
-    let status = match remote_server_status(target, remote_herdr) {
+    let status = match remote_server_status(target, remote_gmux) {
         Ok(status) => status,
         Err(err) => {
             if !io::stdin().is_terminal() {
                 return Err(io::Error::other(format!(
-                    "could not inspect the running remote herdr server on {target} before installing: {err}; run from an interactive terminal to approve updating the remote binary"
+                    "could not inspect the running remote gmux server on {target} before installing: {err}; run from an interactive terminal to approve updating the remote binary"
                 )));
             }
             eprintln!(
-                "could not inspect the running remote herdr server on {target} before installing: {err}"
+                "could not inspect the running remote gmux server on {target} before installing: {err}"
             );
-            eprint!("continue installing the remote herdr binary? [y/N] ");
+            eprint!("continue installing the remote gmux binary? [y/N] ");
             io::stderr().flush()?;
 
             let mut answer = String::new();
@@ -782,7 +776,7 @@ fn confirm_remote_install_with_running_server(
             if answer != "y" && answer != "yes" {
                 return Err(io::Error::new(
                     io::ErrorKind::Interrupted,
-                    "remote herdr install cancelled",
+                    "remote gmux install cancelled",
                 ));
             }
             return Ok(false);
@@ -801,25 +795,25 @@ fn confirm_remote_install_with_running_server(
             return Ok(false);
         }
         return Err(io::Error::other(format!(
-            "remote herdr server on {target} is running v{}; run from an interactive terminal to approve stopping it for the update",
+            "remote gmux server on {target} is running v{}; run from an interactive terminal to approve stopping it for the update",
             version_label(version.as_deref())
         )));
     }
 
     if live_handoff_enabled && live_handoff {
-        eprintln!("remote herdr server on {target} is currently running:");
+        eprintln!("remote gmux server on {target} is currently running:");
         eprintln!("  server: v{}", version_label(version.as_deref()));
         eprintln!(
-            "Herdr will install {} and hand off live pane processes to the prepared server.",
+            "Gmux will install {} and hand off live pane processes to the prepared server.",
             current_version()
         );
         return Ok(false);
     }
 
-    eprintln!("remote herdr server on {target} is currently running:");
+    eprintln!("remote gmux server on {target} is currently running:");
     eprintln!("  server: v{}", version_label(version.as_deref()));
     eprintln!(
-        "To complete the remote update, Herdr must stop the running remote server after installing."
+        "To complete the remote update, Gmux must stop the running remote server after installing."
     );
     eprintln!("This stops active remote pane processes, including shells, dev servers, and tests.");
     eprintln!();
@@ -835,18 +829,15 @@ fn confirm_remote_install_with_running_server(
     if answer != "y" && answer != "yes" {
         return Err(io::Error::new(
             io::ErrorKind::Interrupted,
-            "remote herdr install cancelled",
+            "remote gmux install cancelled",
         ));
     }
 
     Ok(true)
 }
 
-fn remote_server_status(
-    target: &str,
-    remote_herdr: &RemoteHerdr,
-) -> io::Result<RemoteServerStatus> {
-    let command = format!("{} status server --json", remote_herdr.shell_path);
+fn remote_server_status(target: &str, remote_gmux: &RemoteGmux) -> io::Result<RemoteServerStatus> {
+    let command = format!("{} status server --json", remote_gmux.shell_path);
     let output = ssh_sh_output(target, &command)?;
     if !output.status.success() {
         return Err(command_failed("remote server status failed", &output));
@@ -906,19 +897,19 @@ fn confirm_remote_server_stop(
     if !io::stdin().is_terminal() {
         if reason == RemoteServerRestartReason::ProtocolMismatch {
             return Err(io::Error::other(format!(
-                "remote herdr server on {target} must stop before this client can attach; run from an interactive terminal to approve stopping it"
+                "remote gmux server on {target} must stop before this client can attach; run from an interactive terminal to approve stopping it"
             )));
         }
 
         eprintln!(
-            "remote herdr server on {target} is still running v{}; it will use {} after it restarts.",
+            "remote gmux server on {target} is still running v{}; it will use {} after it restarts.",
             version_label(version),
             current_version()
         );
         return Ok(false);
     }
 
-    eprintln!("remote herdr server on {target} is currently running:");
+    eprintln!("remote gmux server on {target} is currently running:");
     eprintln!("  server: v{}", version_label(version));
     eprintln!("  prepared binary: {}", current_version());
     eprintln!();
@@ -929,12 +920,12 @@ fn confirm_remote_server_stop(
         }
         RemoteServerRestartReason::BinaryUpdated => {
             eprintln!(
-                "the remote herdr binary was installed or replaced. restart the remote server so it uses the prepared binary."
+                "the remote gmux binary was installed or replaced. restart the remote server so it uses the prepared binary."
             );
         }
         RemoteServerRestartReason::VersionMismatch => {
             eprintln!(
-                "the remote server is still running a different herdr version. restart it so it uses the prepared binary."
+                "the remote server is still running a different gmux version. restart it so it uses the prepared binary."
             );
         }
     }
@@ -959,18 +950,18 @@ fn confirm_remote_server_stop(
     if reason == RemoteServerRestartReason::ProtocolMismatch {
         return Err(io::Error::new(
             io::ErrorKind::Interrupted,
-            "remote herdr server stop cancelled",
+            "remote gmux server stop cancelled",
         ));
     }
 
     Ok(false)
 }
 
-fn live_handoff_remote_server(target: &str, remote_herdr: &RemoteHerdr) -> io::Result<()> {
+fn live_handoff_remote_server(target: &str, remote_gmux: &RemoteGmux) -> io::Result<()> {
     let command = format!(
         "{} server live-handoff --import-exe {} --expected-protocol {} --expected-version {}",
-        remote_herdr.shell_path,
-        remote_herdr.shell_path,
+        remote_gmux.shell_path,
+        remote_gmux.shell_path,
         CURRENT_PROTOCOL,
         current_version()
     );
@@ -980,34 +971,34 @@ fn live_handoff_remote_server(target: &str, remote_herdr: &RemoteHerdr) -> io::R
     }
 
     eprintln!(
-        "handed off the remote herdr server on {target}; reconnecting to the prepared server."
+        "handed off the remote gmux server on {target}; reconnecting to the prepared server."
     );
     Ok(())
 }
 
-fn stop_remote_server(target: &str, remote_herdr: &RemoteHerdr) -> io::Result<()> {
-    let command = format!("{} server stop", remote_herdr.shell_path);
+fn stop_remote_server(target: &str, remote_gmux: &RemoteGmux) -> io::Result<()> {
+    let command = format!("{} server stop", remote_gmux.shell_path);
     let output = ssh_sh_output(target, &command)?;
     if !output.status.success() {
         return Err(command_failed("remote server stop failed", &output));
     }
 
-    wait_for_remote_server_shutdown(target, remote_herdr)?;
-    eprintln!("stopped the remote herdr server on {target}; it will restart when the remote client bridge attaches.");
+    wait_for_remote_server_shutdown(target, remote_gmux)?;
+    eprintln!("stopped the remote gmux server on {target}; it will restart when the remote client bridge attaches.");
     Ok(())
 }
 
-fn wait_for_remote_server_shutdown(target: &str, remote_herdr: &RemoteHerdr) -> io::Result<()> {
+fn wait_for_remote_server_shutdown(target: &str, remote_gmux: &RemoteGmux) -> io::Result<()> {
     let deadline = Instant::now() + REMOTE_SERVER_SHUTDOWN_CONFIRM_TIMEOUT;
     loop {
-        if remote_server_status(target, remote_herdr)? == RemoteServerStatus::NotRunning {
+        if remote_server_status(target, remote_gmux)? == RemoteServerStatus::NotRunning {
             return Ok(());
         }
         if Instant::now() >= deadline {
             return Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 format!(
-                    "shutdown was requested, but the old remote herdr server on {target} is still responding after {} seconds",
+                    "shutdown was requested, but the old remote gmux server on {target} is still responding after {} seconds",
                     REMOTE_SERVER_SHUTDOWN_CONFIRM_TIMEOUT.as_secs()
                 ),
             ));
@@ -1021,7 +1012,7 @@ fn version_label(version: Option<&str>) -> &str {
 }
 
 fn warn_if_remote_bin_not_on_path(target: &str) -> io::Result<()> {
-    let output = ssh_user_shell_output(target, "command -v herdr")?;
+    let output = ssh_user_shell_output(target, "command -v gmux")?;
     if output.status.success()
         && remote_shell_resolves_managed_install(&String::from_utf8_lossy(&output.stdout))
     {
@@ -1029,7 +1020,7 @@ fn warn_if_remote_bin_not_on_path(target: &str) -> io::Result<()> {
     }
 
     eprintln!(
-        "herdr: installed remote binary to ~/.local/bin/herdr, but the remote shell does not resolve `herdr` to that path"
+        "gmux: installed remote binary to ~/.local/bin/gmux, but the remote shell does not resolve `gmux` to that path"
     );
     Ok(())
 }
@@ -1039,7 +1030,7 @@ fn remote_shell_resolves_managed_install(stdout: &str) -> bool {
         .lines()
         .next()
         .map(str::trim)
-        .is_some_and(|path| path.ends_with("/.local/bin/herdr"))
+        .is_some_and(|path| path.ends_with("/.local/bin/gmux"))
 }
 
 fn download_release_asset(platform: &RemotePlatform) -> io::Result<InstallSource> {
@@ -1047,7 +1038,7 @@ fn download_release_asset(platform: &RemotePlatform) -> io::Result<InstallSource
     let asset = remote_release_asset(&asset_key)?;
 
     let dir = private_download_dir(&asset_key)?;
-    let path = dir.join("herdr.tmp");
+    let path = dir.join("gmux.tmp");
     let status = Command::new("curl")
         .args(["-sfL", "--max-time", "120", "-o"])
         .arg(&path)
@@ -1107,7 +1098,7 @@ fn preview_assets_for_build<'a>(
     }
     let build = manifest.builds.get(build_id).ok_or_else(|| {
         io::Error::other(format!(
-            "preview manifest no longer includes build {build_id}; run `herdr update` locally or set {REMOTE_BINARY_ENV_VAR}=target/release/herdr"
+            "preview manifest no longer includes build {build_id}; run `gmux update` locally or set {REMOTE_BINARY_ENV_VAR}=target/release/gmux"
         ))
     })?;
     Ok((build.protocol, &build.assets))
@@ -1116,7 +1107,7 @@ fn preview_assets_for_build<'a>(
 fn remote_release_asset(asset_key: &str) -> io::Result<RemoteReleaseAsset> {
     if crate::build_info::is_preview() {
         let build_id = crate::build_info::build_id().ok_or_else(|| {
-            io::Error::other("preview client has no build id; set HERDR_REMOTE_BINARY or install Herdr on the remote manually")
+            io::Error::other("preview client has no build id; set GMUX_REMOTE_BINARY or install Gmux on the remote manually")
         })?;
         let manifest_bytes = fetch_remote_manifest(PREVIEW_UPDATE_MANIFEST_URL)?;
         let manifest: RemotePreviewManifest =
@@ -1126,7 +1117,7 @@ fn remote_release_asset(asset_key: &str) -> io::Result<RemoteReleaseAsset> {
         let (protocol, assets) = preview_assets_for_build(&manifest, build_id)?;
         if protocol != CURRENT_PROTOCOL {
             return Err(io::Error::other(format!(
-                "preview manifest has build {build_id} protocol {protocol}, but this client needs protocol {CURRENT_PROTOCOL}; set {REMOTE_BINARY_ENV_VAR}=target/release/herdr or install a matching Herdr on the remote host manually"
+                "preview manifest has build {build_id} protocol {protocol}, but this client needs protocol {CURRENT_PROTOCOL}; set {REMOTE_BINARY_ENV_VAR}=target/release/gmux or install a matching Gmux on the remote host manually"
             )));
         }
         return assets.get(asset_key).map(remote_asset_info).ok_or_else(|| {
@@ -1142,14 +1133,14 @@ fn remote_release_asset(asset_key: &str) -> io::Result<RemoteReleaseAsset> {
         .map_err(|err| io::Error::other(format!("failed to parse update manifest JSON: {err}")))?;
     let release = manifest.release_for_version(&current_version).ok_or_else(|| {
         io::Error::other(format!(
-            "release manifest does not include herdr {current_version}; build herdr for {} or install it there manually",
+            "release manifest does not include gmux {current_version}; build gmux for {} or install it there manually",
             asset_key
         ))
     })?;
     if let Some(protocol) = release.protocol {
         if protocol != CURRENT_PROTOCOL {
             return Err(io::Error::other(format!(
-                "release manifest has herdr {current_version} protocol {protocol}, but this client needs protocol {CURRENT_PROTOCOL}; set {REMOTE_BINARY_ENV_VAR}=target/release/herdr or install a matching herdr on the remote host manually"
+                "release manifest has gmux {current_version} protocol {protocol}, but this client needs protocol {CURRENT_PROTOCOL}; set {REMOTE_BINARY_ENV_VAR}=target/release/gmux or install a matching gmux on the remote host manually"
             )));
         }
     }
@@ -1159,7 +1150,7 @@ fn remote_release_asset(asset_key: &str) -> io::Result<RemoteReleaseAsset> {
         .map(remote_asset_info)
         .ok_or_else(|| {
             io::Error::other(format!(
-                "no {asset_key} binary in the release manifest for herdr {current_version}"
+                "no {asset_key} binary in the release manifest for gmux {current_version}"
             ))
         })
 }
@@ -1168,7 +1159,7 @@ fn private_download_dir(asset_key: &str) -> io::Result<PathBuf> {
     let base = std::env::temp_dir();
     for attempt in 0..100 {
         let dir = base.join(format!(
-            "herdr-remote-{}-{}-{attempt}",
+            "gmux-remote-{}-{}-{attempt}",
             std::process::id(),
             asset_key
         ));
@@ -1181,31 +1172,31 @@ fn private_download_dir(asset_key: &str) -> io::Result<PathBuf> {
 
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
-        "failed to create private herdr remote download directory",
+        "failed to create private gmux remote download directory",
     ))
 }
 
 fn confirm_remote_install(
     target: &str,
-    remote_herdr: &RemoteHerdr,
+    remote_gmux: &RemoteGmux,
     source_description: &str,
 ) -> io::Result<()> {
     if !io::stdin().is_terminal() {
         return Err(io::Error::other(format!(
-            "matching remote herdr {} is not installed at {}; run from an interactive terminal to approve installation",
+            "matching remote gmux {} is not installed at {}; run from an interactive terminal to approve installation",
             current_version(),
-            remote_herdr.shell_path
+            remote_gmux.shell_path
         )));
     }
 
     eprintln!(
-        "matching herdr {} is not installed on {target} for {}.",
+        "matching gmux {} is not installed on {target} for {}.",
         current_version(),
-        remote_herdr.platform.asset_key()
+        remote_gmux.platform.asset_key()
     );
     eprint!(
         "Install {} to {}? [Y/n] ",
-        source_description, remote_herdr.shell_path
+        source_description, remote_gmux.shell_path
     );
     io::stderr().flush()?;
 
@@ -1215,16 +1206,16 @@ fn confirm_remote_install(
     if answer == "n" || answer == "no" {
         return Err(io::Error::new(
             io::ErrorKind::Interrupted,
-            "remote herdr installation cancelled",
+            "remote gmux installation cancelled",
         ));
     }
 
     Ok(())
 }
 
-fn install_remote_herdr(
+fn install_remote_gmux(
     target: &str,
-    remote_herdr: &RemoteHerdr,
+    remote_gmux: &RemoteGmux,
     source_path: &Path,
 ) -> io::Result<()> {
     let script = format!(
@@ -1236,7 +1227,7 @@ cat > "$tmp"
 chmod 755 "$tmp"
 mv "$tmp" "$dest"
 "#,
-        install_suffix = remote_herdr.install_suffix
+        install_suffix = remote_gmux.install_suffix
     );
 
     let mut child = Command::new("ssh")
@@ -1303,8 +1294,8 @@ fn ssh_user_shell_output(target: &str, command: &str) -> io::Result<Output> {
         .output()
 }
 
-fn remote_bridge_command(remote_herdr: &RemoteHerdr, session_name: &str) -> String {
-    let mut command = format!("exec {}", remote_herdr.shell_path);
+fn remote_bridge_command(remote_gmux: &RemoteGmux, session_name: &str) -> String {
+    let mut command = format!("exec {}", remote_gmux.shell_path);
     if session_name != crate::session::DEFAULT_SESSION_NAME {
         command.push_str(" --session ");
         command.push_str(&shell_quote(session_name));
@@ -1320,7 +1311,7 @@ fn reattach_command(
     keybindings: RemoteKeybindings,
     live_handoff: bool,
 ) -> String {
-    let program = if program.is_empty() { "herdr" } else { program };
+    let program = if program.is_empty() { "gmux" } else { program };
     let mut command = format!("{} --remote {}", shell_quote(program), shell_quote(target));
     if keybindings != RemoteKeybindings::Local {
         command.push_str(" --remote-keybindings ");
@@ -1372,7 +1363,7 @@ struct SshStdioBridge {
 impl SshStdioBridge {
     fn start(
         target: String,
-        remote_herdr: RemoteHerdr,
+        remote_gmux: RemoteGmux,
         local_socket: PathBuf,
         session_name: String,
         manage_ssh_config: bool,
@@ -1400,26 +1391,24 @@ impl SshStdioBridge {
                 match listener.accept() {
                     Ok((stream, _addr)) => {
                         if let Err(err) = stream.set_nonblocking(false) {
-                            eprintln!(
-                                "herdr: remote bridge failed to prepare client socket: {err}"
-                            );
+                            eprintln!("gmux: remote bridge failed to prepare client socket: {err}");
                             continue;
                         }
                         if let Err(err) = bridge_connection(
                             stream,
                             &target,
-                            &remote_herdr,
+                            &remote_gmux,
                             &session_name,
                             thread_ssh_config.as_deref(),
                         ) {
-                            eprintln!("herdr: remote bridge failed: {err}");
+                            eprintln!("gmux: remote bridge failed: {err}");
                         }
                     }
                     Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                         thread::sleep(BRIDGE_ACCEPT_POLL);
                     }
                     Err(err) => {
-                        eprintln!("herdr: remote bridge listener failed: {err}");
+                        eprintln!("gmux: remote bridge listener failed: {err}");
                         break;
                     }
                 }
@@ -1456,14 +1445,14 @@ impl Drop for SshStdioBridge {
 ///
 /// Using a private directory created with fail-if-exists semantics — rather
 /// than a predictable file in the world-writable temp dir — stops a local user
-/// from pre-planting a symlink or world-writable file that herdr would write
+/// from pre-planting a symlink or world-writable file that gmux would write
 /// and `ssh -F` would then read.
 fn private_ssh_config_dir() -> io::Result<PathBuf> {
     use std::os::unix::fs::DirBuilderExt;
 
     let base = std::env::temp_dir();
     for attempt in 0..100 {
-        let dir = base.join(format!("herdr-ssh-{}-{attempt}", std::process::id()));
+        let dir = base.join(format!("gmux-ssh-{}-{attempt}", std::process::id()));
         match fs::DirBuilder::new().mode(0o700).create(&dir) {
             Ok(()) => return Ok(dir),
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
@@ -1473,14 +1462,14 @@ fn private_ssh_config_dir() -> io::Result<PathBuf> {
 
     Err(io::Error::new(
         io::ErrorKind::AlreadyExists,
-        "failed to create private herdr ssh config directory",
+        "failed to create private gmux ssh config directory",
     ))
 }
 
 /// Quotes a path for an ssh_config `Include` so a path containing spaces (or
 /// glob metacharacters) is treated as one literal token instead of being split
 /// or expanded by ssh — otherwise the user's config might not be Included and
-/// herdr's fallback would wrongly take effect.
+/// gmux's fallback would wrongly take effect.
 fn ssh_config_quote(path: &str) -> String {
     format!("\"{path}\"")
 }
@@ -1490,7 +1479,7 @@ fn ssh_config_quote(path: &str) -> String {
 ///
 /// The file `Include`s the user's real ssh config first, so ssh's
 /// first-value-wins rule keeps any `ServerAlive*` the user set there (including
-/// an explicit `0` to disable it); herdr's values apply only when the user has
+/// an explicit `0` to disable it); gmux's values apply only when the user has
 /// none.
 fn write_keepalive_ssh_config() -> io::Result<PathBuf> {
     use std::os::unix::fs::OpenOptionsExt;
@@ -1526,7 +1515,7 @@ fn write_keepalive_ssh_config() -> io::Result<PathBuf> {
 fn bridge_connection(
     stream: UnixStream,
     target: &str,
-    remote_herdr: &RemoteHerdr,
+    remote_gmux: &RemoteGmux,
     session_name: &str,
     keepalive_ssh_config: Option<&Path>,
 ) -> io::Result<()> {
@@ -1538,7 +1527,7 @@ fn bridge_connection(
     command
         .arg("-T")
         .arg(target)
-        .arg(remote_bridge_command(remote_herdr, session_name));
+        .arg(remote_bridge_command(remote_gmux, session_name));
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1610,7 +1599,7 @@ fn run_client_process(
             crate::server::socket_paths::CLIENT_SOCKET_PATH_ENV_VAR,
             local_socket,
         )
-        .env("HERDR_RENDER_ENCODING", "terminal-ansi")
+        .env("GMUX_RENDER_ENCODING", "terminal-ansi")
         .env(REATTACH_COMMAND_ENV_VAR, reattach_command)
         .env(REMOTE_KEYBINDINGS_ENV_VAR, keybindings.as_str())
         .env_remove(crate::api::SOCKET_PATH_ENV_VAR)
@@ -1636,7 +1625,7 @@ fn local_forward_socket_path(target: &str, session_name: &str) -> PathBuf {
 
     let tmpdir = std::env::temp_dir();
     let readable = tmpdir.join(format!(
-        "herdr-remote-{pid}-{target_clean}-{session_clean}.sock"
+        "gmux-remote-{pid}-{target_clean}-{session_clean}.sock"
     ));
     if fits_unix_socket_path(&readable) {
         return readable;
@@ -1650,7 +1639,7 @@ fn local_forward_socket_path(target: &str, session_name: &str) -> PathBuf {
     // the prefix is kept only for debuggability.
     let target_prefix: String = target_clean.chars().take(8).collect();
     let hash = short_socket_hash(target, session_name);
-    let short_name = format!("herdr-r-{pid}-{target_prefix}-{hash}.sock");
+    let short_name = format!("gmux-r-{pid}-{target_prefix}-{hash}.sock");
     let short_in_tmp = tmpdir.join(&short_name);
     if fits_unix_socket_path(&short_in_tmp) {
         return short_in_tmp;
@@ -1700,16 +1689,16 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let socket = std::env::temp_dir().join(format!(
-            "herdr-bridge-permissions-test-{}.sock",
+            "gmux-bridge-permissions-test-{}.sock",
             std::process::id()
         ));
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
         let bridge = SshStdioBridge::start(
             "example".to_string(),
-            remote_herdr,
+            remote_gmux,
             socket.clone(),
             "default".to_string(),
             false,
@@ -1730,7 +1719,7 @@ mod tests {
         let path = write_keepalive_ssh_config().expect("write keepalive config");
         let contents = std::fs::read_to_string(&path).expect("read keepalive config");
 
-        // herdr's fallback keepalive is present...
+        // gmux's fallback keepalive is present...
         assert!(
             contents.contains("Host *"),
             "config should add a Host * fallback block: {contents}"
@@ -1756,7 +1745,7 @@ mod tests {
                 let fallback_at = contents.find("Host *").expect("fallback present");
                 assert!(
                     include_at < fallback_at,
-                    "user config must be Included before herdr's fallback: {contents}"
+                    "user config must be Included before gmux's fallback: {contents}"
                 );
             }
         }
@@ -1785,13 +1774,13 @@ mod tests {
     #[test]
     fn extract_remote_args_removes_space_form() {
         let args = vec![
-            "herdr".into(),
+            "gmux".into(),
             "--remote".into(),
             "dev".into(),
             "--help".into(),
         ];
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
-        assert_eq!(cleaned, vec!["herdr", "--help"]);
+        assert_eq!(cleaned, vec!["gmux", "--help"]);
         let remote = remote.unwrap();
         assert_eq!(remote.target, "dev");
         assert_eq!(remote.keybindings, RemoteKeybindings::Local);
@@ -1799,9 +1788,9 @@ mod tests {
 
     #[test]
     fn extract_remote_args_removes_equals_form() {
-        let args = vec!["herdr".into(), "--remote=user@host".into()];
+        let args = vec!["gmux".into(), "--remote=user@host".into()];
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
-        assert_eq!(cleaned, vec!["herdr"]);
+        assert_eq!(cleaned, vec!["gmux"]);
         let remote = remote.unwrap();
         assert_eq!(remote.target, "user@host");
         assert_eq!(remote.keybindings, RemoteKeybindings::Local);
@@ -1810,13 +1799,13 @@ mod tests {
     #[test]
     fn extract_remote_args_accepts_remote_keybindings_server() {
         let args = vec![
-            "herdr".into(),
+            "gmux".into(),
             "--remote".into(),
             "dev".into(),
             "--remote-keybindings=server".into(),
         ];
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
-        assert_eq!(cleaned, vec!["herdr"]);
+        assert_eq!(cleaned, vec!["gmux"]);
         let remote = remote.unwrap();
         assert_eq!(remote.target, "dev");
         assert_eq!(remote.keybindings, RemoteKeybindings::Server);
@@ -1825,23 +1814,23 @@ mod tests {
     #[test]
     fn extract_remote_args_accepts_remote_keybindings_space_form() {
         let args = vec![
-            "herdr".into(),
+            "gmux".into(),
             "--remote=dev".into(),
             "--remote-keybindings".into(),
             "server".into(),
         ];
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
-        assert_eq!(cleaned, vec!["herdr"]);
+        assert_eq!(cleaned, vec!["gmux"]);
         assert_eq!(remote.unwrap().keybindings, RemoteKeybindings::Server);
     }
 
     #[test]
     fn extract_remote_args_accepts_explicit_handoff() {
-        let args = vec!["herdr".into(), "--remote=dev".into(), "--handoff".into()];
+        let args = vec!["gmux".into(), "--remote=dev".into(), "--handoff".into()];
 
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
 
-        assert_eq!(cleaned, vec!["herdr"]);
+        assert_eq!(cleaned, vec!["gmux"]);
         let remote = remote.unwrap();
         assert_eq!(remote.target, "dev");
         assert!(remote.live_handoff);
@@ -1850,7 +1839,7 @@ mod tests {
     #[test]
     fn extract_remote_args_preserves_child_remote_options_after_separator() {
         let args = vec![
-            "herdr".into(),
+            "gmux".into(),
             "agent".into(),
             "start".into(),
             "repro".into(),
@@ -1870,7 +1859,7 @@ mod tests {
 
     #[test]
     fn extract_remote_args_preserves_handoff_without_remote() {
-        let args = vec!["herdr".into(), "update".into(), "--handoff".into()];
+        let args = vec!["gmux".into(), "update".into(), "--handoff".into()];
 
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
 
@@ -1880,7 +1869,7 @@ mod tests {
 
     #[test]
     fn extract_remote_args_rejects_remote_keybindings_without_remote() {
-        let args = vec!["herdr".into(), "--remote-keybindings=server".into()];
+        let args = vec!["gmux".into(), "--remote-keybindings=server".into()];
         let err = extract_remote_args(&args).unwrap_err();
         assert_eq!(err, "--remote-keybindings requires --remote");
     }
@@ -1888,7 +1877,7 @@ mod tests {
     #[test]
     fn extract_remote_args_rejects_duplicate_remote_keybindings() {
         let args = vec![
-            "herdr".into(),
+            "gmux".into(),
             "--remote=dev".into(),
             "--remote-keybindings=local".into(),
             "--remote-keybindings=server".into(),
@@ -1899,32 +1888,28 @@ mod tests {
 
     #[test]
     fn extract_remote_args_requires_value() {
-        let args = vec!["herdr".into(), "--remote".into()];
+        let args = vec!["gmux".into(), "--remote".into()];
         let err = extract_remote_args(&args).unwrap_err();
         assert_eq!(err, "missing value for --remote");
     }
 
     #[test]
     fn extract_remote_args_rejects_empty_value() {
-        let args = vec!["herdr".into(), "--remote=".into()];
+        let args = vec!["gmux".into(), "--remote=".into()];
         let err = extract_remote_args(&args).unwrap_err();
         assert_eq!(err, "missing value for --remote");
     }
 
     #[test]
     fn extract_remote_args_rejects_duplicate_values() {
-        let args = vec![
-            "herdr".into(),
-            "--remote=dev".into(),
-            "--remote=prod".into(),
-        ];
+        let args = vec!["gmux".into(), "--remote=dev".into(), "--remote=prod".into()];
         let err = extract_remote_args(&args).unwrap_err();
         assert_eq!(err, "--remote can only be specified once");
     }
 
     #[test]
     fn extract_remote_args_rejects_option_like_target() {
-        let args = vec!["herdr".into(), "--remote".into(), "-oProxyCommand=x".into()];
+        let args = vec!["gmux".into(), "--remote".into(), "-oProxyCommand=x".into()];
         let err = extract_remote_args(&args).unwrap_err();
         assert_eq!(err, "--remote target must not start with '-'");
     }
@@ -1955,154 +1940,151 @@ mod tests {
     fn reattach_command_includes_remote_and_session() {
         assert_eq!(
             reattach_command(
-                "target/release/herdr",
+                "target/release/gmux",
                 "user@host",
                 "work",
                 RemoteKeybindings::Local,
                 false,
             ),
-            "target/release/herdr --remote user@host --session work"
+            "target/release/gmux --remote user@host --session work"
         );
         assert_eq!(
             reattach_command(
-                "herdr",
+                "gmux",
                 "host name",
                 crate::session::DEFAULT_SESSION_NAME,
                 RemoteKeybindings::Local,
                 false,
             ),
-            "herdr --remote 'host name'"
+            "gmux --remote 'host name'"
         );
         assert_eq!(
             reattach_command(
-                "herdr",
+                "gmux",
                 "host",
                 crate::session::DEFAULT_SESSION_NAME,
                 RemoteKeybindings::Server,
                 false,
             ),
-            "herdr --remote host --remote-keybindings server"
+            "gmux --remote host --remote-keybindings server"
         );
         assert_eq!(
             reattach_command(
-                "herdr",
+                "gmux",
                 "host",
                 crate::session::DEFAULT_SESSION_NAME,
                 RemoteKeybindings::Local,
                 true,
             ),
-            "herdr --remote host --handoff"
+            "gmux --remote host --handoff"
         );
     }
 
     #[test]
     fn remote_bridge_command_uses_installed_binary() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
         assert_eq!(
-            remote_bridge_command(&remote_herdr, crate::session::DEFAULT_SESSION_NAME),
-            "exec \"$HOME/.local/bin/herdr\" remote-client-bridge"
+            remote_bridge_command(&remote_gmux, crate::session::DEFAULT_SESSION_NAME),
+            "exec \"$HOME/.local/bin/gmux\" remote-client-bridge"
         );
     }
 
     #[test]
     fn remote_path_discovery_uses_path_binary() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
-        let remote_herdr = remote_herdr_from_path_discovery(&remote_herdr, "/usr/bin/herdr\n")
-            .expect("path binary");
+        let remote_gmux =
+            remote_gmux_from_path_discovery(&remote_gmux, "/usr/bin/gmux\n").expect("path binary");
 
         assert_eq!(
-            remote_bridge_command(&remote_herdr, crate::session::DEFAULT_SESSION_NAME),
-            "exec /usr/bin/herdr remote-client-bridge"
+            remote_bridge_command(&remote_gmux, crate::session::DEFAULT_SESSION_NAME),
+            "exec /usr/bin/gmux remote-client-bridge"
         );
     }
 
     #[test]
     fn remote_path_discovery_quotes_discovered_binary() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
-        let remote_herdr =
-            remote_herdr_from_path_discovery(&remote_herdr, "/opt/herdr bin/herdr\n")
-                .expect("path binary");
+        let remote_gmux = remote_gmux_from_path_discovery(&remote_gmux, "/opt/gmux bin/gmux\n")
+            .expect("path binary");
 
         assert_eq!(
-            remote_bridge_command(&remote_herdr, crate::session::DEFAULT_SESSION_NAME),
-            "exec '/opt/herdr bin/herdr' remote-client-bridge"
+            remote_bridge_command(&remote_gmux, crate::session::DEFAULT_SESSION_NAME),
+            "exec '/opt/gmux bin/gmux' remote-client-bridge"
         );
     }
 
     #[test]
     fn remote_path_discovery_uses_macos_path_binary() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "macos",
             arch: "aarch64",
         });
-        let remote_herdr =
-            remote_herdr_from_path_discovery(&remote_herdr, "/opt/homebrew/bin/herdr\n")
-                .expect("path binary");
+        let remote_gmux = remote_gmux_from_path_discovery(&remote_gmux, "/opt/homebrew/bin/gmux\n")
+            .expect("path binary");
 
         assert_eq!(
-            remote_bridge_command(&remote_herdr, crate::session::DEFAULT_SESSION_NAME),
-            "exec /opt/homebrew/bin/herdr remote-client-bridge"
+            remote_bridge_command(&remote_gmux, crate::session::DEFAULT_SESSION_NAME),
+            "exec /opt/homebrew/bin/gmux remote-client-bridge"
         );
-        assert_eq!(remote_herdr.platform.asset_key(), "macos-aarch64");
+        assert_eq!(remote_gmux.platform.asset_key(), "macos-aarch64");
     }
 
     #[test]
     fn remote_path_discovery_quotes_single_quotes_in_discovered_binary() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
-        let remote_herdr =
-            remote_herdr_from_path_discovery(&remote_herdr, "/opt/herdr's/bin/herdr\n")
-                .expect("path binary");
+        let remote_gmux = remote_gmux_from_path_discovery(&remote_gmux, "/opt/gmux's/bin/gmux\n")
+            .expect("path binary");
 
         assert_eq!(
-            remote_bridge_command(&remote_herdr, crate::session::DEFAULT_SESSION_NAME),
-            "exec '/opt/herdr'\\''s/bin/herdr' remote-client-bridge"
+            remote_bridge_command(&remote_gmux, crate::session::DEFAULT_SESSION_NAME),
+            "exec '/opt/gmux'\\''s/bin/gmux' remote-client-bridge"
         );
     }
 
     #[test]
     fn remote_path_discovery_ignores_relative_paths() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
-        let remote_herdr = remote_herdr_from_path_discovery(&remote_herdr, "bin/herdr\n");
+        let remote_gmux = remote_gmux_from_path_discovery(&remote_gmux, "bin/gmux\n");
 
-        assert!(remote_herdr.is_none());
+        assert!(remote_gmux.is_none());
     }
 
     #[test]
     fn remote_path_discovery_ignores_empty_output() {
-        let remote_herdr = RemoteHerdr::for_platform(RemotePlatform {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
-        let remote_herdr = remote_herdr_from_path_discovery(&remote_herdr, "\n");
+        let remote_gmux = remote_gmux_from_path_discovery(&remote_gmux, "\n");
 
-        assert!(remote_herdr.is_none());
+        assert!(remote_gmux.is_none());
     }
 
     #[test]
     fn remote_shell_path_warning_accepts_managed_install() {
         assert!(remote_shell_resolves_managed_install(
-            "/home/can/.local/bin/herdr\n"
+            "/home/can/.local/bin/gmux\n"
         ));
         assert!(remote_shell_resolves_managed_install(
-            "/Users/can/.local/bin/herdr\n"
+            "/Users/can/.local/bin/gmux\n"
         ));
         assert!(!remote_shell_resolves_managed_install(
-            "/usr/local/bin/herdr\n"
+            "/usr/local/bin/gmux\n"
         ));
         assert!(!remote_shell_resolves_managed_install(""));
     }
@@ -2110,7 +2092,7 @@ mod tests {
     #[test]
     fn parse_client_status_json_reads_protocol() {
         assert_eq!(
-            parse_client_status_json(r#"{"version":"x","protocol":8,"binary":"/bin/herdr"}"#)
+            parse_client_status_json(r#"{"version":"x","protocol":8,"binary":"/bin/gmux"}"#)
                 .map(|status| status.protocol),
             Some(8)
         );
@@ -2352,8 +2334,8 @@ mod tests {
             arch: "aarch64",
         };
         assert_eq!(
-            install_source_description_for(&platform, Some(Path::new("/tmp/herdr-aarch64")), false),
-            "HERDR_REMOTE_BINARY (/tmp/herdr-aarch64)"
+            install_source_description_for(&platform, Some(Path::new("/tmp/gmux-aarch64")), false),
+            "GMUX_REMOTE_BINARY (/tmp/gmux-aarch64)"
         );
     }
 
@@ -2363,7 +2345,7 @@ mod tests {
 
         assert_eq!(
             install_source_description_for(&platform, None, true),
-            "the current local herdr binary"
+            "the current local gmux binary"
         );
     }
 
@@ -2388,9 +2370,9 @@ mod tests {
             os: "linux",
             arch: "aarch64",
         };
-        let source = resolve_install_source(&platform, Some(PathBuf::from("/tmp/herdr-aarch64")))
+        let source = resolve_install_source(&platform, Some(PathBuf::from("/tmp/gmux-aarch64")))
             .expect("override source");
-        assert_eq!(source.path, PathBuf::from("/tmp/herdr-aarch64"));
+        assert_eq!(source.path, PathBuf::from("/tmp/gmux-aarch64"));
         assert!(source.temporary_dir.is_none());
     }
 
@@ -2416,7 +2398,7 @@ mod tests {
             .unwrap_or("")
             .to_string();
         assert!(
-            filename.starts_with("herdr-remote-"),
+            filename.starts_with("gmux-remote-"),
             "expected readable name, got {filename}"
         );
         assert!(filename.contains("-dev-default."), "got {filename}");
@@ -2473,7 +2455,7 @@ mod tests {
         assert!(fits, "fallback path still overflows: {}", path.display());
         assert_eq!(parent.as_deref(), Some(Path::new("/tmp")));
         assert!(
-            filename.starts_with("herdr-r-"),
+            filename.starts_with("gmux-r-"),
             "expected hashed fallback, got {filename}"
         );
     }
@@ -2481,12 +2463,12 @@ mod tests {
     #[test]
     fn install_source_cleanup_removes_temporary_directory() {
         let dir = std::env::temp_dir().join(format!(
-            "herdr-install-source-cleanup-test-{}",
+            "gmux-install-source-cleanup-test-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir(&dir).expect("create temp dir");
-        let path = dir.join("herdr.tmp");
+        let path = dir.join("gmux.tmp");
         fs::write(&path, b"test").expect("write temp file");
 
         InstallSource::temporary(path, dir.clone()).cleanup();

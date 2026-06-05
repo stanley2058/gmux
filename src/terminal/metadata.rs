@@ -545,7 +545,7 @@ mod tests {
     fn user_agent_metadata_overrides_hook_custom_status_without_changing_state() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority_with_custom_status(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -557,7 +557,7 @@ mod tests {
             &mut terminal,
             "user:claude-title",
             Some("claude"),
-            Some("herdr:claude"),
+            Some("gmux:claude"),
             Some("refactor auth"),
             false,
         );
@@ -584,7 +584,7 @@ mod tests {
     fn user_agent_metadata_requires_matching_lifecycle_source() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:codex".into(),
+            "gmux:codex".into(),
             "codex".into(),
             AgentState::Working,
             None,
@@ -594,7 +594,7 @@ mod tests {
             &mut terminal,
             "user:claude-title",
             Some("claude"),
-            Some("herdr:claude"),
+            Some("gmux:claude"),
             Some("refactor auth"),
             false,
         );
@@ -606,7 +606,7 @@ mod tests {
     fn clearing_user_agent_metadata_restores_hook_custom_status() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority_with_custom_status(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -617,7 +617,7 @@ mod tests {
             &mut terminal,
             "user:claude-title",
             Some("claude"),
-            Some("herdr:claude"),
+            Some("gmux:claude"),
             Some("refactor auth"),
             false,
         );
@@ -634,7 +634,7 @@ mod tests {
     fn user_agent_metadata_overrides_presentation_fields_only() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority_with_custom_status(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -645,7 +645,7 @@ mod tests {
         let mutation = terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:presentation".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("Refactor auth".into()),
             display_agent: Some("Claude: auth".into()),
             custom_status: Some("middleware".into()),
@@ -703,7 +703,7 @@ mod tests {
     fn metadata_without_sequence_can_update_same_source() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -714,7 +714,7 @@ mod tests {
             &mut terminal,
             "user:claude-title",
             Some("claude"),
-            Some("herdr:claude"),
+            Some("gmux:claude"),
             Some("first"),
             false,
         );
@@ -722,7 +722,7 @@ mod tests {
             &mut terminal,
             "user:claude-title",
             Some("claude"),
-            Some("herdr:claude"),
+            Some("gmux:claude"),
             Some("second"),
             false,
         );
@@ -737,7 +737,7 @@ mod tests {
     fn metadata_resolves_newest_value_per_presentation_field() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -746,7 +746,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:title".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("Prompt title".into()),
             display_agent: None,
             custom_status: None,
@@ -761,7 +761,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("activity".into()),
@@ -783,7 +783,7 @@ mod tests {
     fn partial_update_does_not_refresh_unchanged_field_precedence() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -792,7 +792,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:first".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: Some("First display".into()),
             custom_status: Some("old".into()),
@@ -807,7 +807,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:second".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("new".into()),
@@ -822,7 +822,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:first".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("Fresh title".into()),
             display_agent: None,
             custom_status: None,
@@ -845,7 +845,7 @@ mod tests {
     fn metadata_can_set_other_fields_while_clearing_missing_source() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -855,7 +855,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("activity".into()),
@@ -878,7 +878,7 @@ mod tests {
     fn metadata_clear_plus_set_without_ttl_does_not_keep_old_ttl() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -887,7 +887,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("Old title".into()),
             display_agent: None,
             custom_status: Some("old".into()),
@@ -904,7 +904,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("fresh".into()),
@@ -932,7 +932,7 @@ mod tests {
     fn metadata_clear_only_without_ttl_does_not_extend_old_ttl() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -941,7 +941,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("Prompt title".into()),
             display_agent: None,
             custom_status: Some("old".into()),
@@ -989,7 +989,7 @@ mod tests {
     fn metadata_ttl_expiry_reports_presentation_change() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -998,7 +998,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("activity".into()),
@@ -1031,7 +1031,7 @@ mod tests {
     fn stale_guarded_metadata_expiry_does_not_report_visible_change() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:codex".into(),
+            "gmux:codex".into(),
             "codex".into(),
             AgentState::Working,
             None,
@@ -1040,7 +1040,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("stale".into()),
@@ -1061,7 +1061,7 @@ mod tests {
         assert_eq!(terminal.effective_custom_status(), None);
 
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -1081,7 +1081,7 @@ mod tests {
     fn late_metadata_expiry_reports_all_due_visible_changes() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -1090,7 +1090,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:first".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("First".into()),
             display_agent: None,
             custom_status: None,
@@ -1106,7 +1106,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:second".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: Some("Second".into()),
             custom_status: None,
@@ -1142,7 +1142,7 @@ mod tests {
     fn immediately_expired_visible_metadata_still_schedules_expiry_event() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -1151,7 +1151,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("instant".into()),
@@ -1184,7 +1184,7 @@ mod tests {
     fn pending_metadata_expiry_clears_when_lifecycle_guard_hides_metadata() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -1193,7 +1193,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: None,
             custom_status: Some("instant".into()),
@@ -1208,14 +1208,14 @@ mod tests {
         assert!(terminal.next_agent_metadata_expiry().is_some());
 
         terminal.set_hook_authority(
-            "herdr:codex".into(),
+            "gmux:codex".into(),
             "codex".into(),
             AgentState::Working,
             None,
             None,
         );
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,
@@ -1230,7 +1230,7 @@ mod tests {
     fn partial_update_does_not_resurrect_expired_hidden_metadata_fields() {
         let mut terminal = test_terminal();
         terminal.set_hook_authority(
-            "herdr:codex".into(),
+            "gmux:codex".into(),
             "codex".into(),
             AgentState::Working,
             None,
@@ -1239,7 +1239,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: Some("Expired title".into()),
             display_agent: None,
             custom_status: None,
@@ -1256,7 +1256,7 @@ mod tests {
         terminal.set_agent_metadata(AgentMetadataReport {
             source: "user:status".into(),
             agent_label: Some("claude".into()),
-            applies_to_source: Some("herdr:claude".into()),
+            applies_to_source: Some("gmux:claude".into()),
             title: None,
             display_agent: Some("Fresh display".into()),
             custom_status: None,
@@ -1269,7 +1269,7 @@ mod tests {
             seq: None,
         });
         terminal.set_hook_authority(
-            "herdr:claude".into(),
+            "gmux:claude".into(),
             "claude".into(),
             AgentState::Working,
             None,

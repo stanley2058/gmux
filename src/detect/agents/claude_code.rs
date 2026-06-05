@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn lower_agent_picker_shell_count_is_not_working_chrome() {
-        let content = prompt_box_below("  ~/P/herdr ⎇ master ▱▱▱▱▱ 0%\n  1 shell · ← for agents");
+        let content = prompt_box_below("  ~/P/gmux ⎇ master ▱▱▱▱▱ 0%\n  1 shell · ← for agents");
 
         assert_eq!(detect(&content), AgentState::Idle);
         assert!(!has_working_chrome(&content));

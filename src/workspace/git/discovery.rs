@@ -271,7 +271,7 @@ mod tests {
 
     fn temp_test_dir(name: &str) -> PathBuf {
         let unique = format!(
-            "herdr-workspace-tests-{}-{}-{}",
+            "gmux-workspace-tests-{}-{}-{}",
             name,
             std::process::id(),
             SystemTime::now()
@@ -388,8 +388,8 @@ mod tests {
             return;
         }
 
-        run_git(&root, &["config", "user.email", "herdr@example.invalid"]);
-        run_git(&root, &["config", "user.name", "Herdr Test"]);
+        run_git(&root, &["config", "user.email", "gmux@example.invalid"]);
+        run_git(&root, &["config", "user.name", "Gmux Test"]);
         run_git(&root, &["commit", "--allow-empty", "-m", "initial"]);
 
         let head_oid = git_rev_parse_verify(&root, "HEAD").unwrap();

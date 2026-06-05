@@ -1,5 +1,5 @@
 {
-  description = "herdr — terminal workspace manager for AI coding agents";
+  description = "gmux — terminal workspace manager for AI coding agents";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -23,25 +23,25 @@
         system:
         let
           pkgs = pkgsFor system;
-          herdr = pkgs.callPackage ./nix/package.nix { };
+          gmux = pkgs.callPackage ./nix/package.nix { };
         in
         {
-          inherit herdr;
-          default = herdr;
+          inherit gmux;
+          default = gmux;
         }
       );
 
       apps = forAllSystems (system: {
         default = {
           type = "app";
-          program = "${self.packages.${system}.default}/bin/herdr";
-          meta.description = "Run Herdr";
+          program = "${self.packages.${system}.default}/bin/gmux";
+          meta.description = "Run Gmux";
         };
       });
 
       checks = forAllSystems (system: {
-        herdr = self.packages.${system}.default;
-        default = self.checks.${system}.herdr;
+        gmux = self.packages.${system}.default;
+        default = self.checks.${system}.gmux;
       });
 
       devShells = forAllSystems (
@@ -51,7 +51,7 @@
         in
         {
           default = pkgs.mkShell {
-            name = "herdr-dev";
+            name = "gmux-dev";
             packages = with pkgs; [
               cargo
               cargo-nextest
@@ -76,7 +76,7 @@
       formatter = forAllSystems (system: (pkgsFor system).nixfmt);
 
       overlays.default = final: _prev: {
-        herdr = final.callPackage ./nix/package.nix { };
+        gmux = final.callPackage ./nix/package.nix { };
       };
     };
 }

@@ -1,19 +1,19 @@
-// installed by herdr
-// managed by herdr; reinstalling or updating the integration overwrites this file.
+// installed by gmux
+// managed by gmux; reinstalling or updating the integration overwrites this file.
 // add custom hooks/plugins beside this file instead of editing it.
-// HERDR_INTEGRATION_ID=pi
-// HERDR_INTEGRATION_VERSION=2
+// GMUX_INTEGRATION_ID=pi
+// GMUX_INTEGRATION_VERSION=2
 // @ts-nocheck
 
 import { createConnection } from "node:net";
 
-const HERDR_ENV = process.env.HERDR_ENV;
-const socketPath = process.env.HERDR_SOCKET_PATH;
-const paneId = process.env.HERDR_PANE_ID;
-const source = "herdr:pi";
+const GMUX_ENV = process.env.GMUX_ENV;
+const socketPath = process.env.GMUX_SOCKET_PATH;
+const paneId = process.env.GMUX_PANE_ID;
+const source = "gmux:pi";
 
 function enabled() {
-  return HERDR_ENV === "1" && !!socketPath && !!paneId;
+  return GMUX_ENV === "1" && !!socketPath && !!paneId;
 }
 
 function sendRequest(request: unknown): Promise<void> {
@@ -48,8 +48,8 @@ type QueuedState = {
   seq: number;
 };
 
-const idleDebounceMs = parseDurationEnv("HERDR_PI_IDLE_DEBOUNCE_MS", 250);
-const retryGraceMs = parseDurationEnv("HERDR_PI_RETRY_GRACE_MS", 2500);
+const idleDebounceMs = parseDurationEnv("GMUX_PI_IDLE_DEBOUNCE_MS", 250);
+const retryGraceMs = parseDurationEnv("GMUX_PI_RETRY_GRACE_MS", 2500);
 const retryableErrorPattern =
   /overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|http2 request did not get a response|timed? out|timeout|terminated|retry delay/i;
 let reportSeq = Date.now() * 1000;
@@ -271,7 +271,7 @@ export default function (pi) {
     retryTimer.unref?.();
   }
 
-  pi.events.on("herdr:blocked", (data) => {
+  pi.events.on("gmux:blocked", (data) => {
     if (!data?.active) {
       blockedCount = Math.max(0, blockedCount - 1);
       if (blockedCount === 0) {

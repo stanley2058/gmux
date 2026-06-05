@@ -10,7 +10,7 @@ status: active
 
 patch: `vendor/patches/libghostty-vt/0001-backport-resizecols-cursor-subtraction.patch`
 
-herdr issue: https://github.com/ogulcancelik/herdr/issues/465
+gmux issue: https://github.com/ogulcancelik/gmux/issues/465
 
 upstream discussion: https://github.com/ghostty-org/ghostty/discussions/12905
 

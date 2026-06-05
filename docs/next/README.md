@@ -1,12 +1,12 @@
-# herdr
+# gmux
 
 
 <p align="center">
-  <img src="assets/logo.png" alt="herdr" width="100" />
+  <img src="assets/logo.png" alt="gmux" width="100" />
 </p>
 
 <p align="center">
-  <a href="https://herdr.dev">herdr.dev</a> · <a href="#install">install</a> · <a href="#quick-start">quick start</a> · <a href="#supported-agents">supported agents</a> · <a href="https://herdr.dev/docs/integrations/">integrations</a> · <a href="https://herdr.dev/docs/configuration/">configuration</a> · <a href="https://herdr.dev/docs/socket-api/">socket api</a>
+  <a href="https://gmux.dev">gmux.dev</a> · <a href="#install">install</a> · <a href="#quick-start">quick start</a> · <a href="#supported-agents">supported agents</a> · <a href="https://gmux.dev/docs/integrations/">integrations</a> · <a href="https://gmux.dev/docs/configuration/">configuration</a> · <a href="https://gmux.dev/docs/socket-api/">socket api</a>
 </p>
 
 ---
@@ -22,78 +22,78 @@ workspaces, tabs, panes. mouse-native: click, drag, split. every agent at a glan
 ## install
 
 ```bash
-curl -fsSL https://herdr.dev/install.sh | sh
+curl -fsSL https://gmux.dev/install.sh | sh
 ```
 
 or install with homebrew:
 
 ```bash
-brew install herdr
+brew install gmux
 ```
 
 or install with mise:
 
 ```bash
-mise use -g herdr
+mise use -g gmux
 ```
 
-or download the binary from [releases](https://github.com/ogulcancelik/herdr/releases). requires linux or macos.
+or download the binary from [releases](https://github.com/ogulcancelik/gmux/releases). requires linux or macos.
 
 ## quick start
 
-Start Herdr in the directory where the work lives:
+Start Gmux in the directory where the work lives:
 
 ```bash
-herdr
+gmux
 ```
 
-Herdr starts or attaches to one background session server. When a session has no workspaces, Herdr opens one automatically. Run an agent in the root pane. Press `ctrl+b`, then `shift+n` to create another workspace, `ctrl+b`, then `v` or `minus` to split panes, `ctrl+b`, then `c` to create a tab, and `ctrl+b`, then `w` to switch workspaces.
+Gmux starts or attaches to one background session server. When a session has no workspaces, Gmux opens one automatically. Run an agent in the root pane. Press `ctrl+b`, then `shift+n` to create another workspace, `ctrl+b`, then `v` or `minus` to split panes, `ctrl+b`, then `c` to create a tab, and `ctrl+b`, then `w` to switch workspaces.
 
-Press `ctrl+b q` to detach the client. The server and pane processes keep running. Open another terminal and run `herdr` again to reattach.
+Press `ctrl+b q` to detach the client. The server and pane processes keep running. Open another terminal and run `gmux` again to reattach.
 
 ## core concepts
 
-**Server and client.** By default, `herdr` attaches to a background server. Detaching closes only the client. `herdr server stop` stops the default server and kills its panes. Named sessions are separate server namespaces: use `herdr session attach work`, `herdr session stop work`, and `herdr session list` when you want fully separate runtime state.
+**Server and client.** By default, `gmux` attaches to a background server. Detaching closes only the client. `gmux server stop` stops the default server and kills its panes. Named sessions are separate server namespaces: use `gmux session attach work`, `gmux session stop work`, and `gmux session list` when you want fully separate runtime state.
 
 **Workspaces, tabs, panes.** A workspace is the project-level container. Tabs group panes inside a workspace. Panes are real terminal processes, not rewritten agent views.
 
-**Copy.** Herdr copies pane text, not the sidebar. Drag-select inside a pane, double-click a word or token, or press `prefix+[` for keyboard copy mode. In copy mode, move with `h/j/k/l`, `w/b/e`, and `{`/`}`, start selection with `v` or Space, copy with `y` or Enter, and leave with `q` or Esc. In PuTTY and some SSH terminals, hold `Shift` while dragging to use the terminal's own selection, and `Shift` + right click to paste.
+**Copy.** Gmux copies pane text, not the sidebar. Drag-select inside a pane, double-click a word or token, or press `prefix+[` for keyboard copy mode. In copy mode, move with `h/j/k/l`, `w/b/e`, and `{`/`}`, start selection with `v` or Space, copy with `y` or Enter, and leave with `q` or Esc. In PuTTY and some SSH terminals, hold `Shift` while dragging to use the terminal's own selection, and `Shift` + right click to paste.
 
-**Update and restore.** `herdr update` installs a new binary, but a running server keeps using the old process until it is stopped or handed off. Stop the old server to use the new version. Stopping exits pane processes. Run `herdr server stop`, then run `herdr` again for the default session. For a named session, run `herdr session stop <name>`, then run `herdr session attach <name>` again. `herdr update --handoff` is experimental and tries to move live panes, including foreground processes such as dev servers, from the old server to the new one. With current official integrations installed, supported agent panes can restart from their native agent sessions after a server restart or update.
+**Update and restore.** `gmux update` installs a new binary, but a running server keeps using the old process until it is stopped or handed off. Stop the old server to use the new version. Stopping exits pane processes. Run `gmux server stop`, then run `gmux` again for the default session. For a named session, run `gmux session stop <name>`, then run `gmux session attach <name>` again. `gmux update --handoff` is experimental and tries to move live panes, including foreground processes such as dev servers, from the old server to the new one. With current official integrations installed, supported agent panes can restart from their native agent sessions after a server restart or update.
 
-**Keybindings.** Herdr uses explicit keybinding strings. `prefix+n` means press the configured prefix, then `n`. `ctrl+alt+n`, `cmd+k`, `alt+1`, and function-key chords are direct terminal-mode shortcuts and do not need the prefix. Plain direct printable keys such as `n` steal normal typing, so use `prefix+n` unless you intentionally want a modifier-gated direct binding.
+**Keybindings.** Gmux uses explicit keybinding strings. `prefix+n` means press the configured prefix, then `n`. `ctrl+alt+n`, `cmd+k`, `alt+1`, and function-key chords are direct terminal-mode shortcuts and do not need the prefix. Plain direct printable keys such as `n` steal normal typing, so use `prefix+n` unless you intentionally want a modifier-gated direct binding.
 
 **Agent awareness.** The sidebar shows blocked, working, done, and idle states. Detection works with process names and terminal output by default. Official integrations can add native session identity for restore, semantic state reports, or both.
 
 ## update
 
-Herdr notifies you when a new version is available. Run manually:
+Gmux notifies you when a new version is available. Run manually:
 
 ```bash
-herdr update
+gmux update
 ```
 
-`herdr update` is for installs managed by Herdr's own installer. Homebrew, mise, and Nix installs update through `brew upgrade herdr`, `mise upgrade herdr`, or your Nix workflow, then use the same stop-and-run-again flow if a session is still running the old server. Direct installs can opt into development preview builds with `herdr channel set preview` and return to stable with `herdr channel set stable`. See [install docs](https://herdr.dev/docs/install/) and [session state docs](https://herdr.dev/docs/session-state/) for the full update, restart, restore, and handoff matrix.
+`gmux update` is for installs managed by Gmux's own installer. Homebrew, mise, and Nix installs update through `brew upgrade gmux`, `mise upgrade gmux`, or your Nix workflow, then use the same stop-and-run-again flow if a session is still running the old server. Direct installs can opt into development preview builds with `gmux channel set preview` and return to stable with `gmux channel set stable`. See [install docs](https://gmux.dev/docs/install/) and [session state docs](https://gmux.dev/docs/session-state/) for the full update, restart, restore, and handoff matrix.
 
-Herdr uses the stable update channel by default. To test preview builds from `master` before the next stable release:
+Gmux uses the stable update channel by default. To test preview builds from `master` before the next stable release:
 
 ```bash
-herdr channel set preview
+gmux channel set preview
 ```
 
 To return to stable:
 
 ```bash
-herdr channel set stable
+gmux channel set stable
 ```
 
-For direct installs, changing channels also checks that channel and installs its latest binary. If that update fails, run `herdr update` to retry from the configured channel.
+For direct installs, changing channels also checks that channel and installs its latest binary. If that update fails, run `gmux update` to retry from the configured channel.
 
-Preview is only for direct installs managed by Herdr's updater. Homebrew, mise, and Nix stay on stable and update through their package managers.
+Preview is only for direct installs managed by Gmux's updater. Homebrew, mise, and Nix stay on stable and update through their package managers.
 
 ## how it compares
 
-|                          | tmux | gui managers | herdr |
+|                          | tmux | gui managers | gmux |
 |--------------------------|------|--------------|-------|
 | persistent sessions       | ✓    | —            | ✓     |
 | detach / reattach        | ✓    | —            | ✓     |
@@ -105,22 +105,22 @@ Preview is only for direct installs managed by Herdr's updater. Homebrew, mise, 
 | lightweight binary       | ✓    | —            | ✓     |
 | agents can orchestrate   | ?    | ?            | ✓     |
 
-tmux gives you persistence and panes, but it was built before agents existed. gui managers show agent state, but they make you leave your terminal and use their wrapped view. herdr is persistence and awareness in one tool that stays out of your way.
+tmux gives you persistence and panes, but it was built before agents existed. gui managers show agent state, but they make you leave your terminal and use their wrapped view. gmux is persistence and awareness in one tool that stays out of your way.
 
 ## remote and attach
 
-Herdr works over normal SSH. Run it on the remote host, detach, and reattach later:
+Gmux works over normal SSH. Run it on the remote host, detach, and reattach later:
 
 ```
 ssh you@yourserver
-herdr
+gmux
 ```
 
 You can also attach from your local terminal without opening a shell first:
 
 ```bash
-herdr --remote workbox
-herdr --remote ssh://you@yourserver:2222
+gmux --remote workbox
+gmux --remote ssh://you@yourserver:2222
 ```
 
 Remote attach adds fallback SSH keepalives by default while preserving your own SSH config. Set `[remote].manage_ssh_config = false` to use plain `ssh`.
@@ -128,11 +128,11 @@ Remote attach adds fallback SSH keepalives by default while preserving your own 
 Direct attach connects your current terminal to one server-owned terminal:
 
 ```bash
-herdr agent attach <target>
-herdr terminal attach <terminal_id>
+gmux agent attach <target>
+gmux terminal attach <terminal_id>
 ```
 
-See [persistence and remote docs](https://herdr.dev/docs/persistence-remote/) for remote keybinding, named-session, and handoff details.
+See [persistence and remote docs](https://gmux.dev/docs/persistence-remote/) for remote keybinding, named-session, and handoff details.
 
 ## agent awareness
 
@@ -149,7 +149,7 @@ detection works by reading foreground process and terminal output. zero config, 
 
 ## lives in your terminal
 
-not a gui window, not a web dashboard, not electron. herdr runs inside whatever terminal you already use. single rust binary, no dependencies. works inside tmux as the outer terminal environment.
+not a gui window, not a web dashboard, not electron. gmux runs inside whatever terminal you already use. single rust binary, no dependencies. works inside tmux as the outer terminal environment.
 
 ## what you get
 
@@ -160,9 +160,9 @@ not a gui window, not a web dashboard, not electron. herdr runs inside whatever 
 - **18 built-in themes** — catppuccin, terminal, tokyo night, gruvbox, one, solarized, kanagawa, rosé pine, vesper, and light variants for the main palettes
 - **session persistence** — pane processes survive client detach; sessions restore panes after full restart, with opt-in recent screen history
 
-## agents can use herdr too
+## agents can use gmux too
 
-The local Unix socket lets agents create workspaces, split panes, spawn helpers, read output, and wait for state changes. Start with the [socket API docs](https://herdr.dev/docs/socket-api/) and [`SKILL.md`](./SKILL.md).
+The local Unix socket lets agents create workspaces, split panes, spawn helpers, read output, and wait for state changes. Start with the [socket API docs](https://gmux.dev/docs/socket-api/) and [`SKILL.md`](./SKILL.md).
 
 ## supported agents
 
@@ -188,26 +188,26 @@ automatic detection works out of the box. process name matching plus terminal ou
 
 detected but not fully tested: gemini cli, cline.
 
-for agents outside the built-in list, herdr still works as a terminal multiplexer with workspaces, panes, and tiling. custom integrations can report agent labels over the socket api. see the [socket api docs](https://herdr.dev/docs/socket-api/).
+for agents outside the built-in list, gmux still works as a terminal multiplexer with workspaces, panes, and tiling. custom integrations can report agent labels over the socket api. see the [socket api docs](https://gmux.dev/docs/socket-api/).
 
 ### direct integrations
 
 official integrations have two roles. claude code, codex, droid, and opencode report session identity for native restore, while their state still comes from screen detection. pi, github copilot cli, and hermes report both semantic state and session identity. omp, kimi code cli, and qodercli report semantic state without native session restore. install with:
 
 ```bash
-herdr integration install pi
-herdr integration install omp
-herdr integration install claude
-herdr integration install codex
-herdr integration install copilot
-herdr integration install droid
-herdr integration install kimi
-herdr integration install opencode
-herdr integration install hermes
-herdr integration install qodercli
+gmux integration install pi
+gmux integration install omp
+gmux integration install claude
+gmux integration install codex
+gmux integration install copilot
+gmux integration install droid
+gmux integration install kimi
+gmux integration install opencode
+gmux integration install hermes
+gmux integration install qodercli
 ```
 
-see the [integrations docs](https://herdr.dev/docs/integrations/) for setup details.
+see the [integrations docs](https://gmux.dev/docs/integrations/) for setup details.
 
 ## keybindings
 
@@ -232,27 +232,27 @@ Press `ctrl+b` to enter prefix mode. Default actions are prefix-first and tmux-l
 | `prefix+r` | resize mode |
 | `prefix+q` | detach |
 
-Mouse is supported throughout. Resize mode uses `h`/`l` for width, `j`/`k` for height, and `esc` to exit. Full syntax, optional actions, indexed bindings, and custom command bindings live in the [configuration docs](https://herdr.dev/docs/configuration/).
+Mouse is supported throughout. Resize mode uses `h`/`l` for width, `j`/`k` for height, and `esc` to exit. Full syntax, optional actions, indexed bindings, and custom command bindings live in the [configuration docs](https://gmux.dev/docs/configuration/).
 
 ## configuration
 
-config file: `~/.config/herdr/config.toml`
+config file: `~/.config/gmux/config.toml`
 
 ```bash
-herdr --default-config   # print full default config
+gmux --default-config   # print full default config
 ```
 
-In-app settings cover theme, sound, and toast preferences. Herdr writes logs under `~/.config/herdr/`; in persistent session mode, `herdr-client.log` and `herdr-server.log` are usually the useful files. Full configuration and logging details live in the [configuration docs](https://herdr.dev/docs/configuration/).
+In-app settings cover theme, sound, and toast preferences. Gmux writes logs under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files. Full configuration and logging details live in the [configuration docs](https://gmux.dev/docs/configuration/).
 
 ## docs
 
-- [quick start](https://herdr.dev/docs/quick-start/) — first session, panes, copy, and named sessions
-- [install](https://herdr.dev/docs/install/) — install, update, Homebrew, mise, and Nix
-- [session state](https://herdr.dev/docs/session-state/) — detach, restart restore, agent restore, and live handoff
-- [configuration](https://herdr.dev/docs/configuration/) — keybindings, themes, notifications, environment variables
-- [integrations](https://herdr.dev/docs/integrations/) — pi, omp, claude code, codex, github copilot cli, droid, kimi code cli, opencode, hermes, qodercli integrations
+- [quick start](https://gmux.dev/docs/quick-start/) — first session, panes, copy, and named sessions
+- [install](https://gmux.dev/docs/install/) — install, update, Homebrew, mise, and Nix
+- [session state](https://gmux.dev/docs/session-state/) — detach, restart restore, agent restore, and live handoff
+- [configuration](https://gmux.dev/docs/configuration/) — keybindings, themes, notifications, environment variables
+- [integrations](https://gmux.dev/docs/integrations/) — pi, omp, claude code, codex, github copilot cli, droid, kimi code cli, opencode, hermes, qodercli integrations
 - [`SKILL.md`](./SKILL.md) — reusable agent skill
-- [socket api](https://herdr.dev/docs/socket-api/) — socket protocol and cli reference
+- [socket api](https://gmux.dev/docs/socket-api/) — socket protocol and cli reference
 
 ## agent instructions
 
@@ -261,10 +261,10 @@ if you are an ai agent helping with this repository, read [`AGENTS.md`](./AGENTS
 ## development
 
 ```bash
-git clone https://github.com/ogulcancelik/herdr
-cd herdr
+git clone https://github.com/ogulcancelik/gmux
+cd gmux
 cargo build --release
-./target/release/herdr
+./target/release/gmux
 
 just test        # unit tests
 just check       # formatting, tests, and maintenance checks
@@ -272,19 +272,19 @@ just check       # formatting, tests, and maintenance checks
 
 ## license
 
-Herdr is dual-licensed:
+Gmux is dual-licensed:
 
 1. Open source: GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).
 2. Commercial: commercial licenses are available for organizations that cannot comply with AGPL.
 
-Contact: hey@herdr.dev
+Contact: hey@gmux.dev
 
 ## mandatory star history
 
-<a href="https://www.star-history.com/?repos=ogulcancelik%2Fherdr&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=ogulcancelik%2Fgmux&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ogulcancelik/herdr&type=date&theme=dark&legend=top-left&v=2026-05-19" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ogulcancelik/herdr&type=date&legend=top-left&v=2026-05-19" />
-   <img alt="star history chart" src="https://api.star-history.com/chart?repos=ogulcancelik/herdr&type=date&legend=top-left&v=2026-05-19" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ogulcancelik/gmux&type=date&theme=dark&legend=top-left&v=2026-05-19" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ogulcancelik/gmux&type=date&legend=top-left&v=2026-05-19" />
+   <img alt="star history chart" src="https://api.star-history.com/chart?repos=ogulcancelik/gmux&type=date&legend=top-left&v=2026-05-19" />
  </picture>
 </a>

@@ -941,7 +941,7 @@ mod tests {
             ws_idx: 0,
             tab_idx: 0,
             pane_id: PaneId::from_raw(1),
-            primary_label: "herdr".into(),
+            primary_label: "gmux".into(),
             primary_tab_label: primary_tab_label.map(str::to_string),
             agent_label: agent_label.map(str::to_string),
             state: AgentState::Idle,
@@ -968,7 +968,7 @@ mod tests {
     #[tokio::test]
     async fn mobile_header_uses_live_root_runtime_cwd_for_workspace_label() {
         let unique = format!(
-            "herdr-mobile-header-runtime-cwd-{}-{}",
+            "gmux-mobile-header-runtime-cwd-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -977,7 +977,7 @@ mod tests {
         );
         let root = std::env::temp_dir().join(unique);
         let stale_cwd = root.join("issue-264-nix-support");
-        let live_cwd = root.join("herdr");
+        let live_cwd = root.join("gmux");
         std::fs::create_dir_all(stale_cwd.join(".git")).unwrap();
         std::fs::create_dir_all(live_cwd.join(".git")).unwrap();
 
@@ -1035,7 +1035,7 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(root);
 
-        assert!(row.contains("herdr"), "header row: {row:?}");
+        assert!(row.contains("gmux"), "header row: {row:?}");
         assert!(
             !row.contains("issue-264-nix-support"),
             "header row: {row:?}"

@@ -72,10 +72,10 @@ pub fn session_ref_from_report(
 pub fn is_reserved_native_state_source(source: &str, agent: &str) -> bool {
     matches!(
         (source, agent),
-        ("herdr:claude", "claude")
-            | ("herdr:codex", "codex")
-            | ("herdr:droid", "droid")
-            | ("herdr:opencode", "opencode")
+        ("gmux:claude", "claude")
+            | ("gmux:codex", "codex")
+            | ("gmux:droid", "droid")
+            | ("gmux:opencode", "opencode")
     )
 }
 
@@ -106,33 +106,33 @@ pub fn plan(source: &str, agent: &str, session_ref: &AgentSessionRef) -> Option<
     }
 
     let argv = match (source, agent, session_ref.kind) {
-        ("herdr:claude", "claude", AgentSessionRefKind::Id) => {
+        ("gmux:claude", "claude", AgentSessionRefKind::Id) => {
             vec![
                 "claude".into(),
                 "--resume".into(),
                 session_ref.value.clone(),
             ]
         }
-        ("herdr:codex", "codex", AgentSessionRefKind::Id) => {
+        ("gmux:codex", "codex", AgentSessionRefKind::Id) => {
             vec!["codex".into(), "resume".into(), session_ref.value.clone()]
         }
-        ("herdr:copilot", "copilot", AgentSessionRefKind::Id) => {
+        ("gmux:copilot", "copilot", AgentSessionRefKind::Id) => {
             vec!["copilot".into(), format!("--resume={}", session_ref.value)]
         }
-        ("herdr:droid", "droid", AgentSessionRefKind::Id) => {
+        ("gmux:droid", "droid", AgentSessionRefKind::Id) => {
             vec!["droid".into(), "--resume".into(), session_ref.value.clone()]
         }
-        ("herdr:pi", "pi", AgentSessionRefKind::Path | AgentSessionRefKind::Id) => {
+        ("gmux:pi", "pi", AgentSessionRefKind::Path | AgentSessionRefKind::Id) => {
             vec!["pi".into(), "--session".into(), session_ref.value.clone()]
         }
-        ("herdr:hermes", "hermes", AgentSessionRefKind::Id) => {
+        ("gmux:hermes", "hermes", AgentSessionRefKind::Id) => {
             vec![
                 "hermes".into(),
                 "--resume".into(),
                 session_ref.value.clone(),
             ]
         }
-        ("herdr:opencode", "opencode", AgentSessionRefKind::Id) => {
+        ("gmux:opencode", "opencode", AgentSessionRefKind::Id) => {
             vec![
                 "opencode".into(),
                 "--session".into(),
@@ -159,13 +159,13 @@ pub fn dedupe_key(source: &str, agent: &str, session_ref: &AgentSessionRef) -> S
 fn is_official_agent_source(source: &str, agent: &str) -> bool {
     matches!(
         (source, agent),
-        ("herdr:claude", "claude")
-            | ("herdr:codex", "codex")
-            | ("herdr:copilot", "copilot")
-            | ("herdr:droid", "droid")
-            | ("herdr:pi", "pi")
-            | ("herdr:hermes", "hermes")
-            | ("herdr:opencode", "opencode")
+        ("gmux:claude", "claude")
+            | ("gmux:codex", "codex")
+            | ("gmux:copilot", "copilot")
+            | ("gmux:droid", "droid")
+            | ("gmux:pi", "pi")
+            | ("gmux:hermes", "hermes")
+            | ("gmux:opencode", "opencode")
     )
 }
 
@@ -188,7 +188,7 @@ mod tests {
     fn planner_allows_supported_agents() {
         assert_eq!(
             plan(
-                "herdr:claude",
+                "gmux:claude",
                 "claude",
                 &AgentSessionRef::id("claude-session").unwrap()
             )
@@ -198,7 +198,7 @@ mod tests {
         );
         assert_eq!(
             plan(
-                "herdr:codex",
+                "gmux:codex",
                 "codex",
                 &AgentSessionRef::id("codex-session").unwrap()
             )
@@ -208,7 +208,7 @@ mod tests {
         );
         assert_eq!(
             plan(
-                "herdr:copilot",
+                "gmux:copilot",
                 "copilot",
                 &AgentSessionRef::id("copilot-session").unwrap()
             )
@@ -218,7 +218,7 @@ mod tests {
         );
         assert_eq!(
             plan(
-                "herdr:droid",
+                "gmux:droid",
                 "droid",
                 &AgentSessionRef::id("droid-session").unwrap()
             )
@@ -228,7 +228,7 @@ mod tests {
         );
         assert_eq!(
             plan(
-                "herdr:pi",
+                "gmux:pi",
                 "pi",
                 &AgentSessionRef::path("/tmp/pi-session.jsonl").unwrap()
             )
@@ -238,7 +238,7 @@ mod tests {
         );
         assert_eq!(
             plan(
-                "herdr:hermes",
+                "gmux:hermes",
                 "hermes",
                 &AgentSessionRef::id("hermes-session").unwrap()
             )
@@ -248,7 +248,7 @@ mod tests {
         );
         assert_eq!(
             plan(
-                "herdr:opencode",
+                "gmux:opencode",
                 "opencode",
                 &AgentSessionRef::id("opencode-session").unwrap()
             )
@@ -267,7 +267,7 @@ mod tests {
         )
         .is_none());
         assert!(plan(
-            "herdr:claude",
+            "gmux:claude",
             "claude",
             &AgentSessionRef::path("/tmp/claude-session").unwrap()
         )
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn report_ref_prefers_pi_path_and_validates_values() {
         let session_ref = session_ref_from_report(
-            "herdr:pi",
+            "gmux:pi",
             "pi",
             Some("pi-id".into()),
             Some("/tmp/pi-session.jsonl".into()),
@@ -286,14 +286,13 @@ mod tests {
         assert_eq!(session_ref.kind, AgentSessionRefKind::Path);
         assert_eq!(session_ref.value, "/tmp/pi-session.jsonl");
 
-        assert!(session_ref_from_report("herdr:pi", "pi", Some("bad\nid".into()), None).is_none());
+        assert!(session_ref_from_report("gmux:pi", "pi", Some("bad\nid".into()), None).is_none());
         assert!(
-            session_ref_from_report("herdr:pi", "pi", None, Some("relative.jsonl".into()))
-                .is_none()
+            session_ref_from_report("gmux:pi", "pi", None, Some("relative.jsonl".into())).is_none()
         );
         assert!(session_ref_from_report("custom:pi", "pi", Some("pi-id".into()), None).is_none());
         assert!(session_ref_from_report(
-            "herdr:claude",
+            "gmux:claude",
             "claude",
             None,
             Some("/tmp/claude-session".into())
@@ -301,12 +300,12 @@ mod tests {
         .is_none());
 
         let session_ref =
-            session_ref_from_report("herdr:copilot", "copilot", Some("copilot-id".into()), None)
+            session_ref_from_report("gmux:copilot", "copilot", Some("copilot-id".into()), None)
                 .unwrap();
         assert_eq!(session_ref.kind, AgentSessionRefKind::Id);
         assert_eq!(session_ref.value, "copilot-id");
         assert!(session_ref_from_report(
-            "herdr:copilot",
+            "gmux:copilot",
             "copilot",
             None,
             Some("/tmp/copilot-session".into())
@@ -314,11 +313,11 @@ mod tests {
         .is_none());
 
         let session_ref =
-            session_ref_from_report("herdr:droid", "droid", Some("droid-id".into()), None).unwrap();
+            session_ref_from_report("gmux:droid", "droid", Some("droid-id".into()), None).unwrap();
         assert_eq!(session_ref.kind, AgentSessionRefKind::Id);
         assert_eq!(session_ref.value, "droid-id");
         assert!(session_ref_from_report(
-            "herdr:droid",
+            "gmux:droid",
             "droid",
             None,
             Some("/tmp/droid-session".into())
@@ -329,54 +328,50 @@ mod tests {
     #[test]
     fn ids_are_data_not_shell_text() {
         let id = "abc; rm -rf /";
-        let codex_plan = plan("herdr:codex", "codex", &AgentSessionRef::id(id).unwrap()).unwrap();
+        let codex_plan = plan("gmux:codex", "codex", &AgentSessionRef::id(id).unwrap()).unwrap();
         assert_eq!(codex_plan.argv, vec!["codex", "resume", id]);
 
-        let copilot_plan = plan(
-            "herdr:copilot",
-            "copilot",
-            &AgentSessionRef::id(id).unwrap(),
-        )
-        .unwrap();
+        let copilot_plan =
+            plan("gmux:copilot", "copilot", &AgentSessionRef::id(id).unwrap()).unwrap();
         assert_eq!(copilot_plan.argv, vec!["copilot", "--resume=abc; rm -rf /"]);
     }
 
     #[test]
     fn planner_rejects_path_refs_for_id_only_agents() {
         assert!(plan(
-            "herdr:hermes",
+            "gmux:hermes",
             "hermes",
             &AgentSessionRef::path("/tmp/hermes-session").unwrap()
         )
         .is_none());
         assert!(plan(
-            "herdr:opencode",
+            "gmux:opencode",
             "opencode",
             &AgentSessionRef::path("/tmp/opencode-session").unwrap()
         )
         .is_none());
         assert!(plan(
-            "herdr:copilot",
+            "gmux:copilot",
             "copilot",
             &AgentSessionRef::path("/tmp/copilot-session").unwrap()
         )
         .is_none());
         assert!(session_ref_from_snapshot(
-            "herdr:hermes",
+            "gmux:hermes",
             "hermes",
             AgentSessionRefKind::Id,
             "hermes-session"
         )
         .is_some());
         assert!(session_ref_from_snapshot(
-            "herdr:opencode",
+            "gmux:opencode",
             "opencode",
             AgentSessionRefKind::Id,
             "opencode-session"
         )
         .is_some());
         assert!(session_ref_from_snapshot(
-            "herdr:copilot",
+            "gmux:copilot",
             "copilot",
             AgentSessionRefKind::Id,
             "copilot-session"

@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: herdr maintainers <maintainers@herdr.dev>
+From: gmux maintainers <maintainers@gmux.dev>
 Date: Thu, 4 Jun 2026 00:00:00 +0000
 Subject: [PATCH] backport resizeCols cursor subtraction saturation
 
@@ -8,7 +8,7 @@ Shrink-both resize can leave the old cursor row past the new row count after
 resizeWithoutReflow reduces self.rows. Saturating subtraction treats rows below
 that cursor as zero instead of trapping in safety builds.
 
-Herdr issue: https://github.com/ogulcancelik/herdr/issues/465
+Gmux issue: https://github.com/ogulcancelik/gmux/issues/465
 Upstream discussion: https://github.com/ghostty-org/ghostty/discussions/12905
 Upstream PR: https://github.com/ghostty-org/ghostty/pull/12907
 Vendored base: 0f7cd84b880b203c98683e520e84b9db0c5938d8

@@ -55,11 +55,11 @@ mod tests {
 
     #[test]
     fn verifies_matching_sha256() {
-        let path = std::env::temp_dir().join(format!("herdr-checksum-test-{}", std::process::id()));
-        fs::write(&path, b"herdr").unwrap();
+        let path = std::env::temp_dir().join(format!("gmux-checksum-test-{}", std::process::id()));
+        fs::write(&path, b"gmux").unwrap();
         let result = super::verify_sha256(
             &path,
-            "78193ef266c1e3c2ce4ea2a86d7fc87e8c52799653faaac8536533a1c9300f82",
+            "5fd4ae1af2fcaa9c84065f0d9ccdf2a2f3fb761d5f7e827a2f89ce63c4f9572c",
         );
         let _ = fs::remove_file(&path);
         assert!(result.is_ok());

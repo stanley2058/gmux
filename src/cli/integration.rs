@@ -26,7 +26,7 @@ fn integration_status(args: &[String]) -> std::io::Result<i32> {
         [] => false,
         [flag] if flag == "--outdated-only" => true,
         _ => {
-            eprintln!("usage: herdr integration status [--outdated-only]");
+            eprintln!("usage: gmux integration status [--outdated-only]");
             return Ok(2);
         }
     };
@@ -103,13 +103,13 @@ fn parse_integration_target(
 ) -> std::io::Result<Option<IntegrationTarget>> {
     let Some(target) = args.first().map(|arg| arg.as_str()) else {
         eprintln!(
-            "usage: herdr integration {action} <pi|omp|claude|codex|copilot|droid|kimi|opencode|hermes|qodercli>"
+            "usage: gmux integration {action} <pi|omp|claude|codex|copilot|droid|kimi|opencode|hermes|qodercli>"
         );
         return Ok(None);
     };
     if args.len() != 1 {
         eprintln!(
-            "usage: herdr integration {action} <pi|omp|claude|codex|copilot|droid|kimi|opencode|hermes|qodercli>"
+            "usage: gmux integration {action} <pi|omp|claude|codex|copilot|droid|kimi|opencode|hermes|qodercli>"
         );
         return Ok(None);
     }
@@ -138,26 +138,26 @@ fn parse_integration_target(
 }
 
 fn print_integration_help() {
-    eprintln!("herdr integration commands:");
-    eprintln!("  herdr integration install pi");
-    eprintln!("  herdr integration install omp");
-    eprintln!("  herdr integration install claude");
-    eprintln!("  herdr integration install codex");
-    eprintln!("  herdr integration install copilot");
-    eprintln!("  herdr integration install droid");
-    eprintln!("  herdr integration install kimi");
-    eprintln!("  herdr integration install opencode");
-    eprintln!("  herdr integration install hermes");
-    eprintln!("  herdr integration install qodercli");
-    eprintln!("  herdr integration uninstall pi");
-    eprintln!("  herdr integration uninstall omp");
-    eprintln!("  herdr integration uninstall claude");
-    eprintln!("  herdr integration uninstall codex");
-    eprintln!("  herdr integration uninstall copilot");
-    eprintln!("  herdr integration uninstall droid");
-    eprintln!("  herdr integration uninstall kimi");
-    eprintln!("  herdr integration uninstall opencode");
-    eprintln!("  herdr integration uninstall hermes");
-    eprintln!("  herdr integration uninstall qodercli");
-    eprintln!("  herdr integration status [--outdated-only]");
+    eprintln!("gmux integration commands:");
+    eprintln!("  gmux integration install pi");
+    eprintln!("  gmux integration install omp");
+    eprintln!("  gmux integration install claude");
+    eprintln!("  gmux integration install codex");
+    eprintln!("  gmux integration install copilot");
+    eprintln!("  gmux integration install droid");
+    eprintln!("  gmux integration install kimi");
+    eprintln!("  gmux integration install opencode");
+    eprintln!("  gmux integration install hermes");
+    eprintln!("  gmux integration install qodercli");
+    eprintln!("  gmux integration uninstall pi");
+    eprintln!("  gmux integration uninstall omp");
+    eprintln!("  gmux integration uninstall claude");
+    eprintln!("  gmux integration uninstall codex");
+    eprintln!("  gmux integration uninstall copilot");
+    eprintln!("  gmux integration uninstall droid");
+    eprintln!("  gmux integration uninstall kimi");
+    eprintln!("  gmux integration uninstall opencode");
+    eprintln!("  gmux integration uninstall hermes");
+    eprintln!("  gmux integration uninstall qodercli");
+    eprintln!("  gmux integration status [--outdated-only]");
 }

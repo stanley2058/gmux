@@ -1,9 +1,9 @@
-//! Headless server mode — runs the herdr event loop without a real terminal.
+//! Headless server mode — runs the gmux event loop without a real terminal.
 //!
 //! The server:
 //! - Does not enter raw mode or read stdin
-//! - Creates and listens on both `herdr.sock` (existing JSON API) and
-//!   `herdr-client.sock` (new binary protocol)
+//! - Creates and listens on both `gmux.sock` (existing JSON API) and
+//!   `gmux-client.sock` (new binary protocol)
 //! - Initializes AppState and all PTYs from session restore or fresh state
 //! - Runs the main event loop (drain events, drain API requests, scheduled tasks)
 //! - Renders to a virtual ratatui Buffer in memory
@@ -159,7 +159,7 @@ const CLIENT_ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 // Headless server
 // ---------------------------------------------------------------------------
 
-/// The headless server — runs the herdr event loop without a real terminal.
+/// The headless server — runs the gmux event loop without a real terminal.
 pub struct HeadlessServer {
     app: app::App,
     api_tx: Option<api::ApiRequestSender>,
@@ -744,7 +744,7 @@ impl HeadlessServer {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "live handoff supports at most {} panes in one update; close panes or restart herdr normally",
+                    "live handoff supports at most {} panes in one update; close panes or restart gmux normally",
                     crate::server::handoff::MAX_FDS_PER_HANDOFF
                 ),
             ));
@@ -2214,7 +2214,7 @@ impl HeadlessServer {
         let _ = msg.respond_to.send(response);
 
         // Forward new toast state only when a client-local delivery mode is selected.
-        // Herdr delivery renders the toast in-frame and must not ask clients to
+        // Gmux delivery renders the toast in-frame and must not ask clients to
         // show a terminal or system notification.
         let toast_after = self.app.state.toast.clone();
         let forwarded_toast_from_state =
@@ -2981,7 +2981,7 @@ impl HeadlessServer {
             let previous_toast = self.app.state.toast.clone();
             for update in self.app.state.expire_agent_metadata_at(deadline, now) {
                 self.app
-                    .refresh_new_herdr_toast_context_for_update(&update, &previous_toast);
+                    .refresh_new_gmux_toast_context_for_update(&update, &previous_toast);
                 self.app.emit_pane_state_update(&update);
             }
             self.app.sync_agent_metadata_deadline();
@@ -3155,7 +3155,7 @@ pub fn run_server() -> io::Result<()> {
     let _api_server = match api::start_server(api_tx.clone(), event_hub.clone()) {
         Ok(server) => server,
         Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
-            eprintln!("error: herdr server is already running");
+            eprintln!("error: gmux server is already running");
             eprintln!("api socket: {}", api::socket_path().display());
             std::process::exit(1);
         }
@@ -3194,7 +3194,7 @@ pub fn run_server() -> io::Result<()> {
         ) {
             Ok(server) => server,
             Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
-                eprintln!("error: herdr server is already running");
+                eprintln!("error: gmux server is already running");
                 eprintln!("client socket: {}", client_socket_path().display());
                 std::process::exit(1);
             }
@@ -3204,7 +3204,7 @@ pub fn run_server() -> io::Result<()> {
         info!(
             api_socket = %api::socket_path().display(),
             client_socket = %client_socket_path().display(),
-            "herdr server started"
+            "gmux server started"
         );
         print_ready_message(&api::socket_path(), &client_socket_path());
 
@@ -3254,7 +3254,7 @@ fn run_handoff_import_server(socket_path: &Path, token: &str) -> io::Result<()> 
         app.state.local_sound_playback = false;
         app.local_terminal_notifications = false;
         crate::server::handoff::report_restored(&mut received.stream)?;
-        if std::env::var("HERDR_TEST_HANDOFF_IMPORT_FAIL").as_deref() == Ok("after_restored") {
+        if std::env::var("GMUX_TEST_HANDOFF_IMPORT_FAIL").as_deref() == Ok("after_restored") {
             return Err(io::Error::other(
                 "test handoff import failure after restored",
             ));
@@ -3313,21 +3313,19 @@ fn run_handoff_import_server(_socket_path: &Path, _token: &str) -> io::Result<()
 }
 
 fn print_ready_message(api_socket: &Path, client_socket: &Path) {
-    eprintln!("herdr server running; you can use any herdr CLI command in another terminal.");
+    eprintln!("gmux server running; you can use any gmux CLI command in another terminal.");
     eprintln!("api socket: {}", api_socket.display());
     eprintln!("client socket: {}", client_socket.display());
     eprintln!(
         "logs: {}",
-        crate::session::data_dir()
-            .join("herdr-server.log")
-            .display()
+        crate::session::data_dir().join("gmux-server.log").display()
     );
-    eprintln!("did you mean to open the Herdr TUI? run `herdr`; you do not need `herdr server`.");
+    eprintln!("did you mean to open the Gmux TUI? run `gmux`; you do not need `gmux server`.");
 }
 
 /// Initialize logging for the server process.
 fn init_logging() {
-    crate::logging::init_file_logging("herdr-server.log");
+    crate::logging::init_file_logging("gmux-server.log");
 }
 
 // ---------------------------------------------------------------------------
@@ -3434,7 +3432,7 @@ mod tests {
                 .event_tx
                 .try_send(AppEvent::UpdateReady {
                     version: format!("4.0.{i}"),
-                    install_command: "herdr install".into(),
+                    install_command: "gmux install".into(),
                 })
                 .unwrap();
         }
@@ -3657,7 +3655,7 @@ new_tab = "prefix+t"
     #[test]
     fn local_keybinding_client_keeps_local_keybindings_after_settings_save() {
         let path = std::env::temp_dir().join(format!(
-            "herdr-headless-settings-{}-{}.toml",
+            "gmux-headless-settings-{}-{}.toml",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -3714,7 +3712,7 @@ next_tab = ""
             .any(|binding| binding.label == "prefix+n"));
         assert!(server.app.state.toast.is_none());
         let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("delivery = \"herdr\""));
+        assert!(content.contains("delivery = \"gmux\""));
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
         let _ = std::fs::remove_file(path);
@@ -3723,7 +3721,7 @@ next_tab = ""
     #[test]
     fn invalid_server_keybindings_do_not_cache_local_keybindings_after_settings_save() {
         let path = std::env::temp_dir().join(format!(
-            "herdr-headless-invalid-settings-{}-{}.toml",
+            "gmux-headless-invalid-settings-{}-{}.toml",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -4172,7 +4170,7 @@ next_tab = ""
         assert!(
             server.handle_internal_event_with_forwarding(AppEvent::HookStateReported {
                 pane_id,
-                source: "herdr:pi".into(),
+                source: "gmux:pi".into(),
                 agent_label: "pi".into(),
                 state: crate::detect::AgentState::Working,
                 message: None,
@@ -4186,7 +4184,7 @@ next_tab = ""
                 pane_id,
                 source: "user:pi-display".into(),
                 agent_label: Some("pi".into()),
-                applies_to_source: Some("herdr:pi".into()),
+                applies_to_source: Some("gmux:pi".into()),
                 title: None,
                 display_agent: None,
                 custom_status: Some("short lived".into()),
@@ -4298,7 +4296,7 @@ next_tab = ""
             .pending_agent_resume_plan = Some(crate::agent_resume::AgentResumePlan {
             agent: "codex".into(),
             argv: vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()],
-            dedupe_key: "herdr:codex\0codex\0Id\0codex-session".into(),
+            dedupe_key: "gmux:codex\0codex\0Id\0codex-session".into(),
         });
         server.app.pending_agent_resume_deadline = Some(Instant::now() - Duration::from_millis(1));
 
@@ -4351,7 +4349,7 @@ next_tab = ""
             .pending_agent_resume_plan = Some(crate::agent_resume::AgentResumePlan {
             agent: "codex".into(),
             argv: vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()],
-            dedupe_key: "herdr:codex\0codex\0Id\0codex-session".into(),
+            dedupe_key: "gmux:codex\0codex\0Id\0codex-session".into(),
         });
         server.app.pending_agent_resume_deadline = Some(Instant::now() - Duration::from_millis(1));
 
@@ -4415,7 +4413,7 @@ next_tab = ""
             .pending_agent_resume_plan = Some(crate::agent_resume::AgentResumePlan {
             agent: "codex".into(),
             argv: vec!["/bin/sh".into(), "-c".into(), "sleep 5".into()],
-            dedupe_key: "herdr:codex\0codex\0Id\0codex-session".into(),
+            dedupe_key: "gmux:codex\0codex\0Id\0codex-session".into(),
         });
         server.app.pending_agent_resume_deadline = Some(Instant::now() - Duration::from_millis(1));
 
@@ -6117,7 +6115,7 @@ next_tab = ""
     }
 
     #[test]
-    fn herdr_toast_delivery_keeps_toast_in_frame_without_client_notify() {
+    fn gmux_toast_delivery_keeps_toast_in_frame_without_client_notify() {
         let mut server = test_headless_server();
         let (client_tx, client_control_rx, _client_rx) = test_client_writer();
 
@@ -6134,11 +6132,11 @@ next_tab = ""
             ),
         );
         server.foreground_client_id = Some(1);
-        server.app.state.toast_config.delivery = crate::config::ToastDelivery::Herdr;
+        server.app.state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
 
         let changed = server.handle_internal_event_with_forwarding(AppEvent::UpdateReady {
             version: "9.9.9".to_string(),
-            install_command: "herdr update".into(),
+            install_command: "gmux update".into(),
         });
 
         assert!(changed);
@@ -6147,7 +6145,7 @@ next_tab = ""
             client_control_rx
                 .recv_timeout(Duration::from_millis(50))
                 .is_err(),
-            "herdr delivery should render in-frame instead of forwarding a client-local notification"
+            "gmux delivery should render in-frame instead of forwarding a client-local notification"
         );
     }
 
@@ -6173,7 +6171,7 @@ next_tab = ""
 
         let changed = server.handle_internal_event_with_forwarding(AppEvent::UpdateReady {
             version: "9.9.9".to_string(),
-            install_command: "herdr update".into(),
+            install_command: "gmux update".into(),
         });
 
         assert!(changed);
@@ -6186,7 +6184,7 @@ next_tab = ""
                 assert_eq!(kind, protocol::NotifyKind::SystemToast);
                 assert_eq!(
                     message,
-                    "v9.9.9 available: detach, run `herdr update`, then follow its restart guidance"
+                    "v9.9.9 available: detach, run `gmux update`, then follow its restart guidance"
                 );
             }
             other => panic!("expected system toast notify, got {other:?}"),
@@ -6214,7 +6212,7 @@ next_tab = ""
             .get_mut(&terminal_id)
             .unwrap()
             .set_hook_authority(
-                "herdr:pi".into(),
+                "gmux:pi".into(),
                 "pi".into(),
                 crate::detect::AgentState::Working,
                 None,
@@ -6246,7 +6244,7 @@ next_tab = ""
                 id: "stale".into(),
                 method: api::schema::Method::PaneReportAgent(api::schema::PaneReportAgentParams {
                     pane_id: public_pane_id,
-                    source: "herdr:pi".into(),
+                    source: "gmux:pi".into(),
                     agent: "pi".into(),
                     state: api::schema::PaneAgentState::Idle,
                     message: None,

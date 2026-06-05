@@ -820,7 +820,7 @@ mod tests {
 
     fn temp_config_path(name: &str) -> std::path::PathBuf {
         let unique = format!(
-            "herdr-modal-{name}-{}-{}",
+            "gmux-modal-{name}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1219,9 +1219,9 @@ mod tests {
         state.selected = 1;
         state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
             key: "repo-key".into(),
-            label: "herdr".into(),
-            repo_root: "/repo/herdr".into(),
-            checkout_path: "/repo/herdr-issue".into(),
+            label: "gmux".into(),
+            repo_root: "/repo/gmux".into(),
+            checkout_path: "/repo/gmux-issue".into(),
             is_linked_worktree: true,
         });
 
@@ -1243,16 +1243,16 @@ mod tests {
         state.selected = 1;
         state.workspaces[0].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
             key: "repo-key".into(),
-            label: "herdr".into(),
-            repo_root: "/repo/herdr".into(),
-            checkout_path: "/repo/herdr".into(),
+            label: "gmux".into(),
+            repo_root: "/repo/gmux".into(),
+            checkout_path: "/repo/gmux".into(),
             is_linked_worktree: false,
         });
         state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
             key: "repo-key".into(),
-            label: "herdr".into(),
-            repo_root: "/repo/herdr".into(),
-            checkout_path: "/repo/herdr-issue".into(),
+            label: "gmux".into(),
+            repo_root: "/repo/gmux".into(),
+            checkout_path: "/repo/gmux-issue".into(),
             is_linked_worktree: true,
         });
         let menu = ContextMenuState {
@@ -1286,16 +1286,16 @@ mod tests {
         state.selected = 1;
         state.workspaces[0].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
             key: "repo-key".into(),
-            label: "herdr".into(),
-            repo_root: "/repo/herdr".into(),
-            checkout_path: "/repo/herdr".into(),
+            label: "gmux".into(),
+            repo_root: "/repo/gmux".into(),
+            checkout_path: "/repo/gmux".into(),
             is_linked_worktree: false,
         });
         state.workspaces[1].worktree_space = Some(crate::workspace::WorktreeSpaceMembership {
             key: "repo-key".into(),
-            label: "herdr".into(),
-            repo_root: "/repo/herdr".into(),
-            checkout_path: "/repo/herdr-issue".into(),
+            label: "gmux".into(),
+            repo_root: "/repo/gmux".into(),
+            checkout_path: "/repo/gmux-issue".into(),
             is_linked_worktree: true,
         });
         let pane_id = state.workspaces[0].tabs[0].root_pane;
