@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::detect::AgentState;
 use crate::layout::PaneId;
 use crate::terminal::{TerminalId, TerminalState};
 
@@ -16,12 +15,8 @@ pub struct PaneDetail {
 }
 
 impl Tab {
-    pub fn has_working_pane(&self, terminals: &HashMap<TerminalId, TerminalState>) -> bool {
-        self.panes.values().any(|pane| {
-            terminals
-                .get(&pane.attached_terminal_id)
-                .is_some_and(|terminal| terminal.state == AgentState::Working)
-        })
+    pub fn has_working_pane(&self, _terminals: &HashMap<TerminalId, TerminalState>) -> bool {
+        false
     }
 
     pub fn pane_details(&self, terminals: &HashMap<TerminalId, TerminalState>) -> Vec<PaneDetail> {
@@ -31,7 +26,6 @@ impl Tab {
             .filter_map(|id| {
                 let pane = self.panes.get(id)?;
                 let terminal = terminals.get(&pane.attached_terminal_id)?;
-                let presentation = terminal.effective_presentation();
                 let fallback_pane_number = self
                     .layout
                     .pane_ids()
@@ -39,8 +33,8 @@ impl Tab {
                     .position(|pane_id| pane_id == id)
                     .map(|idx| idx + 1)
                     .unwrap_or(1);
-                let label = presentation
-                    .title
+                let label = terminal
+                    .effective_title()
                     .or_else(|| terminal.manual_label.as_deref().map(str::to_string))
                     .or_else(|| launch_label(terminal.launch_argv.as_ref()))
                     .unwrap_or_else(|| format!("pane {fallback_pane_number}"));
@@ -49,7 +43,7 @@ impl Tab {
                     tab_idx: self.number.saturating_sub(1),
                     tab_label: self.display_name(),
                     label,
-                    custom_status: presentation.custom_status,
+                    custom_status: terminal.effective_custom_status(),
                 })
             })
             .collect()
