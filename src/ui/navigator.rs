@@ -8,7 +8,6 @@ use ratatui::{
 
 use super::{
     scrollbar::{render_scrollbar, should_show_scrollbar},
-    status::{agent_icon, state_label_color},
     widgets::{panel_contrast_fg, render_panel_shell},
 };
 use crate::app::state::{AppState, NavigatorRow, NavigatorTarget};
@@ -125,13 +124,6 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
     } else {
         Style::default().fg(p.subtext0).bg(p.panel_bg)
     };
-    let (status_icon, status_style) = agent_icon(row.status, row.seen, app.spinner_tick, p);
-    let status_style = if selected {
-        base_style.add_modifier(Modifier::BOLD)
-    } else {
-        status_style.bg(p.panel_bg)
-    };
-
     let prefix = if row.is_workspace {
         if row.expanded {
             "▾"
@@ -152,13 +144,11 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
         .width
         .saturating_sub(meta_width)
         .saturating_sub(left_fixed.chars().count() as u16)
-        .saturating_sub(3) as usize;
+        .saturating_sub(1) as usize;
     let title = truncate_text(&row.label, left_budget);
 
     let spans = vec![
         Span::styled(left_fixed, dim_style),
-        Span::styled(status_icon, status_style),
-        Span::raw(" "),
         Span::styled(title, text_style),
     ];
     frame.render_widget(Paragraph::new(Line::from(spans)).style(base_style), rect);
@@ -173,12 +163,8 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
         let meta = truncate_text(&row.meta, meta_width.saturating_sub(2) as usize);
         let meta_style = if selected {
             base_style
-        } else if row.is_workspace || row.is_tab {
-            Style::default().fg(p.overlay0).bg(p.panel_bg)
         } else {
-            Style::default()
-                .fg(state_label_color(row.status, row.seen, p))
-                .bg(p.panel_bg)
+            Style::default().fg(p.overlay0).bg(p.panel_bg)
         };
         frame.render_widget(
             Paragraph::new(format!(" {meta}")).style(meta_style),
