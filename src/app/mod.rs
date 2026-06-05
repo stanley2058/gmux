@@ -2334,13 +2334,13 @@ mod tests {
         let mutating = crate::api::schema::Request {
             id: "req_2".into(),
             method: crate::api::schema::Method::TabFocus(crate::api::schema::TabTarget {
-                tab_id: "w_1:1".into(),
+                tab_id: "t_1".into(),
             }),
         };
         let pane_rename = crate::api::schema::Request {
             id: "req_3".into(),
             method: crate::api::schema::Method::PaneRename(crate::api::schema::PaneRenameParams {
-                pane_id: "w_1-1".into(),
+                pane_id: "p_1".into(),
                 label: Some("logs".into()),
             }),
         };

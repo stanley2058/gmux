@@ -113,9 +113,9 @@ Use `events.wait` when you want one matching event and then a response.
 Use `pane.read` through the CLI unless you are writing a protocol client.
 
 ```bash
-gmux pane read 1-1 --source visible --lines 80
-gmux pane read 1-1 --source recent --lines 120
-gmux pane read 1-1 --source recent-unwrapped --lines 120
+gmux pane read p_1 --source visible --lines 80
+gmux pane read p_1 --source recent --lines 120
+gmux pane read p_1 --source recent-unwrapped --lines 120
 ```
 
 `recent-unwrapped` is useful for logs because it ignores soft wrapping.
@@ -125,7 +125,7 @@ gmux pane read 1-1 --source recent-unwrapped --lines 120
 Use waits to coordinate scripts with pane output.
 
 ```bash
-gmux wait output 1-1 --match "server ready" --timeout 10000
+gmux wait output p_1 --match "server ready" --timeout 10000
 ```
 
 ## Response shapes
@@ -138,9 +138,9 @@ Successful responses look like this:
   "result": {
     "type": "pane_info",
     "pane": {
-      "pane_id": "1-1",
+      "pane_id": "p_1",
       "terminal_id": "term_abc123",
-      "tab_id": "1-1",
+      "tab_id": "t_1",
       "focused": true,
       "revision": 42
     }

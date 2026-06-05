@@ -169,13 +169,13 @@ fn workspace_list(socket_path: &PathBuf) -> Value {
     let mut workspaces = Vec::new();
     if let Some(tabs) = tabs["result"]["tabs"].as_array() {
         for tab in tabs {
-            let Some(workspace_id) = tab["tab_id"].as_str().and_then(|tab_id| {
-                tab_id
-                    .rsplit_once(':')
-                    .map(|(workspace_id, _)| workspace_id)
-            }) else {
+            let Some(tab_id) = tab["tab_id"].as_str() else {
                 continue;
             };
+            let workspace_id = tab_id
+                .rsplit_once(':')
+                .map(|(workspace_id, _)| workspace_id.to_string())
+                .unwrap_or_else(|| "1".to_string());
             workspaces.push(serde_json::json!({
                 "workspace_id": workspace_id,
                 "active_tab_id": tab["tab_id"],

@@ -13,9 +13,7 @@ impl App {
     }
 
     pub(super) fn public_tab_id(&self, ws_idx: usize, tab_idx: usize) -> Option<String> {
-        let ws = self.state.workspaces.get(ws_idx)?;
-        ws.tabs.get(tab_idx)?;
-        Some(format!("{}:{}", ws.id, tab_idx + 1))
+        Some(format!("t_{}", self.public_tab_number(ws_idx, tab_idx)?))
     }
 
     pub(super) fn public_pane_id(
@@ -23,9 +21,58 @@ impl App {
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> Option<String> {
+        Some(format!("p_{}", self.public_pane_number(ws_idx, pane_id)?))
+    }
+
+    fn public_tab_number(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
+        self.state.workspaces.get(ws_idx)?.tabs.get(tab_idx)?;
+        let preceding = self
+            .state
+            .workspaces
+            .iter()
+            .take(ws_idx)
+            .map(|ws| ws.tabs.len())
+            .sum::<usize>();
+        Some(preceding + tab_idx + 1)
+    }
+
+    fn tab_by_public_number(&self, number: usize) -> Option<(usize, usize)> {
+        let mut remaining = number.checked_sub(1)?;
+        for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
+            if remaining < ws.tabs.len() {
+                return Some((ws_idx, remaining));
+            }
+            remaining = remaining.checked_sub(ws.tabs.len())?;
+        }
+        None
+    }
+
+    fn public_pane_number(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> Option<usize> {
         let ws = self.state.workspaces.get(ws_idx)?;
-        let pane_number = ws.public_pane_number(pane_id)?;
-        Some(format!("{}-{pane_number}", ws.id))
+        let preceding = self
+            .state
+            .workspaces
+            .iter()
+            .take(ws_idx)
+            .map(|ws| ws.public_pane_numbers.len())
+            .sum::<usize>();
+        Some(preceding + ws.public_pane_number(pane_id)?)
+    }
+
+    fn pane_by_public_number(&self, number: usize) -> Option<(usize, crate::layout::PaneId)> {
+        let mut remaining = number.checked_sub(1)?;
+        for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
+            if remaining < ws.public_pane_numbers.len() {
+                let local_number = remaining + 1;
+                let pane_id = ws
+                    .public_pane_numbers
+                    .iter()
+                    .find_map(|(pane_id, number)| (*number == local_number).then_some(*pane_id))?;
+                return Some((ws_idx, pane_id));
+            }
+            remaining = remaining.checked_sub(ws.public_pane_numbers.len())?;
+        }
+        None
     }
 
     pub(super) fn parse_workspace_id(&self, id: &str) -> Option<usize> {
@@ -39,6 +86,10 @@ impl App {
 
     pub(super) fn parse_tab_id(&self, id: &str) -> Option<(usize, usize)> {
         if let Some(rest) = id.strip_prefix("t_") {
+            if let Ok(number) = rest.parse::<usize>() {
+                return self.tab_by_public_number(number);
+            }
+
             let (ws_raw, tab_raw) = rest.rsplit_once('_')?;
             let ws_idx = self.parse_workspace_id(ws_raw)?;
             let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
@@ -73,7 +124,11 @@ impl App {
                 return Some((ws_idx, pane_id));
             }
 
-            let pane_id = self.resolve_raw_pane_id(rest.parse::<u32>().ok()?)?;
+            let number = rest.parse::<usize>().ok()?;
+            if let Some(target) = self.pane_by_public_number(number) {
+                return Some(target);
+            }
+            let pane_id = self.resolve_raw_pane_id(number as u32)?;
             return self.find_pane(pane_id).map(|(ws_idx, _)| (ws_idx, pane_id));
         }
 

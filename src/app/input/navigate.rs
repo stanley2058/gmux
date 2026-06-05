@@ -1715,8 +1715,8 @@ last_pane = "prefix+tab"
         let content = wait_for_file(&output_path);
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0], format!("{}:1", app.state.workspaces[0].id));
-        assert_eq!(lines[1], format!("{}-1", app.state.workspaces[0].id));
+        assert_eq!(lines[0], "t_1");
+        assert_eq!(lines[1], "p_1");
         assert_eq!(app.state.mode, Mode::Terminal);
 
         let _ = std::fs::remove_file(output_path);

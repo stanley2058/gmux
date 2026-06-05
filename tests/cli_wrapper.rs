@@ -440,10 +440,20 @@ fn workspace_id_from_tab_id(tab_id: &str) -> Option<&str> {
         .map(|(workspace_id, _)| workspace_id)
 }
 
+fn synthetic_workspace_id_from_tab_id(tab_id: &str) -> String {
+    workspace_id_from_tab_id(tab_id).unwrap_or("1").to_string()
+}
+
 fn workspace_id_from_pane_id(pane_id: &str) -> Option<&str> {
     pane_id
         .rsplit_once('-')
         .map(|(workspace_id, _)| workspace_id)
+}
+
+fn synthetic_workspace_id_from_pane_id(pane_id: &str) -> String {
+    workspace_id_from_pane_id(pane_id)
+        .unwrap_or("1")
+        .to_string()
 }
 
 fn create_workspace_api(
@@ -478,7 +488,7 @@ fn create_workspace_api(
             .and_then(|tab_id| tab_id.as_str())
             .map(str::to_string)
         {
-            let workspace_id = workspace_id_from_tab_id(&tab_id).unwrap_or("1").to_string();
+            let workspace_id = synthetic_workspace_id_from_tab_id(&tab_id);
             let label = result
                 .get("tab")
                 .and_then(|tab| tab.get("label"))
@@ -509,10 +519,10 @@ fn list_workspaces_api(socket_path: &Path) -> serde_json::Value {
     let mut workspaces = Vec::new();
     if let Some(tabs) = tabs["result"]["tabs"].as_array() {
         for tab in tabs {
-            let Some(workspace_id) = tab["tab_id"].as_str().and_then(workspace_id_from_tab_id)
-            else {
+            let Some(tab_id) = tab["tab_id"].as_str() else {
                 continue;
             };
+            let workspace_id = synthetic_workspace_id_from_tab_id(tab_id);
             if workspaces
                 .iter()
                 .any(|workspace: &serde_json::Value| workspace["workspace_id"] == workspace_id)
@@ -550,9 +560,9 @@ fn focus_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
         "result": {
             "type": "workspace_info",
             "workspace": {
-                "workspace_id": workspace_id_from_tab_id(
+                "workspace_id": synthetic_workspace_id_from_tab_id(
                     response["result"]["tab"]["tab_id"].as_str().unwrap_or("")
-                ).unwrap_or(workspace_id),
+                ),
             },
         },
     })
@@ -597,8 +607,9 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
             .and_then(|index| {
                 panes
                     .iter()
-                    .filter_map(|pane| pane["pane_id"].as_str().and_then(workspace_id_from_pane_id))
-                    .fold(Vec::<&str>::new(), |mut workspace_ids, id| {
+                    .filter_map(|pane| pane["pane_id"].as_str())
+                    .map(synthetic_workspace_id_from_pane_id)
+                    .fold(Vec::<String>::new(), |mut workspace_ids, id| {
                         if !workspace_ids.contains(&id) {
                             workspace_ids.push(id);
                         }
@@ -611,7 +622,10 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
         let mut pane_ids: Vec<_> = panes
             .iter()
             .filter(|pane| {
-                pane["pane_id"].as_str().and_then(workspace_id_from_pane_id)
+                pane["pane_id"]
+                    .as_str()
+                    .map(synthetic_workspace_id_from_pane_id)
+                    .as_deref()
                     == Some(target_workspace_id.as_str())
             })
             .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
@@ -1464,10 +1478,6 @@ fn tab_management_commands_work() {
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
     let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
-    let workspace_id = created_json["result"]["workspace"]["workspace_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
     let first_tab_id = created_json["result"]["workspace"]["active_tab_id"]
         .as_str()
         .unwrap()
@@ -1480,7 +1490,7 @@ fn tab_management_commands_work() {
         .as_str()
         .unwrap()
         .to_string();
-    assert_eq!(second_tab_id, format!("{workspace_id}:2"));
+    assert_eq!(second_tab_id, "t_2");
 
     let listed_tabs = run_cli(&socket_path, &["tab", "list"]);
     assert!(listed_tabs.status.success());
@@ -2070,31 +2080,20 @@ fn pane_numbers_stay_compact_after_close() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let ws1_json = create_workspace_api(&socket_path, Some(&base), None, true);
-    let ws1_id = ws1_json["result"]["workspace"]["workspace_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
+    create_workspace_api(&socket_path, Some(&base), None, true);
     let split_12_json = run_cli_json(
         &socket_path,
         &["pane", "split", "1-1", "--direction", "right", "--no-focus"],
     );
-    assert_eq!(
-        split_12_json["result"]["pane"]["pane_id"],
-        format!("{ws1_id}-2")
-    );
+    assert_eq!(split_12_json["result"]["pane"]["pane_id"], "p_2");
 
     let split_13_json = run_cli_json(
         &socket_path,
         &["pane", "split", "1-1", "--direction", "down", "--no-focus"],
     );
-    assert_eq!(
-        split_13_json["result"]["pane"]["pane_id"],
-        format!("{ws1_id}-3")
-    );
+    assert_eq!(split_13_json["result"]["pane"]["pane_id"], "p_3");
 
-    let close_middle = run_cli(&socket_path, &["pane", "close", &format!("{ws1_id}-2")]);
+    let close_middle = run_cli(&socket_path, &["pane", "close", "p_2"]);
     assert!(
         close_middle.status.success(),
         "stderr: {}",
@@ -2108,7 +2107,7 @@ fn pane_numbers_stay_compact_after_close() {
         .iter()
         .map(|pane| pane["pane_id"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(pane_ids, vec![format!("{ws1_id}-1"), format!("{ws1_id}-2")]);
+    assert_eq!(pane_ids, vec!["p_1".to_string(), "p_2".to_string()]);
 
     cleanup_spawned_gmux(gmux, base);
 }

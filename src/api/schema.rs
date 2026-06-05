@@ -766,16 +766,16 @@ mod tests {
             id: "req_2".into(),
             result: ResponseResult::TabCreated {
                 tab: TabInfo {
-                    tab_id: "w_1:2".into(),
+                    tab_id: "t_2".into(),
                     number: 2,
                     label: "review".into(),
                     focused: false,
                     pane_count: 1,
                 },
                 root_pane: PaneInfo {
-                    pane_id: "w_1-3".into(),
+                    pane_id: "p_3".into(),
                     terminal_id: "term_example".into(),
-                    tab_id: "w_1:2".into(),
+                    tab_id: "t_2".into(),
                     focused: false,
                     cwd: Some("/tmp/review".into()),
                     foreground_cwd: None,
