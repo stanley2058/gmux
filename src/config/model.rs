@@ -172,14 +172,14 @@ pub struct TerminalConfig {
 #[serde(default)]
 pub struct SessionConfig {
     /// Resume supported AI-agent panes into their native conversation sessions
-    /// when restoring a Gmux session. Default: true.
+    /// when restoring a Gmux session. Default: false.
     pub resume_agents_on_restore: bool,
 }
 
 impl Default for SessionConfig {
     fn default() -> Self {
         Self {
-            resume_agents_on_restore: true,
+            resume_agents_on_restore: false,
         }
     }
 }
@@ -687,16 +687,16 @@ new_cwd = "~/Projects"
     }
 
     #[test]
-    fn resume_agents_on_restore_defaults_on_and_parses() {
+    fn resume_agents_on_restore_defaults_off_and_parses() {
         let default_config = Config::default();
-        assert!(default_config.session.resume_agents_on_restore);
+        assert!(!default_config.session.resume_agents_on_restore);
 
         let toml = r#"
 [session]
-resume_agents_on_restore = false
+resume_agents_on_restore = true
 "#;
         let config: Config = toml::from_str(toml).unwrap();
-        assert!(!config.session.resume_agents_on_restore);
+        assert!(config.session.resume_agents_on_restore);
     }
 
     #[test]
@@ -1019,9 +1019,9 @@ delivery = "terminal"
     }
 
     #[test]
-    fn missing_onboarding_shows_setup() {
+    fn missing_onboarding_skips_setup() {
         let config = Config::default();
-        assert!(config.should_show_onboarding());
+        assert!(!config.should_show_onboarding());
     }
 
     #[test]

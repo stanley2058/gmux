@@ -142,7 +142,7 @@ impl AgentSoundOverrides {
 impl Default for SoundConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             path: None,
             done_path: None,
             request_path: None,

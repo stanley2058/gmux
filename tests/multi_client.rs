@@ -101,11 +101,21 @@ fn wait_for_file(path: &Path, timeout: Duration) {
     panic!("file did not appear at {}", path.display());
 }
 
+fn app_config_dir(config_home: &Path) -> PathBuf {
+    let app_dir = if cfg!(debug_assertions) {
+        "gmux-dev"
+    } else {
+        "gmux"
+    };
+    config_home.join(app_dir)
+}
+
 fn spawn_server(config_home: &Path, runtime_dir: &Path, api_socket_path: &Path) -> SpawnedGmux {
-    fs::create_dir_all(config_home.join("gmux")).unwrap();
+    let app_config_dir = app_config_dir(config_home);
+    fs::create_dir_all(&app_config_dir).unwrap();
     fs::create_dir_all(runtime_dir).unwrap();
     register_runtime_dir(runtime_dir);
-    fs::write(config_home.join("gmux/config.toml"), "onboarding = false\n").unwrap();
+    fs::write(app_config_dir.join("config.toml"), "onboarding = false\n").unwrap();
 
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -171,12 +181,7 @@ fn spawn_client_process(
 }
 
 fn server_log_path(config_home: &Path) -> PathBuf {
-    let app_dir = if cfg!(debug_assertions) {
-        "gmux-dev"
-    } else {
-        "gmux"
-    };
-    config_home.join(app_dir).join("gmux-server.log")
+    app_config_dir(config_home).join("gmux-server.log")
 }
 
 fn count_log_occurrences(path: &Path, needle: &str) -> usize {
@@ -245,7 +250,7 @@ fn create_workspace_and_root_pane(socket_path: &Path, label: &str) -> (String, S
     let response = send_json_request(
         socket_path,
         &format!(
-            "{{\"id\":\"ws_create\",\"method\":\"workspace.create\",\"params\":{{\"label\":\"{label}\"}}}}"
+            "{{\"id\":\"ws_create\",\"method\":\"workspace.create\",\"params\":{{\"label\":\"{label}\",\"focus\":true}}}}"
         ),
     );
 

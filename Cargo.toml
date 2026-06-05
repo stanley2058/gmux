@@ -3,11 +3,11 @@ name = "gmux"
 version = "0.6.8"
 edition = "2021"
 build = "build.rs"
-description = "terminal workspace manager for AI coding agents"
+description = "terminal multiplexer and session manager"
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/ogulcancelik/gmux"
 homepage = "https://gmux.dev"
-keywords = ["terminal", "tui", "ai", "agents", "multiplexer"]
+keywords = ["terminal", "tui", "multiplexer", "sessions"]
 categories = ["command-line-utilities"]
 include = ["src/**/*", "assets/sounds/*", "README.md", "LICENSE", "Cargo.toml"]
 

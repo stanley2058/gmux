@@ -949,9 +949,14 @@ fn client_receives_notify_on_agent_state_change() {
     let client_socket = runtime_dir.join("gmux-client.sock");
 
     // Enable toast and sound in config so the server produces notifications.
-    fs::create_dir_all(config_home.join("gmux")).unwrap();
+    let app_dir = if cfg!(debug_assertions) {
+        "gmux-dev"
+    } else {
+        "gmux"
+    };
+    fs::create_dir_all(config_home.join(app_dir)).unwrap();
     fs::write(
-        config_home.join("gmux/config.toml"),
+        config_home.join(app_dir).join("config.toml"),
         "onboarding = false\n[ui.toast]\nenabled = true\n[ui.sound]\nenabled = true\n",
     )
     .unwrap();

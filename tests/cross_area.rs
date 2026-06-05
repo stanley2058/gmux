@@ -74,6 +74,15 @@ fn test_lock() -> MutexGuard<'static, ()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+fn app_config_dir(config_home: &Path) -> PathBuf {
+    let app_dir = if cfg!(debug_assertions) {
+        "gmux-dev"
+    } else {
+        "gmux"
+    };
+    config_home.join(app_dir)
+}
+
 fn wait_for_socket(path: &Path, timeout: Duration) {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -95,10 +104,11 @@ fn spawn_server_with_path(
     api_socket_path: &Path,
     path_override: Option<&Path>,
 ) -> SpawnedGmux {
-    fs::create_dir_all(config_home.join("gmux")).unwrap();
+    let app_config_dir = app_config_dir(config_home);
+    fs::create_dir_all(&app_config_dir).unwrap();
     fs::create_dir_all(runtime_dir).unwrap();
     register_runtime_dir(runtime_dir);
-    fs::write(config_home.join("gmux/config.toml"), "onboarding = false\n").unwrap();
+    fs::write(app_config_dir.join("config.toml"), "onboarding = false\n").unwrap();
 
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -191,7 +201,7 @@ fn workspace_create(socket_path: &Path, label: &str) -> Value {
         socket_path,
         "workspace_create",
         "workspace.create",
-        json!({ "label": label }),
+        json!({ "label": label, "focus": true }),
     )
 }
 
@@ -742,7 +752,7 @@ fn cross_area_detach_and_reattach_preserves_state() {
 }
 
 #[test]
-fn cross_area_agent_process_survives_detach_and_reattach() {
+fn cross_area_agent_status_survives_detach_and_reattach() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -750,27 +760,7 @@ fn cross_area_agent_process_survives_detach_and_reattach() {
     let api_socket = runtime_dir.join("gmux.sock");
     let client_socket = runtime_dir.join("gmux-client.sock");
 
-    let bin_dir = base.join("bin");
-    fs::create_dir_all(&bin_dir).unwrap();
-    let fake_pi = bin_dir.join("pi");
-    fs::write(&fake_pi, "#!/bin/sh\nprintf 'Working...\\n'\nsleep 8\n").unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&fake_pi).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&fake_pi, perms).unwrap();
-    }
-
-    let inherited_path = std::env::var("PATH").unwrap_or_default();
-    let path_override = format!("{}:{}", bin_dir.display(), inherited_path);
-
-    let server = spawn_server_with_path(
-        &config_home,
-        &runtime_dir,
-        &api_socket,
-        Some(Path::new(&path_override)),
-    );
+    let server = spawn_server(&config_home, &runtime_dir, &api_socket);
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
@@ -784,33 +774,8 @@ fn cross_area_agent_process_survives_detach_and_reattach() {
         .expect("root pane id")
         .to_string();
 
-    // Ensure detected agent surface is populated by running fake `pi`.
-    pane_send_text(&api_socket, &pane_id, "pi");
-    pane_send_input(&api_socket, &pane_id, "");
-    let detected_before_hook = {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let mut detected = false;
-        while Instant::now() < deadline {
-            let response = send_json_request(
-                &api_socket,
-                "pane_get",
-                "pane.get",
-                json!({ "pane_id": &pane_id }),
-            );
-            if response["result"]["pane"]["agent"].as_str() == Some("pi") {
-                detected = true;
-                break;
-            }
-            thread::sleep(Duration::from_millis(60));
-        }
-        detected
-    };
-    assert!(
-        detected_before_hook,
-        "expected fake pi process to be detected before hook status assertions"
-    );
-
-    // Use agent status surfaces directly instead of a generic sleep command.
+    // Use agent status surfaces directly; process detection has its own
+    // arbitration rules and can mask hook-reported idle while a command runs.
     pane_report_agent(&api_socket, &pane_id, "pi", "working", "cross-area-test");
     assert!(
         wait_for_agent_status(&api_socket, &pane_id, "working", Duration::from_secs(3)),
@@ -950,6 +915,15 @@ fn cross_area_two_clients_shared_view_and_single_detach_stability() {
         .as_str()
         .expect("root pane id")
         .to_string();
+    let saw_shared_workspace =
+        wait_for_frame_matching(&mut client_b, Duration::from_secs(3), |frame| {
+            frame_contains_text(frame, "shared-view")
+        })
+        .expect("frame decoding should succeed");
+    assert!(
+        saw_shared_workspace,
+        "client B should observe focused shared workspace before input"
+    );
 
     // Input from client A should update shared state visible to client B.
     send_client_input(&mut client_a, b"echo SHARED_VIEW\n");

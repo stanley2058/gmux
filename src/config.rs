@@ -46,7 +46,7 @@ pub(crate) fn test_config_env_lock() -> &'static std::sync::Mutex<()> {
 
 impl Config {
     pub fn should_show_onboarding(&self) -> bool {
-        self.onboarding.unwrap_or(true)
+        self.onboarding.unwrap_or(false)
     }
 
     pub fn prefix_key(&self) -> (KeyCode, KeyModifiers) {

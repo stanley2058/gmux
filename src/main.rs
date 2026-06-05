@@ -65,9 +65,9 @@ fn init_logging() {
 const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # Place this file at ~/.config/gmux/config.toml
 
-# Show first-run notification setup on startup.
-# Missing also shows onboarding; set false after you've chosen.
-# onboarding = true
+# Show legacy first-run setup on startup.
+# Missing skips setup; set true only if you want the legacy setup flow.
+# onboarding = false
 
 [theme]
 # Built-in themes: catppuccin, terminal, tokyo-night, dracula, nord,
@@ -129,9 +129,6 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # close_workspace = "prefix+shift+d"
 # previous_workspace = "" # optional, unset by default
 # next_workspace = ""     # optional, unset by default
-# previous_agent = ""     # optional, unset by default
-# next_agent = ""         # optional, unset by default
-# focus_agent = ""        # optional indexed binding, e.g. "prefix+alt+1..9"
 # new_tab = "prefix+c"
 # rename_tab = "prefix+shift+t"
 # previous_tab = "prefix+p"
@@ -173,11 +170,10 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # command = "lazygit"
 
 # Legacy indexed shortcut config is still parsed for compatibility.
-# Prefer switch_tab, switch_workspace, and focus_agent for new configs.
+# Prefer switch_tab and switch_workspace for new configs.
 # [keys.indexed]
 # tabs = ""       # e.g. "ctrl" makes ctrl+1..9 switch tabs directly
 # workspaces = "" # e.g. "ctrl+shift" makes ctrl+shift+1..9 switch workspaces directly
-# agents = ""     # e.g. "alt" makes alt+1..9 focus agent rows directly
 
 # [worktrees]
 # directory = "~/.gmux/worktrees"
@@ -220,12 +216,6 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # Set false to create tabs immediately with generated names.
 # prompt_new_tab_name = true
 
-# Show detected/reported agent labels in split pane borders when no manual pane name is set.
-# show_agent_labels_on_pane_borders = false
-
-# Agent panel scope: "current" or "all". Toggling it in the sidebar saves this setting.
-# agent_panel_scope = "all"
-
 # Accent color for highlights, borders, and navigation UI.
 # Accepts: hex (#89b4fa), named colors (cyan, blue, magenta), or rgb(r,g,b)
 # accent = "cyan"
@@ -238,23 +228,13 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # system = ask the OS notification service directly
 # delivery = "off"
 
-# Play sounds when agents change state in background workspaces
+# Play sounds for legacy notification events.
 [ui.sound]
-# enabled = true
+# enabled = false
 # Optional custom mp3 sound files. Relative paths are resolved from this config file's directory.
 # path = "sounds/notification.mp3"   # one mp3 file for all sound notifications
 # done_path = "sounds/done.mp3"      # overrides only finished notifications
 # request_path = "sounds/request.mp3" # overrides only needs-attention notifications
-
-# Per-agent overrides: default | on | off
-# By default, droid is muted.
-# [ui.sound.agents]
-# droid = "off"
-
-[session]
-# Resume supported AI-agent panes into their native conversation sessions after
-# a Gmux server restart. Requires official integrations that report session refs.
-# resume_agents_on_restore = true
 
 [remote]
 # Whether gmux manages the ssh config used for the `gmux --remote` bridge.
@@ -281,15 +261,9 @@ pane_history = false
 # switch_ascii_input_source_in_prefix = false
 # Expose the focused pane's cursor to the outer terminal so macOS input
 # methods keep tracking the candidate window when TUIs paint their own
-# cursor (Claude Code, pi, codex). Trade-off: extra cursor visible for
-# apps that hide it without painting a replacement (vim normal mode, etc.).
+# cursor. Trade-off: extra cursor visible for apps that hide it without
+# painting a replacement (vim normal mode, etc.).
 # reveal_hidden_cursor_for_cjk_ime = false
-# Optional allow-list: only reveal for focused panes whose detected agent
-# matches one of these names. Empty means apply to any focused pane.
-# If the list contains no valid names, the reveal does not apply.
-# Accepted: pi, claude, codex, gemini, cursor, cline, opencode, copilot,
-# kimi, kiro, droid, amp, grok, hermes, kilo, qodercli, qoder.
-# cjk_ime_agents = []
 # Cursor shape rendered when reveal_hidden_cursor_for_cjk_ime is true.
 # Values: block, steady_block (default), underline, steady_underline, bar, steady_bar.
 # cjk_ime_cursor_shape = "steady_block"
@@ -409,7 +383,7 @@ fn main() -> io::Result<()> {
     }
 
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("gmux — terminal workspace manager for AI coding agents");
+        println!("gmux — terminal multiplexer and session manager");
         println!();
         println!("Usage: gmux [options]");
         println!("       gmux --session <name> [options]");
@@ -421,14 +395,9 @@ fn main() -> io::Result<()> {
         println!("       gmux server reload-config");
         println!("       gmux config <subcommand> ...");
         println!("       gmux channel <subcommand> ...");
-        println!("       gmux workspace <subcommand> ...");
-        println!("       gmux worktree <subcommand> ...");
         println!("       gmux tab <subcommand> ...");
-        println!("       gmux agent <subcommand> ...");
         println!("       gmux pane <subcommand> ...");
-        println!("       gmux wait <subcommand> ...");
         println!("       gmux session <subcommand> ...");
-        println!("       gmux integration <subcommand> ...");
         println!();
         println!("Common commands:");
         for (command, description) in [
@@ -458,34 +427,14 @@ fn main() -> io::Result<()> {
                 "gmux channel <subcommand>",
                 "Manage the stable or preview update channel",
             ),
-            (
-                "gmux workspace <subcommand>",
-                "Workspace helpers over the socket API",
-            ),
-            (
-                "gmux worktree <subcommand>",
-                "Git worktree helpers over the socket API",
-            ),
             ("gmux tab <subcommand>", "Tab helpers over the socket API"),
-            (
-                "gmux agent <subcommand>",
-                "Agent/terminal helpers over the socket API",
-            ),
             (
                 "gmux pane <subcommand>",
                 "Pane control helpers over the socket API",
             ),
             (
-                "gmux wait <subcommand>",
-                "Blocking wait helpers over the socket API",
-            ),
-            (
                 "gmux session <subcommand>",
                 "Manage named persistent sessions",
-            ),
-            (
-                "gmux integration <subcommand>",
-                "Manage built-in agent integrations",
             ),
         ] {
             println!("  {command:<32} {description}");
