@@ -791,34 +791,25 @@ fn cross_area_agent_status_survives_detach_and_reattach() {
         "agent status should remain working while detached"
     );
 
-    // Reattach and ensure client-side state reflects the persisted working status.
+    // Reattach and ensure the client renders the restored session while the API
+    // remains the source of truth for legacy agent status.
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
     client_handshake(&mut client_b, 12, 80, 24);
-    let saw_working_on_client =
+    let saw_session_on_client =
         wait_for_frame_matching(&mut client_b, Duration::from_secs(5), |frame| {
-            frame_contains_text(frame, "working")
+            frame_contains_text(frame, "agent-persist")
         })
         .expect("frame decoding should succeed");
     assert!(
-        saw_working_on_client,
-        "reattached client frame should expose persisted agent working status"
+        saw_session_on_client,
+        "reattached client frame should show the restored session"
     );
 
-    // Transition to idle and verify API + client surfaces both observe it.
+    // Transition to idle and verify the API observes it.
     pane_report_agent(&api_socket, &pane_id, "pi", "idle", "cross-area-test");
     assert!(
         wait_for_agent_status(&api_socket, &pane_id, "idle", Duration::from_secs(3)),
         "pane agent status should transition to idle"
-    );
-
-    let saw_idle_on_client =
-        wait_for_frame_matching(&mut client_b, Duration::from_secs(5), |frame| {
-            frame_contains_text(frame, "idle")
-        })
-        .expect("frame decoding should succeed");
-    assert!(
-        saw_idle_on_client,
-        "reattached client frame should show idle status after transition"
     );
 
     cleanup_spawned_gmux(server, base);

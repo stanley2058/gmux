@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use super::scrollbar::{render_scrollbar, should_show_scrollbar};
-use super::status::{agent_icon, state_dot, state_label, state_label_color};
+use super::status::state_dot;
 use crate::app::state::{AgentPanelScope, Palette};
 use crate::app::{AppState, Mode};
 use crate::detect::AgentState;
@@ -22,11 +22,7 @@ pub(crate) struct AgentPanelEntry {
     pub pane_id: crate::layout::PaneId,
     pub primary_label: String,
     pub primary_tab_label: Option<String>,
-    pub agent_label: Option<String>,
-    pub state: AgentState,
-    pub seen: bool,
     pub custom_status: Option<String>,
-    pub state_labels: std::collections::HashMap<String, String>,
 }
 
 fn sidebar_section_heights(total_h: u16, split_ratio: f32) -> (u16, u16) {
@@ -150,11 +146,7 @@ fn agent_panel_entries_with_runtimes(
                     pane_id: detail.pane_id,
                     primary_label: detail.label,
                     primary_tab_label: None,
-                    agent_label: None,
-                    state: detail.state,
-                    seen: detail.seen,
                     custom_status: detail.custom_status,
-                    state_labels: detail.state_labels,
                 })
                 .collect()
         }
@@ -173,24 +165,10 @@ fn agent_panel_entries_with_runtimes(
                         pane_id: detail.pane_id,
                         primary_label: workspace_label.clone(),
                         primary_tab_label: multi_tab.then_some(detail.tab_label),
-                        agent_label: Some(detail.agent_label),
-                        state: detail.state,
-                        seen: detail.seen,
                         custom_status: detail.custom_status,
-                        state_labels: detail.state_labels,
                     })
             })
             .collect(),
-    }
-}
-
-pub(super) fn agent_panel_status_key(state: AgentState, seen: bool) -> &'static str {
-    match (state, seen) {
-        (AgentState::Idle, false) => "done",
-        (AgentState::Idle, true) => "idle",
-        (AgentState::Working, _) => "working",
-        (AgentState::Blocked, _) => "blocked",
-        (AgentState::Unknown, _) => "unknown",
     }
 }
 
@@ -641,7 +619,7 @@ pub(crate) fn compute_workspace_card_areas(
     compute_workspace_list_areas(app, area).0
 }
 
-/// Auto-scale sidebar width based on workspace identity + agent summary.
+/// Auto-scale sidebar width based on session identity and pane detail.
 pub(crate) fn collapsed_sidebar_sections(area: Rect) -> (Rect, Option<u16>, Rect) {
     let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
     if content.width == 0 || content.height == 0 {
@@ -665,7 +643,7 @@ pub(crate) fn collapsed_sidebar_sections(area: Rect) -> (Rect, Option<u16>, Rect
     (ws_area, Some(divider_y), detail_area)
 }
 
-/// Collapsed sidebar: workspace glance on top, compact agent list below.
+/// Collapsed sidebar: workspace glance on top, compact pane list below.
 pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: Rect) {
     let is_navigating = matches!(app.mode, Mode::Navigate);
 
@@ -759,15 +737,16 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
                     let pane_num = ws
                         .public_pane_number(detail.pane_id)
                         .unwrap_or(detail_idx + 1);
-                    let pane_style = Style::default().fg(p.overlay0);
-                    let (icon, icon_style) =
-                        agent_icon(detail.state, detail.seen, app.spinner_tick, p);
+                    let pane_style = if app.is_active_pane(ws_idx, detail.tab_idx, detail.pane_id) {
+                        Style::default().fg(p.text).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(p.overlay0)
+                    };
                     frame.render_widget(
-                        Paragraph::new(Line::from(vec![
-                            Span::styled(format!("{pane_num}"), pane_style),
-                            Span::styled(" ", pane_style),
-                            Span::styled(icon, icon_style),
-                        ])),
+                        Paragraph::new(Line::from(vec![Span::styled(
+                            format!("{pane_num}"),
+                            pane_style,
+                        )])),
                         Rect::new(detail_content_area.x, y, detail_content_area.width, 1),
                     );
                 }
@@ -1066,7 +1045,7 @@ fn render_agent_detail(
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            " agents",
+            " panes",
             Style::default().fg(p.overlay0).add_modifier(Modifier::BOLD),
         )])),
         Rect::new(area.x, area.y + 1, area.width, 1),
@@ -1098,16 +1077,7 @@ fn render_agent_detail(
             break;
         }
 
-        // Check if this agent entry corresponds to the active session
         let is_active = app.is_active_pane(detail.ws_idx, detail.tab_idx, detail.pane_id);
-
-        let (icon, icon_style) = agent_icon(detail.state, detail.seen, app.spinner_tick, p);
-        let label_color = state_label_color(detail.state, detail.seen, p);
-        let label = detail
-            .state_labels
-            .get(agent_panel_status_key(detail.state, detail.seen))
-            .map(String::as_str)
-            .unwrap_or_else(|| state_label(detail.state, detail.seen));
 
         let row_style = if is_active {
             Style::default().bg(p.surface_dim)
@@ -1120,18 +1090,11 @@ fn render_agent_detail(
         } else {
             Style::default().fg(p.subtext0).add_modifier(Modifier::BOLD)
         };
-        let status_style = if is_active {
-            Style::default().fg(label_color)
-        } else {
-            Style::default().fg(label_color).add_modifier(Modifier::DIM)
-        };
-        let agent_style = Style::default().fg(p.overlay0).add_modifier(Modifier::DIM);
+        let detail_style = Style::default().fg(p.overlay0).add_modifier(Modifier::DIM);
 
         let primary_label =
-            format_agent_panel_primary_label(detail, body.width.saturating_sub(3) as usize);
+            format_agent_panel_primary_label(detail, body.width.saturating_sub(1) as usize);
         let name_line = Line::from(vec![
-            Span::styled(" ", Style::default()),
-            Span::styled(icon, icon_style),
             Span::styled(" ", Style::default()),
             Span::styled(primary_label, name_style),
         ]);
@@ -1141,17 +1104,11 @@ fn render_agent_detail(
         );
         row_y += 1;
 
-        let mut status_spans = vec![
-            Span::styled("   ", Style::default()),
-            Span::styled(label, status_style),
-        ];
-        if let Some(agent_label) = &detail.agent_label {
-            status_spans.push(Span::styled(" · ", agent_style));
-            status_spans.push(Span::styled(agent_label, agent_style));
-        }
+        let mut status_spans = vec![Span::styled(" ", Style::default())];
         if let Some(custom_status) = &detail.custom_status {
-            status_spans.push(Span::styled(" · ", agent_style));
-            status_spans.push(Span::styled(custom_status.clone(), agent_style));
+            status_spans.push(Span::styled(custom_status.clone(), detail_style));
+        } else {
+            status_spans.push(Span::styled("pane", detail_style));
         }
         frame.render_widget(
             Paragraph::new(Line::from(status_spans)).style(row_style),
@@ -1280,10 +1237,9 @@ mod tests {
         let entries = agent_panel_entries(&app);
         assert_eq!(entries[0].primary_label, "one");
         assert!(entries[0].primary_tab_label.is_none());
-        assert_eq!(entries[0].agent_label.as_deref(), Some("pi"));
-        assert_eq!(entries[1].primary_label, "two");
-        assert_eq!(entries[1].primary_tab_label.as_deref(), Some("logs"));
-        assert_eq!(entries[1].agent_label.as_deref(), Some("claude"));
+        assert!(entries.iter().any(|entry| {
+            entry.primary_label == "two" && entry.primary_tab_label.as_deref() == Some("logs")
+        }));
     }
 
     #[tokio::test]
@@ -1354,34 +1310,6 @@ mod tests {
     }
 
     #[test]
-    fn all_workspaces_agent_panel_entries_prefer_agent_names_for_agent_identity() {
-        let mut app = crate::app::state::AppState::test_new();
-        let workspace = Workspace::test_new("bridge");
-        let first_pane = workspace.tabs[0].root_pane;
-
-        app.workspaces = vec![workspace];
-        app.ensure_test_terminals();
-        let first_terminal_id = app.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        app.terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .set_agent_name("planner".into());
-        app.active = Some(0);
-        app.selected = 0;
-        app.agent_panel_scope = AgentPanelScope::AllWorkspaces;
-
-        let entries = agent_panel_entries(&app);
-        assert_eq!(entries[0].primary_label, "bridge");
-        assert_eq!(entries[0].agent_label.as_deref(), Some("planner"));
-    }
-
-    #[test]
     fn all_workspaces_primary_label_truncates_workspace_and_tab() {
         let entry = AgentPanelEntry {
             ws_idx: 0,
@@ -1389,11 +1317,7 @@ mod tests {
             pane_id: crate::layout::PaneId::from_raw(1),
             primary_label: "agent-browser".into(),
             primary_tab_label: Some("test-escalation".into()),
-            agent_label: Some("claude".into()),
-            state: AgentState::Idle,
-            seen: true,
             custom_status: None,
-            state_labels: std::collections::HashMap::new(),
         };
 
         let label = format_agent_panel_primary_label(&entry, 18);

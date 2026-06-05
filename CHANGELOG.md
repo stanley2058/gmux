@@ -13,6 +13,7 @@
 - Removed agent rows from the mobile switcher so the mobile surface focuses on sessions, tabs, and app actions.
 - Removed agent state filters and agent metadata from the session navigator.
 - Removed agent-state row indicators from the session navigator.
+- Updated the sidebar detail panel to present generic panes instead of agent status cards.
 - Updated the mobile header and toast copy to use pane-focused wording instead of agent status summaries.
 - Updated user documentation to present Gmux as sessions, tabs, and panes without a public workspace layer.
 - Updated first-run and empty-session copy to present tabs and panes instead of workspaces or agent setup.
