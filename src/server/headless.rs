@@ -1247,11 +1247,10 @@ impl HeadlessServer {
                 }
                 true
             }
-            AppEvent::StateChanged { pane_id, agent, .. } => {
+            AppEvent::StateChanged { pane_id, .. } => {
                 // Capture toast before handling.
                 let toast_before = self.app.state.toast.clone();
                 let pane_id_val = *pane_id;
-                let agent_val = *agent;
 
                 // Find the previous effective state of this pane before the event
                 // is processed. Notifications must follow effective state changes,
@@ -1280,15 +1279,15 @@ impl HeadlessServer {
 
                 let next_state = self.pane_effective_state(pane_id_val);
 
-                if self.app.state.sound.allows(agent_val) {
+                if self.app.state.sound.allows(None) {
                     if let Some(sound) = crate::app::actions::notification_sound_for_state_change(
                         suppress_active_tab_notifications,
                         prev_state,
                         next_state,
                     ) {
                         let msg = match sound {
-                            crate::sound::Sound::Done => "agent done",
-                            crate::sound::Sound::Request => "agent attention",
+                            crate::sound::Sound::Done => "pane done",
+                            crate::sound::Sound::Request => "pane attention",
                         };
                         self.send_to_foreground_client(ServerMessage::Notify {
                             kind: protocol::NotifyKind::Sound,
@@ -2109,72 +2108,42 @@ impl HeadlessServer {
             let suppress_active_tab_notifications =
                 self.active_tab_suppresses_notifications(is_active_tab);
 
-            let agent = terminal_after.effective_known_agent();
-
             debug!(
                 ws_idx,
                 pane_id = pane_id.raw(),
                 prev_state = ?prev_state,
                 new_state = ?new_state,
-                agent = ?agent,
                 "pane effective state changed during API request, checking notification"
             );
 
             if !forwarded_toast_from_state
                 && should_forward_toast_to_clients(self.app.state.toast_config.delivery)
             {
-                if let Some(kind) = crate::app::actions::notification_toast_for_state_change(
+                if let Some(message) = toast_message_from_state_change(
+                    *pane_id,
                     suppress_active_tab_notifications,
                     *prev_state,
                     new_state,
                 ) {
-                    if let Some(agent_label) = self
-                        .app
-                        .state
-                        .terminals
-                        .get(&pane_after.attached_terminal_id)
-                        .and_then(|terminal| terminal.effective_agent_label())
-                    {
-                        let event_text = match kind {
-                            crate::app::state::ToastKind::NeedsAttention => "needs attention",
-                            crate::app::state::ToastKind::Finished => "finished",
-                            crate::app::state::ToastKind::UpdateInstalled => "updated",
-                        };
-                        let workspace_label = self.app.state.workspaces[*ws_idx].display_name_from(
-                            &self.app.state.terminals,
-                            &self.app.terminal_runtimes,
-                        );
-                        let msg_text = format!(
-                            "{} {}: {}",
-                            agent_label,
-                            event_text,
-                            crate::app::actions::notification_context(
-                                &self.app.state.workspaces[*ws_idx],
-                                &workspace_label,
-                                *ws_idx,
-                                *pane_id,
-                            )
-                        );
-                        self.send_to_foreground_client(ServerMessage::Notify {
-                            kind: toast_notify_kind(self.app.state.toast_config.delivery)
-                                .expect("toast forwarding requires a client notification kind"),
-                            message: msg_text,
-                        });
-                    }
+                    self.send_to_foreground_client(ServerMessage::Notify {
+                        kind: toast_notify_kind(self.app.state.toast_config.delivery)
+                            .expect("toast forwarding requires a client notification kind"),
+                        message,
+                    });
                 }
             }
 
             // Forward sound notification when server-side sound policy allows it.
             // Clients still decide locally whether they can execute the side effect.
-            if self.app.state.sound.allows(agent) {
+            if self.app.state.sound.allows(None) {
                 if let Some(sound) = crate::app::actions::notification_sound_for_state_change(
                     suppress_active_tab_notifications,
                     *prev_state,
                     new_state,
                 ) {
                     let msg_text = match sound {
-                        crate::sound::Sound::Done => "agent done",
-                        crate::sound::Sound::Request => "agent attention",
+                        crate::sound::Sound::Done => "pane done",
+                        crate::sound::Sound::Request => "pane attention",
                     };
                     debug!(sound = ?sound, "forwarding sound notification from API request");
                     self.send_to_foreground_client(ServerMessage::Notify {

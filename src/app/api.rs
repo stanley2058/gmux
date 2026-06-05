@@ -124,47 +124,17 @@ impl App {
                             is_active_tab,
                             self.state.outer_terminal_focus,
                         );
-                    let Some(kind) = crate::app::actions::notification_toast_for_state_change(
-                        suppress_active_tab_notifications,
-                        update.previous_state,
-                        update.state,
-                    ) else {
-                        continue;
-                    };
-                    let Some(ws) = self.state.workspaces.get(update.ws_idx) else {
-                        continue;
-                    };
-                    let Some(pane) = ws
-                        .tabs
-                        .iter()
-                        .find_map(|tab| tab.panes.get(&update.pane_id))
-                    else {
-                        continue;
-                    };
-                    let Some(agent_label) = self
-                        .state
-                        .terminals
-                        .get(&pane.attached_terminal_id)
-                        .and_then(|terminal| terminal.effective_agent_label())
-                    else {
-                        continue;
-                    };
-                    let event_text = match kind {
-                        ToastKind::NeedsAttention => "needs attention",
-                        ToastKind::Finished => "finished",
-                        ToastKind::UpdateInstalled => "updated",
-                    };
-                    let workspace_label =
-                        ws.display_name_from(&self.state.terminals, &self.terminal_runtimes);
-                    let _ = notify(
-                        &format!("{} {}", agent_label, event_text),
-                        Some(&crate::app::actions::notification_context(
-                            ws,
-                            &workspace_label,
-                            update.ws_idx,
+                    let Some(message) =
+                        crate::server::notifications::toast_message_from_state_change(
                             update.pane_id,
-                        )),
-                    );
+                            suppress_active_tab_notifications,
+                            update.previous_state,
+                            update.state,
+                        )
+                    else {
+                        continue;
+                    };
+                    let _ = notify(&message, None);
                 }
             }
         }
