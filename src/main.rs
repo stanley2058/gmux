@@ -478,7 +478,7 @@ fn main() -> io::Result<()> {
 
     if matches!(
         args.get(1).map(|arg| arg.as_str()),
-        Some("agent" | "integration")
+        Some("agent" | "integration" | "worktree")
     ) {
         let command = args.get(1).map(String::as_str).unwrap_or_default();
         eprintln!("unknown command: {command}");
@@ -530,7 +530,6 @@ fn main() -> io::Result<()> {
                 "config",
                 "channel",
                 "workspace",
-                "worktree",
                 "pane",
                 "wait",
                 "session",
