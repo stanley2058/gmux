@@ -1,23 +1,23 @@
 # gmux
 
-
 <p align="center">
-  <img src="assets/logo.png" alt="gmux" width="100" />
+  <img src="../../assets/logo.png" alt="gmux" width="100" />
 </p>
 
 <p align="center">
-  <a href="https://gmux.dev">gmux.dev</a> · <a href="#install">install</a> · <a href="#quick-start">quick start</a> · <a href="#supported-agents">supported agents</a> · <a href="https://gmux.dev/docs/integrations/">integrations</a> · <a href="https://gmux.dev/docs/configuration/">configuration</a> · <a href="https://gmux.dev/docs/socket-api/">socket api</a>
+  <a href="https://gmux.dev">gmux.dev</a> ·
+  <a href="#install">install</a> ·
+  <a href="#quick-start">quick start</a> ·
+  <a href="#keybindings">keybindings</a> ·
+  <a href="#configuration">configuration</a> ·
+  <a href="#socket-api">socket api</a>
 </p>
 
 ---
 
-https://github.com/user-attachments/assets/043ec09f-4bdd-41d5-aee0-8fda6b83e267
+**A terminal multiplexer with persistent sessions, tabs, panes, and a scriptable local socket.**
 
-**agent multiplexer that lives in your terminal.**
-
-sessions, tabs, panes. mouse-native: click, drag, split. every agent at a glance: blocked, working, done. detach and reattach, agents keep running. no gui app, no electron, no mac-only native wrapper. you see the agent's own terminal, not someone's interpretation of it.
-
----
+gmux runs in the terminal you already use. It keeps pane processes alive when clients detach, supports named sessions, provides tmux-style defaults, and preserves the terminal features that matter for real interactive programs: mouse input, focus events, bracketed paste, OSC 52 clipboard, OSC 8 hyperlinks, Kitty keyboard input, and Kitty graphics.
 
 ## install
 
@@ -25,7 +25,7 @@ sessions, tabs, panes. mouse-native: click, drag, split. every agent at a glance
 curl -fsSL https://gmux.dev/install.sh | sh
 ```
 
-or install with homebrew:
+or install with Homebrew:
 
 ```bash
 brew install gmux
@@ -37,181 +37,88 @@ or install with mise:
 mise use -g gmux
 ```
 
-or download the binary from [releases](https://github.com/ogulcancelik/gmux/releases). requires linux or macos.
+or download a binary from [releases](https://github.com/ogulcancelik/gmux/releases). gmux supports Linux and macOS.
 
 ## quick start
 
-Start Gmux in the directory where the work lives:
+Start or attach the default session:
 
 ```bash
 gmux
 ```
 
-Gmux starts or attaches to one background session server. Use the root pane like a normal shell. Press `ctrl+b`, then `%` or `"` to split panes, and `ctrl+b`, then `c` to create a tab.
+Use the first pane like a normal shell. Press `ctrl+b`, then `%` to split left/right, `ctrl+b`, then `"` to split top/bottom, and `ctrl+b`, then `c` to create a tab.
 
-Press `ctrl+b d` to detach the client. The server and pane processes keep running. Open another terminal and run `gmux` again to reattach.
-
-## core concepts
-
-**Server and client.** By default, `gmux` attaches to a background server. Detaching closes only the client. `gmux kill-session` stops the default server and kills its panes. Named sessions are separate server namespaces: use `gmux new -s work`, `gmux attach -t work`, `gmux kill-session -t work`, and `gmux ls` when you want fully separate runtime state.
-
-**Sessions, tabs, panes.** A session owns tabs, and tabs group panes. Panes are real terminal processes, not rewritten agent views.
-
-**Copy.** Gmux copies pane text, not the sidebar. Drag-select inside a pane, double-click a word or token, or press `prefix+[` for keyboard copy mode. In copy mode, move with `h/j/k/l`, `w/b/e`, and `{`/`}`, start selection with `v` or Space, copy with `y` or Enter, and leave with `q` or Esc. In PuTTY and some SSH terminals, hold `Shift` while dragging to use the terminal's own selection, and `Shift` + right click to paste.
-
-**Update and restore.** `gmux update` installs a new binary, but a running server keeps using the old process until it is stopped or handed off. Stop the old server to use the new version. Stopping exits pane processes. Run `gmux kill-session`, then run `gmux` again for the default session. For a named session, run `gmux kill-session -t <name>`, then run `gmux attach -t <name>` again. `gmux update --handoff` is experimental and tries to move live panes, including foreground processes such as dev servers, from the old server to the new one. With current official integrations installed, supported agent panes can restart from their native agent sessions after a server restart or update.
-
-**Keybindings.** Gmux uses explicit keybinding strings. `prefix+n` means press the configured prefix, then `n`. `ctrl+alt+n`, `cmd+k`, `alt+1`, and function-key chords are direct terminal-mode shortcuts and do not need the prefix. Plain direct printable keys such as `n` steal normal typing, so use `prefix+n` unless you intentionally want a modifier-gated direct binding.
-
-**Agent awareness.** The sidebar shows blocked, working, done, and idle states. Detection works with process names and terminal output by default. Official integrations can add native session identity for restore, semantic state reports, or both.
-
-## update
-
-Gmux notifies you when a new version is available. Run manually:
+Detach with `ctrl+b d`. The client exits, but the session server and pane processes keep running. Reattach later with:
 
 ```bash
-gmux update
-```
-
-`gmux update` is for installs managed by Gmux's own installer. Homebrew, mise, and Nix installs update through `brew upgrade gmux`, `mise upgrade gmux`, or your Nix workflow, then use the same stop-and-run-again flow if a session is still running the old server. Direct installs can opt into development preview builds with `gmux channel set preview` and return to stable with `gmux channel set stable`. See [install docs](https://gmux.dev/docs/install/) and [session state docs](https://gmux.dev/docs/session-state/) for the full update, restart, restore, and handoff matrix.
-
-Gmux uses the stable update channel by default. To test preview builds from `master` before the next stable release:
-
-```bash
-gmux channel set preview
-```
-
-To return to stable:
-
-```bash
-gmux channel set stable
-```
-
-For direct installs, changing channels also checks that channel and installs its latest binary. If that update fails, run `gmux update` to retry from the configured channel.
-
-Preview is only for direct installs managed by Gmux's updater. Homebrew, mise, and Nix stay on stable and update through their package managers.
-
-## how it compares
-
-|                          | tmux | gui managers | gmux |
-|--------------------------|------|--------------|-------|
-| persistent sessions       | ✓    | —            | ✓     |
-| detach / reattach        | ✓    | —            | ✓     |
-| sessions, tabs, panes    | ✓    | ✓            | ✓     |
-| agent awareness          | —    | ✓            | ✓     |
-| lives in your terminal   | ✓    | —            | ✓     |
-| real terminal views      | ✓    | —            | ✓     |
-| mouse-native            | —    | ✓            | ✓     |
-| lightweight binary       | ✓    | —            | ✓     |
-| agents can orchestrate   | ?    | ?            | ✓     |
-
-tmux gives you persistence and panes, but it was built before agents existed. gui managers show agent state, but they make you leave your terminal and use their wrapped view. gmux is persistence and awareness in one tool that stays out of your way.
-
-## remote and attach
-
-Gmux works over normal SSH. Run it on the remote host, detach, and reattach later:
-
-```
-ssh you@yourserver
 gmux
 ```
 
-You can also attach from your local terminal without opening a shell first:
+Named sessions are separate server namespaces:
+
+```bash
+gmux new -s work
+gmux attach -t work
+gmux ls
+gmux kill-session -t work
+```
+
+## concepts
+
+**Server and client.** A gmux session is owned by a background server. Clients attach to that server, render its panes, and forward input. Detaching closes only the client. `gmux kill-session` stops the server and exits its panes.
+
+**Sessions, tabs, panes.** A session contains tabs, and a tab contains panes. Panes are real PTYs running shells or commands.
+
+**Copy mode.** Press `ctrl+b [` for keyboard copy mode. Move with `h/j/k/l`, `w/b/e`, and `{`/`}`. Start selection with `v` or Space, copy with `y` or Enter, and exit with `q` or Esc. Mouse selection inside panes is supported too.
+
+**Remote attach.** gmux can run on a remote host over SSH while preserving the local terminal experience:
 
 ```bash
 gmux --remote workbox
-gmux --remote ssh://you@yourserver:2222
+gmux --remote ssh://you@server:2222
 ```
 
-Remote attach adds fallback SSH keepalives by default while preserving your own SSH config. Set `[remote].manage_ssh_config = false` to use plain `ssh`.
+## cli
 
-Direct attach connects your current terminal to one server-owned terminal:
+Sessions:
 
 ```bash
-gmux agent attach <target>
-gmux terminal attach <terminal_id>
+gmux
+gmux new -s <name>
+gmux attach -t <name>
+gmux ls
+gmux kill-session -t <name>
+gmux detach
 ```
 
-See [persistence and remote docs](https://gmux.dev/docs/persistence-remote/) for remote keybinding, named-session, and handoff details.
-
-## agent awareness
-
-the sidebar shows which agents are blocked, working, or done. sessions and tabs keep panes organized while you scan what needs attention.
-
-states:
-
-- 🔴 **blocked** — agent needs input or approval
-- 🟡 **working** — agent is actively running
-- 🔵 **done** — work finished, you have not looked at it yet
-- 🟢 **idle** — done and seen
-
-detection works by reading foreground process and terminal output. zero config, no hooks required. official claude code, codex, droid, and opencode integrations provide session restore identity; pi, omp, github copilot cli, kimi code cli, hermes, qodercli, and custom socket integrations can report their own state.
-
-## lives in your terminal
-
-not a gui window, not a web dashboard, not electron. gmux runs inside whatever terminal you already use. single rust binary, no dependencies. works inside tmux as the outer terminal environment.
-
-## what you get
-
-- **sessions** — persistent tab and pane groups for projects, machines, or long-running work
-- **tabs** — first-class in the socket api and cli
-- **copy-friendly** — drag-select pane text, double-click tokens, or use keyboard copy mode with `prefix+[`, `h/j/k/l`, `{`/`}`, `v`, and `y`
-- **notifications** — sounds and toasts for background events; tab-aware suppression
-- **18 built-in themes** — catppuccin, terminal, tokyo night, gruvbox, one, solarized, kanagawa, rosé pine, vesper, and light variants for the main palettes
-- **session persistence** — pane processes survive client detach; sessions restore panes after full restart, with opt-in recent screen history
-
-## agents can use gmux too
-
-The local Unix socket lets agents create tabs, split panes, spawn helpers, read output, and wait for state changes. Start with the [socket API docs](https://gmux.dev/docs/socket-api/) and [`SKILL.md`](./SKILL.md).
-
-## supported agents
-
-automatic detection works out of the box. process name matching plus terminal output heuristics.
-
-| agent | idle / done | working | blocked |
-|-------|-------------|---------|---------|
-| [pi](https://pi.dev) | ✓ | ✓ | partial |
-| [claude code](https://docs.anthropic.com/en/docs/claude-code) | ✓ | ✓ | ✓ |
-| [codex](https://github.com/openai/codex) | ✓ | ✓ | ✓ |
-| [droid](https://factory.ai) | ✓ | ✓ | ✓ |
-| [amp](https://ampcode.com) | ✓ | ✓ | ✓ |
-| [opencode](https://github.com/anomalyco/opencode) | ✓ | ✓ | ✓ |
-| [grok cli](https://x.ai/grok) | ✓ | ✓ | ✓ |
-| [hermes agent](https://github.com/NousResearch/hermes-agent) | ✓ | ✓ | ✓ |
-| [kilo code cli](https://kilo.ai/) | ✓ | ✓ | ✓ |
-| cursor agent | ✓ | ✓ | ✓ |
-| antigravity cli | ✓ | ✓ | ✓ |
-| kimi code cli | ✓ | ✓ | ✓ |
-| [github copilot cli](https://github.com/features/copilot) | ✓ | ✓ | ✓ |
-| [qodercli](https://qoder.com/cli) | ✓ | ✓ | ✓ |
-| [kiro cli](https://kiro.dev/docs/cli/) | ✓ | ✓ | — |
-
-detected but not fully tested: gemini cli, cline.
-
-for agents outside the built-in list, gmux still works as a terminal multiplexer with sessions, tabs, panes, and tiling. custom integrations can report agent labels over the socket api. see the [socket api docs](https://gmux.dev/docs/socket-api/).
-
-### direct integrations
-
-official integrations have two roles. claude code, codex, droid, and opencode report session identity for native restore, while their state still comes from screen detection. pi, github copilot cli, and hermes report both semantic state and session identity. omp, kimi code cli, and qodercli report semantic state without native session restore. install with:
+Tabs:
 
 ```bash
-gmux integration install pi
-gmux integration install omp
-gmux integration install claude
-gmux integration install codex
-gmux integration install copilot
-gmux integration install droid
-gmux integration install kimi
-gmux integration install opencode
-gmux integration install hermes
-gmux integration install qodercli
+gmux new-tab [-n name] [-c cwd]
+gmux list-tabs
+gmux select-tab -t <index|id>
+gmux rename-tab -t <index|id> <name>
+gmux kill-tab -t <index|id>
 ```
 
-see the [integrations docs](https://gmux.dev/docs/integrations/) for setup details.
+Panes:
+
+```bash
+gmux split-pane [-h|-v] [-c cwd] [command ...]
+gmux select-pane [-L|-R|-U|-D|-t pane]
+gmux resize-pane [-L|-R|-U|-D [N]]
+gmux kill-pane -t <pane>
+gmux send-keys [-t pane] <key> [key ...]
+gmux send-text [-t pane] <text>
+gmux capture-pane [-t pane] [-S lines] [-e]
+```
+
+Scriptable namespaces such as `gmux session`, `gmux tab`, and `gmux pane` remain available for lower-level automation.
 
 ## keybindings
 
-Press `ctrl+b` to enter prefix mode. Default actions are prefix-first and tmux-like:
+The default prefix is `ctrl+b`.
 
 | key | action |
 |-----|--------|
@@ -222,36 +129,62 @@ Press `ctrl+b` to enter prefix mode. Default actions are prefix-first and tmux-l
 | `prefix+h/j/k/l` | focus pane |
 | `prefix+%` / `prefix+"` | split pane |
 | `prefix+x` | close pane |
-| `prefix+b` | toggle sidebar |
 | `prefix+z` | zoom pane |
 | `prefix+r` | resize mode |
+| `prefix+[` | copy mode |
 | `prefix+d` | detach |
 
-Mouse is supported throughout. Resize mode uses `h`/`l` for width, `j`/`k` for height, and `esc` to exit. Full syntax, optional actions, indexed bindings, and custom command bindings live in the [configuration docs](https://gmux.dev/docs/configuration/).
+Mouse is supported for pane focus, pane resizing, tab selection, and scrollback. Resize mode uses `h/j/k/l` and Esc exits.
 
 ## configuration
 
-config file: `~/.config/gmux/config.toml`
+Config file:
 
-```bash
-gmux --default-config   # print full default config
+```text
+~/.config/gmux/config.toml
 ```
 
-In-app settings cover theme, sound, and toast preferences. Gmux writes logs under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files. Full configuration and logging details live in the [configuration docs](https://gmux.dev/docs/configuration/).
+Print the full default config:
+
+```bash
+gmux --default-config
+```
+
+gmux supports theme, terminal, remote, mouse, toast, sound, and keybinding settings. Logs are written under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files.
+
+## socket api
+
+The local Unix socket lets scripts create tabs, split panes, send input, read pane output, wait for events, and control sessions without driving the terminal UI.
+
+Useful command mappings:
+
+```bash
+gmux capture-pane
+gmux send-keys
+gmux send-text
+gmux split-pane
+gmux new-tab
+```
+
+See [socket API docs](https://gmux.dev/docs/socket-api/) for protocol details.
+
+## update
+
+For installs managed by gmux's installer:
+
+```bash
+gmux update
+```
+
+Homebrew, mise, and Nix installs update through their package managers. A running server keeps using the old binary until that session is stopped or handed off, so restart sessions after upgrading when you want every server on the new version.
 
 ## docs
 
-- [quick start](https://gmux.dev/docs/quick-start/) — first session, panes, copy, and named sessions
-- [install](https://gmux.dev/docs/install/) — install, update, Homebrew, mise, and Nix
-- [session state](https://gmux.dev/docs/session-state/) — detach, restart restore, agent restore, and live handoff
-- [configuration](https://gmux.dev/docs/configuration/) — keybindings, themes, notifications, environment variables
-- [integrations](https://gmux.dev/docs/integrations/) — pi, omp, claude code, codex, github copilot cli, droid, kimi code cli, opencode, hermes, qodercli integrations
-- [`SKILL.md`](./SKILL.md) — reusable agent skill
-- [socket api](https://gmux.dev/docs/socket-api/) — socket protocol and cli reference
-
-## agent instructions
-
-if you are an ai agent helping with this repository, read [`AGENTS.md`](./AGENTS.md) before making changes and read [`CONTRIBUTING.md`](./CONTRIBUTING.md) before opening issues or PRs.
+- [quick start](https://gmux.dev/docs/quick-start/)
+- [install](https://gmux.dev/docs/install/)
+- [session state](https://gmux.dev/docs/session-state/)
+- [configuration](https://gmux.dev/docs/configuration/)
+- [socket API](https://gmux.dev/docs/socket-api/)
 
 ## development
 
@@ -261,25 +194,17 @@ cd gmux
 cargo build --release
 ./target/release/gmux
 
-just test        # unit tests
-just check       # formatting, tests, and maintenance checks
+just test
+just check
 ```
+
+Read [`AGENTS.md`](../../AGENTS.md) and [`CONTRIBUTING.md`](../../CONTRIBUTING.md) before opening larger changes.
 
 ## license
 
-Gmux is dual-licensed:
+gmux is dual-licensed:
 
 1. Open source: GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).
 2. Commercial: commercial licenses are available for organizations that cannot comply with AGPL.
 
 Contact: hey@gmux.dev
-
-## mandatory star history
-
-<a href="https://www.star-history.com/?repos=ogulcancelik%2Fgmux&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ogulcancelik/gmux&type=date&theme=dark&legend=top-left&v=2026-05-19" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ogulcancelik/gmux&type=date&legend=top-left&v=2026-05-19" />
-   <img alt="star history chart" src="https://api.star-history.com/chart?repos=ogulcancelik/gmux&type=date&legend=top-left&v=2026-05-19" />
- </picture>
-</a>
