@@ -2499,24 +2499,9 @@ mod tests {
                 label: Some("logs".into()),
             }),
         };
-        let worktree_list = crate::api::schema::Request {
-            id: "req_4".into(),
-            method: crate::api::schema::Method::WorktreeList(
-                crate::api::schema::WorktreeListParams::default(),
-            ),
-        };
-        let worktree_create = crate::api::schema::Request {
-            id: "req_5".into(),
-            method: crate::api::schema::Method::WorktreeCreate(
-                crate::api::schema::WorktreeCreateParams::default(),
-            ),
-        };
-
         assert!(!crate::api::request_changes_ui(&read_only));
-        assert!(!crate::api::request_changes_ui(&worktree_list));
         assert!(crate::api::request_changes_ui(&mutating));
         assert!(crate::api::request_changes_ui(&pane_rename));
-        assert!(crate::api::request_changes_ui(&worktree_create));
     }
 
     #[test]
