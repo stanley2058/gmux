@@ -5,7 +5,7 @@ mod panes;
 mod responses;
 mod tabs;
 
-use super::{api_helpers::pane_agent_status, App, Mode, OverlayPaneState, ToastKind};
+use super::{App, Mode, OverlayPaneState, ToastKind};
 use crate::events::AppEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +94,6 @@ impl App {
         let pane_updates = self.state.handle_app_event(ev);
         for update in &pane_updates {
             self.refresh_new_gmux_toast_context_for_update(update, &previous_toast);
-            self.emit_pane_state_update(update);
         }
         if let Some(overlay) = overlay_state {
             self.restore_overlay_after_exit(overlay);
@@ -309,52 +308,6 @@ impl App {
         self.state.focus_pane_in_workspace(ws_idx, pane_id);
         self.schedule_session_save();
         true
-    }
-
-    pub(crate) fn emit_pane_state_update(&self, update: &crate::app::actions::PaneStateUpdate) {
-        let Some(pane_id) = self.public_pane_id(update.ws_idx, update.pane_id) else {
-            return;
-        };
-        let workspace_id = self.public_workspace_id(update.ws_idx);
-
-        if update.previous_agent_label != update.agent_label {
-            self.emit_event(crate::api::schema::EventEnvelope {
-                event: crate::api::schema::EventKind::PaneAgentDetected,
-                data: crate::api::schema::EventData::PaneAgentDetected {
-                    pane_id: pane_id.clone(),
-                    workspace_id: workspace_id.clone(),
-                    agent: update.agent_label.clone(),
-                },
-            });
-        }
-
-        let previous_agent_status = pane_agent_status(update.previous_state, update.previous_seen);
-        let agent_status = self
-            .state
-            .workspaces
-            .get(update.ws_idx)
-            .and_then(|ws| ws.pane_state(update.pane_id))
-            .map(|pane| pane_agent_status(update.state, pane.seen))
-            .unwrap_or_else(|| pane_agent_status(update.state, update.seen));
-
-        if previous_agent_status != agent_status
-            || update.previous_presentation != update.presentation
-        {
-            let presentation = update.presentation.clone();
-            self.emit_event(crate::api::schema::EventEnvelope {
-                event: crate::api::schema::EventKind::PaneAgentStatusChanged,
-                data: crate::api::schema::EventData::PaneAgentStatusChanged {
-                    pane_id,
-                    workspace_id,
-                    agent_status,
-                    agent: update.agent_label.clone(),
-                    title: presentation.title,
-                    display_agent: presentation.display_agent,
-                    custom_status: presentation.custom_status,
-                    state_labels: presentation.state_labels,
-                },
-            });
-        }
     }
 
     pub(super) fn sync_toast_deadline(

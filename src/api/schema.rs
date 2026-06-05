@@ -326,8 +326,6 @@ pub enum EventKind {
     PaneFocused,
     PaneOutputChanged,
     PaneExited,
-    PaneAgentDetected,
-    PaneAgentStatusChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -527,27 +525,6 @@ pub enum EventData {
     PaneExited {
         pane_id: String,
         workspace_id: String,
-    },
-    PaneAgentDetected {
-        pane_id: String,
-        workspace_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        agent: Option<String>,
-    },
-    PaneAgentStatusChanged {
-        pane_id: String,
-        workspace_id: String,
-        agent_status: AgentStatus,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        agent: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        title: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        display_agent: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        custom_status: Option<String>,
-        #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-        state_labels: HashMap<String, String>,
     },
 }
 
