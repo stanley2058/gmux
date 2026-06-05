@@ -2136,7 +2136,10 @@ fn top_level_tab_and_pane_aliases_work() {
         serde_json::from_slice(&listed_sessions.stdout).unwrap();
     assert!(listed_sessions_json["sessions"].as_array().unwrap().len() >= 1);
 
-    let created_tab = run_cli(&socket_path, &["new-tab", "--label", "logs"]);
+    let created_tab = run_cli(
+        &socket_path,
+        &["new-tab", "-n", "logs", "-c", base.to_str().unwrap()],
+    );
     assert!(
         created_tab.status.success(),
         "stderr: {}",
@@ -2163,7 +2166,7 @@ fn top_level_tab_and_pane_aliases_work() {
     let selected_json: serde_json::Value = serde_json::from_slice(&selected.stdout).unwrap();
     assert_eq!(selected_json["result"]["tab"]["tab_id"], first_tab_id);
 
-    let renamed = run_cli(&socket_path, &["rename-tab", &tab_id, "renamed"]);
+    let renamed = run_cli(&socket_path, &["rename-tab", "-t", &tab_id, "renamed"]);
     assert!(renamed.status.success());
     let renamed_json: serde_json::Value = serde_json::from_slice(&renamed.stdout).unwrap();
     assert_eq!(renamed_json["result"]["tab"]["label"], "renamed");
@@ -2183,7 +2186,7 @@ fn top_level_tab_and_pane_aliases_work() {
         .unwrap()
         .to_string();
 
-    let closed = run_cli(&socket_path, &["kill-pane", &split_pane_id]);
+    let closed = run_cli(&socket_path, &["kill-pane", "-t", &split_pane_id]);
     assert!(closed.status.success());
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");

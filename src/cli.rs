@@ -107,12 +107,79 @@ fn new_tab_alias(args: &[String]) -> std::io::Result<i32> {
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")
     ) {
-        eprintln!("usage: gmux new-tab [--cwd PATH] [--label TEXT] [--focus|--no-focus]");
+        eprintln!("usage: gmux new-tab [-n name] [-c cwd] [--focus|--no-focus]");
         return Ok(0);
     }
 
     let mut tab_args = vec!["create".to_string(), "--focus".to_string()];
-    tab_args.extend(args.iter().cloned());
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-n" | "--name" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                tab_args.extend(["--label".to_string(), value.clone()]);
+                index += 2;
+            }
+            value if value.starts_with("--name=") => {
+                tab_args.extend([
+                    "--label".to_string(),
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                ]);
+                index += 1;
+            }
+            "-c" | "--cwd" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                tab_args.extend(["--cwd".to_string(), value.clone()]);
+                index += 2;
+            }
+            value if value.starts_with("--cwd=") => {
+                tab_args.extend([
+                    "--cwd".to_string(),
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                ]);
+                index += 1;
+            }
+            "--label" | "--focus" | "--no-focus" => {
+                tab_args.push(args[index].clone());
+                if args[index] == "--label" {
+                    let Some(value) = args.get(index + 1) else {
+                        eprintln!("missing value for --label");
+                        return Ok(2);
+                    };
+                    tab_args.push(value.clone());
+                    index += 2;
+                } else {
+                    index += 1;
+                }
+            }
+            value if value.starts_with("--label=") => {
+                tab_args.extend([
+                    "--label".to_string(),
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                ]);
+                index += 1;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
     tab::run_tab_command(&tab_args)
 }
 
@@ -145,11 +212,40 @@ fn rename_tab_alias(args: &[String]) -> std::io::Result<i32> {
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")
     ) {
-        eprintln!("usage: gmux rename-tab <tab_id> <label>");
+        eprintln!("usage: gmux rename-tab [-t tab] <name>");
         return Ok(0);
     }
-    let mut tab_args = vec!["rename".to_string()];
-    tab_args.extend(args.iter().cloned());
+    let mut target = None;
+    let mut label_start = 0;
+    if matches!(args.first().map(String::as_str), Some("-t" | "--target")) {
+        let Some(value) = args.get(1) else {
+            eprintln!("usage: gmux rename-tab [-t tab] <name>");
+            return Ok(2);
+        };
+        target = Some(normalize_session_tab_target(value));
+        label_start = 2;
+    } else if let Some(value) = args
+        .first()
+        .and_then(|value| value.strip_prefix("--target="))
+    {
+        target = Some(normalize_session_tab_target(value));
+        label_start = 1;
+    }
+    let tab_id = if let Some(target) = target {
+        target
+    } else if let Some(value) = args.first() {
+        label_start = 1;
+        normalize_session_tab_target(value)
+    } else {
+        eprintln!("usage: gmux rename-tab [-t tab] <name>");
+        return Ok(2);
+    };
+    if args.len() <= label_start {
+        eprintln!("usage: gmux rename-tab [-t tab] <name>");
+        return Ok(2);
+    }
+    let mut tab_args = vec!["rename".to_string(), tab_id];
+    tab_args.extend(args[label_start..].iter().cloned());
     tab::run_tab_command(&tab_args)
 }
 
@@ -532,12 +628,39 @@ fn kill_pane_alias(args: &[String]) -> std::io::Result<i32> {
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")
     ) {
-        eprintln!("usage: gmux kill-pane <pane_id>");
+        eprintln!("usage: gmux kill-pane [-t pane]");
         return Ok(0);
     }
-    let mut pane_args = vec!["close".to_string()];
-    pane_args.extend(args.iter().cloned());
-    pane::run_pane_command(&pane_args)
+    let target = match parse_optional_target(args, "usage: gmux kill-pane [-t pane]") {
+        Ok(target) => target,
+        Err(code) => return Ok(code),
+    };
+    let pane_id = match pane_target_or_focused(target)? {
+        Ok(pane_id) => pane_id,
+        Err(code) => return Ok(code),
+    };
+    pane::run_pane_command(&["close".to_string(), pane_id])
+}
+
+fn parse_optional_target(args: &[String], usage: &str) -> Result<Option<String>, i32> {
+    match args {
+        [] => Ok(None),
+        [value] if value.starts_with("--target=") => value
+            .split_once('=')
+            .map(|(_, value)| value.to_string())
+            .filter(|value| !value.trim().is_empty())
+            .map(Some)
+            .ok_or_else(|| {
+                eprintln!("{usage}");
+                2
+            }),
+        [value] => Ok(Some(value.clone())),
+        [flag, value] if flag == "-t" || flag == "--target" => Ok(Some(value.clone())),
+        _ => {
+            eprintln!("{usage}");
+            Err(2)
+        }
+    }
 }
 
 fn detach_alias(args: &[String]) -> std::io::Result<i32> {

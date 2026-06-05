@@ -378,15 +378,15 @@ fn main() -> io::Result<()> {
         println!("       gmux kill-session [-t name] [--json]");
         println!("       gmux detach");
         println!("       gmux list-tabs");
-        println!("       gmux new-tab [--cwd PATH] [--label TEXT]");
+        println!("       gmux new-tab [-n name] [-c cwd]");
         println!("       gmux select-tab [-t tab]");
-        println!("       gmux rename-tab <tab_id> <label>");
+        println!("       gmux rename-tab [-t tab] <name>");
         println!("       gmux kill-tab [-t tab]");
         println!("       gmux capture-pane [-t pane] [-S lines] [-e]");
         println!("       gmux send-text [-t pane] <text>");
         println!("       gmux send-keys [-t pane] <key> [key ...]");
         println!("       gmux split-pane [-t pane] [-h|-v] [command ...]");
-        println!("       gmux kill-pane <pane_id>");
+        println!("       gmux kill-pane [-t pane]");
         println!("       gmux update [--handoff]");
         println!("       gmux channel set <stable|preview>");
         println!("       gmux server stop");
@@ -413,7 +413,7 @@ fn main() -> io::Result<()> {
             ("gmux send-text", "Send text to a pane"),
             ("gmux send-keys", "Send key names to a pane"),
             ("gmux split-pane", "Split the focused or targeted pane"),
-            ("gmux kill-pane <pane_id>", "Close a pane"),
+            ("gmux kill-pane", "Close the focused or targeted pane"),
             (
                 "gmux status [server|client]",
                 "Show local client and running server status",
