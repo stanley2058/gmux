@@ -3,9 +3,6 @@
 //! Background tasks (PTY child watchers, future hook listeners, etc.) send
 //! events to the main loop through this channel. No polling needed.
 
-use std::time::Instant;
-
-use crate::detect::{Agent, AgentState};
 use crate::layout::PaneId;
 use crate::workspace::{GitStatusCacheEntry, WorkspaceGitStatus};
 
@@ -14,17 +11,6 @@ use crate::workspace::{GitStatusCacheEntry, WorkspaceGitStatus};
 pub enum AppEvent {
     /// A pane's child process exited.
     PaneDied { pane_id: PaneId },
-    /// Fallback detector state changed in a pane.
-    StateChanged {
-        pane_id: PaneId,
-        agent: Option<Agent>,
-        state: AgentState,
-        visible_blocker: bool,
-        visible_idle: bool,
-        visible_working: bool,
-        process_exited: bool,
-        observed_at: Instant,
-    },
     /// A new version is available through the active installation manager.
     UpdateReady {
         version: String,

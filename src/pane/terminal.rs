@@ -193,10 +193,6 @@ impl PaneTerminal {
         self.ghostty.visible_ansi()
     }
 
-    pub fn detection_text(&self) -> String {
-        self.ghostty.detection_text()
-    }
-
     pub fn recent_text(&self, lines: usize) -> String {
         self.ghostty.recent_text(lines)
     }
@@ -963,6 +959,7 @@ impl GhosttyPaneTerminal {
             .unwrap_or_default()
     }
 
+    #[cfg(test)]
     pub fn detection_text(&self) -> String {
         self.core
             .lock()

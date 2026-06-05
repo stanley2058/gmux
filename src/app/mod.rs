@@ -1328,7 +1328,7 @@ impl App {
 mod tests {
     use super::*;
     use crate::config::Config;
-    use crate::detect::{Agent, AgentState};
+    use crate::detect::AgentState;
     use crate::terminal::TerminalRuntime;
     use crate::workspace::Workspace;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -2895,36 +2895,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_internal_event_queue_drains_inert_state_changes_after_backpressure() {
+    async fn full_internal_event_queue_accepts_update_after_backpressure() {
         let mut app = test_app();
-        let ws = Workspace::test_new("test");
-        let pane_id = ws.tabs[0].root_pane;
-
-        app.state.workspaces = vec![ws];
-        app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
-        app.state.mode = Mode::Terminal;
-
-        let terminal_id = app.state.workspaces[0]
-            .pane_state(pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        app.handle_internal_event(AppEvent::StateChanged {
-            pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Working,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-        assert_eq!(
-            app.state.terminals.get(&terminal_id).unwrap().state,
-            AgentState::Unknown
-        );
 
         for i in 0..APP_EVENT_CHANNEL_CAPACITY {
             app.event_tx
@@ -2936,15 +2908,9 @@ mod tests {
         }
 
         let tx = app.event_tx.clone();
-        let send = tx.send(AppEvent::StateChanged {
-            pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
+        let send = tx.send(AppEvent::UpdateReady {
+            version: "10.0.0".into(),
+            install_command: "gmux update".into(),
         });
         tokio::pin!(send);
 
@@ -2952,14 +2918,14 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(20), async { (&mut send).await }).await;
         assert!(
             blocked.is_err(),
-            "state change sender should wait for queue space instead of failing"
+            "sender should wait for queue space instead of failing"
         );
 
         app.drain_internal_events();
 
         tokio::time::timeout(Duration::from_millis(50), async { (&mut send).await })
             .await
-            .expect("state change should enqueue once queue space is available")
+            .expect("event should enqueue once queue space is available")
             .expect("app event receiver should still be alive");
 
         let max_drains = (APP_EVENT_CHANNEL_CAPACITY / APP_EVENT_DRAIN_LIMIT) + 2;
@@ -2970,11 +2936,6 @@ mod tests {
             app.drain_internal_events();
         }
 
-        assert_eq!(
-            app.state.terminals.get(&terminal_id).unwrap().state,
-            AgentState::Unknown,
-            "detector state events should drain without changing terminal state"
-        );
         assert!(app.event_rx.is_empty());
     }
 

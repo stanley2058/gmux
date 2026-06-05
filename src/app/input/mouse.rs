@@ -1527,7 +1527,6 @@ mod tests {
     use super::*;
     use crate::{
         app::state::{ContextMenuKind, ContextMenuState, MenuListState, Mode, ViewLayout},
-        detect::{Agent, AgentState},
         workspace::Workspace,
     };
 
@@ -1922,12 +1921,12 @@ mod tests {
     }
 
     #[test]
-    fn agent_state_change_does_not_create_clickable_toast() {
+    fn absent_toast_does_not_create_clickable_hit_area() {
         let mut app = app_for_mouse_test();
         let active = Workspace::test_new("active");
         let mut background = Workspace::test_new("background");
         let first_pane = background.tabs[0].root_pane;
-        let target_pane = background.test_split(Direction::Horizontal);
+        background.test_split(Direction::Horizontal);
         background.tabs[0].layout.focus_pane(first_pane);
 
         app.state.workspaces = vec![active, background];
@@ -1935,29 +1934,6 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        let target_terminal_id = app.state.workspaces[1]
-            .panes
-            .get(&target_pane)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&target_terminal_id)
-            .unwrap()
-            .state = AgentState::Working;
-
-        app.state
-            .handle_app_event(crate::events::AppEvent::StateChanged {
-                pane_id: target_pane,
-                agent: Some(Agent::Pi),
-                state: AgentState::Idle,
-                visible_blocker: false,
-                visible_idle: false,
-                visible_working: false,
-                process_exited: false,
-                observed_at: std::time::Instant::now(),
-            });
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         let hit = app.state.view.toast_hit_area;

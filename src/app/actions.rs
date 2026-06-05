@@ -1661,27 +1661,6 @@ impl AppState {
                     });
                 }
             }
-            AppEvent::StateChanged {
-                pane_id,
-                agent,
-                state,
-                visible_blocker,
-                visible_idle,
-                visible_working,
-                process_exited,
-                observed_at,
-            } => {
-                let _ = (
-                    pane_id,
-                    agent,
-                    state,
-                    visible_blocker,
-                    visible_idle,
-                    visible_working,
-                    process_exited,
-                    observed_at,
-                );
-            }
             // Intercepted in App::handle_internal_event before reaching this
             // dispatch; never touches AppState.
             AppEvent::ClipboardWrite { .. } => {}
@@ -2766,39 +2745,6 @@ mod tests {
         assert!(state.selection_autoscroll.is_none());
         assert_eq!(state.workspaces[0].panes.len(), 1);
         assert_eq!(state.workspaces[0].panes.keys().next().unwrap(), &first_id);
-    }
-
-    #[test]
-    fn state_changed_is_ignored() {
-        let mut state = app_with_workspaces(&["test"]);
-        let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
-        let terminal_id = state.workspaces[0]
-            .panes
-            .get(&pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        let original_seen = state.workspaces[0].panes.get(&pane_id).unwrap().seen;
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Working,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        let terminal = state.terminals.get(&terminal_id).unwrap();
-        assert_eq!(terminal.state, AgentState::Unknown);
-        assert_eq!(terminal.detected_agent, None);
-        assert_eq!(
-            state.workspaces[0].panes.get(&pane_id).unwrap().seen,
-            original_seen
-        );
-        assert!(state.toast.is_none());
     }
 
     #[test]

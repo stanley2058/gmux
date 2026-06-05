@@ -1215,10 +1215,6 @@ impl HeadlessServer {
                 }
                 true
             }
-            AppEvent::StateChanged { .. } => {
-                self.app.handle_internal_event(ev);
-                false
-            }
             AppEvent::UpdateReady {
                 version,
                 install_command,

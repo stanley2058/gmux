@@ -364,7 +364,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detect::{Agent, AgentState};
 
     #[tokio::test]
     async fn pane_died_respawns_shell_and_clears_agent_identity() {
@@ -404,68 +403,5 @@ mod tests {
         for (_, runtime) in app.terminal_runtimes.drain() {
             runtime.shutdown();
         }
-    }
-
-    #[test]
-    fn terminal_delivery_does_not_refresh_existing_targeted_toast() {
-        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(
-            &crate::config::Config::default(),
-            true,
-            None,
-            api_rx,
-            crate::api::EventHub::default(),
-        );
-        app.local_terminal_notifications = false;
-
-        let mut workspace = crate::workspace::Workspace::test_new("stale");
-        workspace.custom_name = None;
-        workspace.identity_cwd = "/__gmux_original__".into();
-        let root = workspace.tabs[0].root_pane;
-        let terminal_id = workspace.terminal_id(root).cloned().unwrap();
-        let workspace_id = workspace.id.clone();
-        app.state.workspaces = vec![workspace];
-        app.state.ensure_test_terminals();
-        app.state.terminals.get_mut(&terminal_id).unwrap().cwd = "/__gmux_projects__".into();
-        app.state.active = None;
-        app.state.selected = 0;
-        app.state.mode = Mode::Terminal;
-        app.state.toast_config.delivery = crate::config::ToastDelivery::Terminal;
-
-        app.handle_internal_event(AppEvent::StateChanged {
-            pane_id: root,
-            agent: Some(Agent::Codex),
-            state: AgentState::Working,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-        app.state.toast = Some(crate::app::state::ToastNotification {
-            kind: ToastKind::Finished,
-            title: "codex finished".into(),
-            context: "__gmux_original__ · 1".into(),
-            target: Some(crate::app::state::ToastTarget {
-                workspace_id,
-                pane_id: root,
-            }),
-        });
-
-        app.handle_internal_event(AppEvent::StateChanged {
-            pane_id: root,
-            agent: Some(Agent::Codex),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        assert_eq!(
-            app.state.toast.as_ref().map(|toast| toast.context.as_str()),
-            Some("__gmux_original__ · 1")
-        );
     }
 }
