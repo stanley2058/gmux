@@ -29,7 +29,7 @@ pub(crate) struct MobileSwitcherAreas {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MobileSwitcherTarget {
-    NewWorkspace,
+    NewSession,
     Workspace(usize),
     NewTab,
     Tab(usize),
@@ -89,7 +89,7 @@ pub(crate) fn mobile_switcher_max_scroll_for_height(app: &AppState, viewport_hei
     mobile_switcher_content_height(app).saturating_sub(viewport_height as usize)
 }
 
-pub(crate) fn mobile_switcher_workspace_doc_range(idx: usize) -> std::ops::Range<usize> {
+pub(crate) fn mobile_switcher_session_doc_range(idx: usize) -> std::ops::Range<usize> {
     let start = 2 + idx * 2;
     start..start + 2
 }
@@ -114,16 +114,16 @@ pub(crate) fn mobile_switcher_target_at(
         .saturating_add(row.saturating_sub(areas.viewport.y) as usize);
     let mut cursor = 0usize;
 
-    cursor += 1; // spaces title
+    cursor += 1; // sessions title
     if doc_row == cursor {
-        return Some(MobileSwitcherTarget::NewWorkspace);
+        return Some(MobileSwitcherTarget::NewSession);
     }
     cursor += 1;
-    let spaces_end = cursor + app.workspaces.len() * 2;
-    if doc_row >= cursor && doc_row < spaces_end {
+    let sessions_end = cursor + app.workspaces.len() * 2;
+    if doc_row >= cursor && doc_row < sessions_end {
         return Some(MobileSwitcherTarget::Workspace((doc_row - cursor) / 2));
     }
-    cursor = spaces_end;
+    cursor = sessions_end;
 
     if let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) {
         cursor += 1; // tabs title
@@ -277,7 +277,7 @@ fn render_header_status(
     }
     let p = &app.palette;
     let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) else {
-        frame.render_widget(Paragraph::new(" no workspace"), area);
+        frame.render_widget(Paragraph::new(" no session"), area);
         return;
     };
 
@@ -392,7 +392,7 @@ fn render_close_button(app: &AppState, frame: &mut Frame, area: Rect) {
 }
 
 fn mobile_switcher_content_height(app: &AppState) -> usize {
-    let spaces_h = 2 + app.workspaces.len() * 2;
+    let sessions_h = 2 + app.workspaces.len() * 2;
     let tabs_h = app
         .active
         .and_then(|idx| app.workspaces.get(idx))
@@ -400,7 +400,7 @@ fn mobile_switcher_content_height(app: &AppState) -> usize {
         .unwrap_or(0);
     let agents_h = 1 + agent_panel_entries(app).len() * 2;
     let menu_h = 1 + app.global_menu_labels().len();
-    spaces_h + tabs_h + agents_h + menu_h
+    sessions_h + tabs_h + agents_h + menu_h
 }
 
 fn render_mobile_switcher_content(
@@ -435,7 +435,7 @@ fn render_mobile_switcher_content(
         content,
         doc_y,
         app.mobile_switcher_scroll,
-        "spaces",
+        "sessions",
         p,
     );
     doc_y += 1;
@@ -445,7 +445,7 @@ fn render_mobile_switcher_content(
         content,
         doc_y,
         app.mobile_switcher_scroll,
-        "+ new workspace",
+        "+ new session",
         p,
     );
     doc_y += 1;

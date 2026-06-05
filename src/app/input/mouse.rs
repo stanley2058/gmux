@@ -1027,7 +1027,7 @@ impl AppState {
         }
 
         match crate::ui::mobile_switcher_target_at(self, mouse.column, mouse.row) {
-            Some(crate::ui::MobileSwitcherTarget::NewWorkspace) => {
+            Some(crate::ui::MobileSwitcherTarget::NewSession) => {
                 self.request_new_workspace = true;
             }
             Some(crate::ui::MobileSwitcherTarget::Workspace(ws_idx)) => {
@@ -2959,7 +2959,7 @@ mod tests {
     }
 
     #[test]
-    fn mobile_switcher_action_rows_create_workspace_and_open_tab_dialog() {
+    fn mobile_switcher_action_rows_create_session_and_open_tab_dialog() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("logs"));

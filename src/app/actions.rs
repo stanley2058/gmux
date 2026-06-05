@@ -877,7 +877,7 @@ impl AppState {
         }
 
         if self.view.layout == ViewLayout::Mobile && self.mode == Mode::Navigate {
-            self.ensure_mobile_workspace_visible(idx);
+            self.ensure_mobile_session_visible(idx);
             return;
         }
 
@@ -931,13 +931,13 @@ impl AppState {
         }
     }
 
-    fn ensure_mobile_workspace_visible(&mut self, idx: usize) {
+    fn ensure_mobile_session_visible(&mut self, idx: usize) {
         let viewport = crate::ui::mobile_switcher_areas(self).viewport;
         if viewport.height == 0 {
             return;
         }
 
-        let row_range = crate::ui::mobile_switcher_workspace_doc_range(idx);
+        let row_range = crate::ui::mobile_switcher_session_doc_range(idx);
         let visible_start = self.mobile_switcher_scroll;
         let visible_end = visible_start.saturating_add(viewport.height as usize);
         if row_range.start < visible_start {
