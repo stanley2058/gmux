@@ -1998,9 +1998,8 @@ impl HeadlessServer {
     /// Handles a single API request with shutdown awareness.
     ///
     /// Also forwards any toast/sound notifications that result from the API
-    /// request to connected clients. API methods like `pane.report_agent`
-    /// trigger internal events that may set toast state or would normally
-    /// play sounds — in headless mode we forward these to clients instead.
+    /// request to connected clients. In headless mode, local sound playback is
+    /// disabled, so sound notifications need to be forwarded here.
     fn handle_api_request_with_shutdown_check(&mut self, msg: api::ApiRequestMessage) -> bool {
         if self.shutting_down {
             // During shutdown, respond with server_unavailable.
@@ -2046,9 +2045,7 @@ impl HeadlessServer {
         changed |= self.drain_all_internal_events_with_forwarding();
 
         // Capture toast and effective pane states before the API call so we can
-        // forward resulting client-local notifications. API requests like
-        // pane.report_agent trigger handle_internal_event internally, which
-        // bypasses drain_internal_events_with_forwarding. Headless mode disables
+        // forward resulting client-local notifications. Headless mode disables
         // local sound playback, so sound notifications need to be forwarded here.
         let toast_before = self.app.state.toast.clone();
         let pane_states_before: Vec<(usize, crate::layout::PaneId, crate::detect::AgentState)> = {
@@ -5722,83 +5719,6 @@ next_tab = ""
             }
             other => panic!("expected system toast notify, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn inert_api_agent_report_does_not_forward_done_sound() {
-        let mut server = test_headless_server();
-        let background = crate::workspace::Workspace::test_new("background");
-        let pane_id = background.tabs[0].root_pane;
-        let public_pane_id = format!("{}-1", background.id);
-        let foreground = crate::workspace::Workspace::test_new("foreground");
-        server.app.state.workspaces = vec![background, foreground];
-        server.app.state.ensure_test_terminals();
-        let terminal_id = server.app.state.workspaces[0]
-            .pane_state(pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        server
-            .app
-            .state
-            .terminals
-            .get_mut(&terminal_id)
-            .unwrap()
-            .set_detected_state(
-                Some(crate::detect::Agent::Pi),
-                crate::detect::AgentState::Working,
-            );
-        server.app.state.active = Some(1);
-        server.app.state.selected = 1;
-        server.app.state.mode = crate::app::Mode::Terminal;
-
-        let (client_tx, client_control_rx, _client_rx) = test_client_writer();
-        server.clients.insert(
-            1,
-            ClientConnection::new(
-                (80, 24),
-                crate::kitty_graphics::HostCellSize::default(),
-                crate::terminal_theme::TerminalTheme::default(),
-                None,
-                1,
-                RenderEncoding::SemanticFrame,
-                Some(client_tx),
-            ),
-        );
-        server.foreground_client_id = Some(1);
-        server.sync_foreground_client_state();
-
-        let (respond_to, response_rx) = std::sync::mpsc::channel();
-        let changed = server.handle_api_request_with_shutdown_check(api::ApiRequestMessage {
-            request: api::schema::Request {
-                id: "inert".into(),
-                method: api::schema::Method::PaneReportAgent(api::schema::PaneReportAgentParams {
-                    pane_id: public_pane_id,
-                    source: "gmux:pi".into(),
-                    agent: "pi".into(),
-                    state: api::schema::PaneAgentState::Idle,
-                    message: None,
-                    custom_status: None,
-                    seq: Some(19),
-                    agent_session_id: None,
-                    agent_session_path: None,
-                }),
-            },
-            respond_to,
-        });
-
-        assert!(changed);
-        assert!(response_rx.recv_timeout(Duration::from_millis(100)).is_ok());
-        assert_eq!(
-            server.app.state.terminals.get(&terminal_id).unwrap().state,
-            crate::detect::AgentState::Working
-        );
-        assert!(
-            client_control_rx
-                .recv_timeout(Duration::from_millis(50))
-                .is_err(),
-            "inert idle report must not forward a done sound"
-        );
     }
 
     /// Verify that no direct calls to `self.app.handle_internal_event`

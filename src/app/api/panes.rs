@@ -1,17 +1,13 @@
 use bytes::Bytes;
 
 use crate::api::schema::{
-    EventData, EventEnvelope, EventKind, PaneClearAgentAuthorityParams, PaneListParams,
-    PaneReadParams, PaneReadResult, PaneReleaseAgentParams, PaneRenameParams,
-    PaneReportAgentParams, PaneReportAgentSessionParams, PaneReportMetadataParams,
-    PaneSendInputParams, PaneSendKeysParams, PaneSendTextParams, PaneSplitParams, PaneTarget,
-    ReadFormat, ReadSource, ResponseResult,
+    EventData, EventEnvelope, EventKind, PaneListParams, PaneReadParams, PaneReadResult,
+    PaneRenameParams, PaneSendInputParams, PaneSendKeysParams, PaneSendTextParams, PaneSplitParams,
+    PaneTarget, ReadFormat, ReadSource, ResponseResult,
 };
 use crate::app::{App, Mode};
 
-use super::super::api_helpers::{
-    encode_api_keys, encode_api_text, normalize_custom_status, normalize_reported_agent_label,
-};
+use super::super::api_helpers::{encode_api_keys, encode_api_text};
 use super::responses::{encode_error, encode_success};
 
 impl App {
@@ -170,172 +166,6 @@ impl App {
         )
     }
 
-    pub(super) fn handle_pane_report_agent(
-        &mut self,
-        id: String,
-        params: PaneReportAgentParams,
-    ) -> String {
-        let Some((_ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
-            return pane_not_found(id, &params.pane_id);
-        };
-        let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
-            return invalid_agent(id);
-        };
-        let _ = (
-            pane_id,
-            agent_label,
-            params.source,
-            params.state,
-            params.message,
-            params.custom_status,
-            params.seq,
-        );
-
-        encode_success(id, ResponseResult::Ok {})
-    }
-
-    pub(super) fn handle_pane_report_agent_session(
-        &mut self,
-        id: String,
-        params: PaneReportAgentSessionParams,
-    ) -> String {
-        let Some((_ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
-            return pane_not_found(id, &params.pane_id);
-        };
-        let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
-            return invalid_agent(id);
-        };
-        let _ = (pane_id, agent_label, params.source, params.seq);
-        let _ = (params.agent_session_id, params.agent_session_path);
-
-        encode_success(id, ResponseResult::Ok {})
-    }
-
-    pub(super) fn handle_pane_report_metadata(
-        &mut self,
-        id: String,
-        params: PaneReportMetadataParams,
-    ) -> String {
-        let Some((_ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
-            return pane_not_found(id, &params.pane_id);
-        };
-        let agent_label = match params.agent.as_deref() {
-            Some(agent) => match normalize_reported_agent_label(agent) {
-                Some(agent_label) => Some(agent_label),
-                None => return invalid_agent(id),
-            },
-            None => None,
-        };
-        let Some(source) = normalize_optional_text(Some(params.source)) else {
-            return encode_error(id, "invalid_metadata_request", "missing metadata source");
-        };
-        let raw_title_set = params.title.is_some();
-        let raw_display_agent_set = params.display_agent.is_some();
-        let raw_custom_status_set = params.custom_status.is_some();
-        let raw_state_labels_set = !params.state_labels.is_empty();
-        let ttl = params.ttl_ms.map(std::time::Duration::from_millis);
-        let title = normalize_presentation_text(params.title);
-        let display_agent = normalize_presentation_text(params.display_agent);
-        let custom_status = normalize_custom_status(params.custom_status);
-        let applies_to_source = match params.applies_to_source {
-            Some(applies_to_source) => {
-                let Some(applies_to_source) = normalize_optional_text(Some(applies_to_source))
-                else {
-                    return encode_error(
-                        id,
-                        "invalid_metadata_request",
-                        "missing metadata authority source",
-                    );
-                };
-                Some(applies_to_source)
-            }
-            None => None,
-        };
-        let state_labels = match normalize_state_labels(params.state_labels) {
-            Ok(labels) => labels,
-            Err(status) => {
-                return encode_error(
-                    id,
-                    "invalid_state_label",
-                    format!("unknown state label: {status}"),
-                );
-            }
-        };
-        if raw_title_set && params.clear_title
-            || raw_display_agent_set && params.clear_display_agent
-            || raw_custom_status_set && params.clear_custom_status
-            || raw_state_labels_set && params.clear_state_labels
-        {
-            return encode_error(
-                id,
-                "invalid_metadata_request",
-                "cannot set and clear the same metadata field",
-            );
-        }
-        if title.is_none()
-            && display_agent.is_none()
-            && custom_status.is_none()
-            && state_labels.is_empty()
-            && !params.clear_title
-            && !params.clear_display_agent
-            && !params.clear_custom_status
-            && !params.clear_state_labels
-        {
-            return encode_error(
-                id,
-                "invalid_metadata_request",
-                "missing metadata field to set or clear",
-            );
-        }
-        let _ = (
-            pane_id,
-            source,
-            agent_label,
-            applies_to_source,
-            title,
-            display_agent,
-            custom_status,
-            state_labels,
-            params.clear_title,
-            params.clear_display_agent,
-            params.clear_custom_status,
-            params.clear_state_labels,
-            params.seq,
-            ttl,
-        );
-
-        encode_success(id, ResponseResult::Ok {})
-    }
-
-    pub(super) fn handle_pane_clear_agent_authority(
-        &mut self,
-        id: String,
-        params: PaneClearAgentAuthorityParams,
-    ) -> String {
-        let Some((_ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
-            return pane_not_found(id, &params.pane_id);
-        };
-        let _ = (pane_id, params.source, params.seq);
-
-        encode_success(id, ResponseResult::Ok {})
-    }
-
-    pub(super) fn handle_pane_release_agent(
-        &mut self,
-        id: String,
-        params: PaneReleaseAgentParams,
-    ) -> String {
-        let Some((_ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
-            return pane_not_found(id, &params.pane_id);
-        };
-        let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
-            return invalid_agent(id);
-        };
-        let _ = (pane_id, agent_label, params.source, params.seq);
-
-        encode_success(id, ResponseResult::Ok {})
-    }
-
     pub(super) fn handle_pane_send_text(
         &mut self,
         id: String,
@@ -461,46 +291,8 @@ impl App {
     }
 }
 
-fn normalize_optional_text(value: Option<String>) -> Option<String> {
-    let value = value?.trim().to_string();
-    (!value.is_empty()).then_some(value)
-}
-
-fn normalize_presentation_text(value: Option<String>) -> Option<String> {
-    let trimmed = value?.trim().to_string();
-    let normalized: String = trimmed
-        .chars()
-        .filter(|ch| !ch.is_control())
-        .take(80)
-        .collect();
-    (!normalized.trim().is_empty()).then(|| normalized.trim().to_string())
-}
-
-fn normalize_state_labels(
-    labels: std::collections::HashMap<String, String>,
-) -> Result<std::collections::HashMap<String, String>, String> {
-    labels
-        .into_iter()
-        .map(|(status, label)| {
-            let status = status.trim().to_ascii_lowercase();
-            if !matches!(
-                status.as_str(),
-                "idle" | "working" | "blocked" | "done" | "unknown"
-            ) {
-                return Err(status);
-            }
-            Ok(normalize_presentation_text(Some(label)).map(|label| (status, label)))
-        })
-        .filter_map(Result::transpose)
-        .collect()
-}
-
 fn pane_not_found(id: String, pane_id: &str) -> String {
     encode_error(id, "pane_not_found", format!("pane {pane_id} not found"))
-}
-
-fn invalid_agent(id: String) -> String {
-    encode_error(id, "invalid_agent", "agent label must not be empty")
 }
 
 #[cfg(test)]

@@ -526,21 +526,6 @@ impl App {
             Method::PaneGet(target) => return self.handle_pane_get(request.id, target),
             Method::PaneRename(params) => return self.handle_pane_rename(request.id, params),
             Method::PaneRead(params) => return self.handle_pane_read(request.id, params),
-            Method::PaneReportAgent(params) => {
-                return self.handle_pane_report_agent(request.id, params);
-            }
-            Method::PaneReportAgentSession(params) => {
-                return self.handle_pane_report_agent_session(request.id, params);
-            }
-            Method::PaneReportMetadata(params) => {
-                return self.handle_pane_report_metadata(request.id, params);
-            }
-            Method::PaneClearAgentAuthority(params) => {
-                return self.handle_pane_clear_agent_authority(request.id, params);
-            }
-            Method::PaneReleaseAgent(params) => {
-                return self.handle_pane_release_agent(request.id, params);
-            }
             Method::PaneSendText(params) => return self.handle_pane_send_text(request.id, params),
             Method::PaneSendInput(params) => {
                 return self.handle_pane_send_input(request.id, params)

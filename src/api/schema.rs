@@ -68,16 +68,6 @@ pub enum Method {
     PaneSendInput(PaneSendInputParams),
     #[serde(rename = "pane.read")]
     PaneRead(PaneReadParams),
-    #[serde(rename = "pane.report_agent")]
-    PaneReportAgent(PaneReportAgentParams),
-    #[serde(rename = "pane.report_agent_session")]
-    PaneReportAgentSession(PaneReportAgentSessionParams),
-    #[serde(rename = "pane.report_metadata")]
-    PaneReportMetadata(PaneReportMetadataParams),
-    #[serde(rename = "pane.clear_agent_authority")]
-    PaneClearAgentAuthority(PaneClearAgentAuthorityParams),
-    #[serde(rename = "pane.release_agent")]
-    PaneReleaseAgent(PaneReleaseAgentParams),
     #[serde(rename = "pane.close")]
     PaneClose(PaneTarget),
     #[serde(rename = "events.subscribe")]
@@ -275,85 +265,6 @@ pub struct PaneReadParams {
     pub format: ReadFormat,
     #[serde(default = "default_true")]
     pub strip_ansi: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneReportAgentParams {
-    pub pane_id: String,
-    pub source: String,
-    pub agent: String,
-    pub state: PaneAgentState,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_status: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_session_path: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneReportAgentSessionParams {
-    pub pane_id: String,
-    pub source: String,
-    pub agent: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_session_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_session_path: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneReportMetadataParams {
-    pub pane_id: String,
-    pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub applies_to_source: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub display_agent: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_status: Option<String>,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub state_labels: HashMap<String, String>,
-    #[serde(default)]
-    pub clear_title: bool,
-    #[serde(default)]
-    pub clear_display_agent: bool,
-    #[serde(default)]
-    pub clear_custom_status: bool,
-    #[serde(default)]
-    pub clear_state_labels: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ttl_ms: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneClearAgentAuthorityParams {
-    pub pane_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneReleaseAgentParams {
-    pub pane_id: String,
-    pub source: String,
-    pub agent: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -925,15 +836,6 @@ pub enum EventData {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PaneAgentState {
-    Idle,
-    Working,
-    Blocked,
-    Unknown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum AgentStatus {
     Idle,
     Working,
@@ -960,107 +862,6 @@ mod tests {
                 lines: Some(80),
                 format: ReadFormat::Text,
                 strip_ansi: true,
-            }),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        let restored: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, request);
-    }
-
-    #[test]
-    fn request_round_trips_for_pane_report_agent() {
-        let request = Request {
-            id: "req_hook".into(),
-            method: Method::PaneReportAgent(PaneReportAgentParams {
-                pane_id: "1-1".into(),
-                source: "gmux:pi".into(),
-                agent: "pi".into(),
-                state: PaneAgentState::Working,
-                message: Some("thinking".into()),
-                custom_status: Some("indexing".into()),
-                seq: Some(42),
-                agent_session_id: Some("pi-session".into()),
-                agent_session_path: Some("/tmp/pi-session.jsonl".into()),
-            }),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        let restored: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, request);
-    }
-
-    #[test]
-    fn request_round_trips_for_pane_report_agent_session() {
-        let request = Request {
-            id: "req_session".into(),
-            method: Method::PaneReportAgentSession(PaneReportAgentSessionParams {
-                pane_id: "1-1".into(),
-                source: "gmux:claude".into(),
-                agent: "claude".into(),
-                seq: Some(42),
-                agent_session_id: Some("claude-session".into()),
-                agent_session_path: None,
-            }),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        let restored: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, request);
-    }
-
-    #[test]
-    fn request_round_trips_for_pane_report_metadata() {
-        let request = Request {
-            id: "req_metadata".into(),
-            method: Method::PaneReportMetadata(PaneReportMetadataParams {
-                pane_id: "1-1".into(),
-                source: "user:claude-title".into(),
-                agent: Some("claude".into()),
-                applies_to_source: Some("gmux:claude".into()),
-                title: Some("Refactor auth".into()),
-                display_agent: Some("Claude auth".into()),
-                custom_status: Some("refactor auth".into()),
-                state_labels: HashMap::from([("working".into(), "deep in the mines".into())]),
-                clear_title: false,
-                clear_display_agent: false,
-                clear_custom_status: false,
-                clear_state_labels: false,
-                seq: Some(42),
-                ttl_ms: Some(3_600_000),
-            }),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        let restored: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, request);
-    }
-
-    #[test]
-    fn request_round_trips_for_pane_clear_agent_authority() {
-        let request = Request {
-            id: "req_clear".into(),
-            method: Method::PaneClearAgentAuthority(PaneClearAgentAuthorityParams {
-                pane_id: "1-1".into(),
-                source: Some("gmux:pi".into()),
-                seq: Some(42),
-            }),
-        };
-
-        let json = serde_json::to_string(&request).unwrap();
-        let restored: Request = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored, request);
-    }
-
-    #[test]
-    fn request_round_trips_for_pane_release_agent() {
-        let request = Request {
-            id: "req_release".into(),
-            method: Method::PaneReleaseAgent(PaneReleaseAgentParams {
-                pane_id: "1-1".into(),
-                source: "gmux:pi".into(),
-                agent: "pi".into(),
-                seq: Some(42),
             }),
         };
 

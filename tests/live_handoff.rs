@@ -936,7 +936,7 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
     drop(spawned);
     wait_for_api(&api_socket, Duration::from_secs(10));
 
-    assert_ok(request(
+    let reported = request(
         &api_socket,
         serde_json::json!({
             "id": "test:old-pane-report",
@@ -948,7 +948,8 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
                 "state": "working"
             }
         }),
-    ));
+    );
+    assert_eq!(reported["error"]["code"], "invalid_request");
     let _ = request(
         &api_socket,
         serde_json::json!({"id":"test:stop","method":"server.stop","params":{}}),

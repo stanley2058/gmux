@@ -318,10 +318,7 @@ fn pane_report_agent(socket_path: &Path, pane_id: &str, agent: &str, state: &str
             "source": source,
         }),
     );
-    assert!(
-        response.get("error").is_none(),
-        "pane.report_agent should succeed: {response}"
-    );
+    assert_eq!(response["error"]["code"], "invalid_request");
 }
 
 fn pane_agent_status(socket_path: &Path, pane_id: &str) -> Option<String> {
@@ -736,7 +733,7 @@ fn cross_area_detach_and_reattach_preserves_state() {
 }
 
 #[test]
-fn cross_area_inert_agent_report_survives_detach_and_reattach() {
+fn cross_area_removed_agent_report_survives_detach_and_reattach() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -760,13 +757,11 @@ fn cross_area_inert_agent_report_survives_detach_and_reattach() {
 
     let initial_status = pane_agent_status(&api_socket, &pane_id);
 
-    // Legacy report calls are still accepted while attached, but no longer
-    // update authoritative pane agent status.
     pane_report_agent(&api_socket, &pane_id, "pi", "working", "cross-area-test");
     assert_eq!(
         pane_agent_status(&api_socket, &pane_id),
         initial_status,
-        "pane.report_agent should not change pane status before detach"
+        "removed pane.report_agent should not change pane status before detach"
     );
 
     send_client_detach(&mut client_a);
@@ -775,7 +770,7 @@ fn cross_area_inert_agent_report_survives_detach_and_reattach() {
     assert_eq!(
         pane_agent_status(&api_socket, &pane_id),
         initial_status,
-        "inert report state should remain unchanged while detached"
+        "removed report state should remain unchanged while detached"
     );
 
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
@@ -794,7 +789,7 @@ fn cross_area_inert_agent_report_survives_detach_and_reattach() {
     assert_eq!(
         pane_agent_status(&api_socket, &pane_id),
         initial_status,
-        "pane.report_agent should remain inert after reattach"
+        "removed pane.report_agent should remain inert after reattach"
     );
 
     cleanup_spawned_gmux(server, base);

@@ -937,7 +937,7 @@ fn graceful_shutdown_sends_server_shutdown_to_client() {
 }
 
 #[test]
-fn client_receives_notify_on_agent_state_change() {
+fn removed_agent_report_api_does_not_notify_client() {
     // Notification events (sound/toast) are forwarded as
     // ServerMessage::Notify to connected clients when an agent state change
     // is triggered via the API (pane.report_agent).
@@ -1038,8 +1038,8 @@ fn client_receives_notify_on_agent_state_change() {
         .unwrap_or("p_1_1")
         .to_string();
 
-    // Legacy report calls are accepted for compatibility, but they no longer
-    // update authoritative agent state or emit client notifications.
+    // Legacy report calls are no longer socket API methods and must not emit
+    // client notifications.
     let mut report_stream = UnixStream::connect(&api_socket).expect("connect to API");
     let report_request = format!(
         r#"{{"id":"3","method":"pane.report_agent","params":{{"pane_id":"{pane_id}","agent":"pi","state":"blocked","source":"test"}}}}"#
@@ -1048,6 +1048,8 @@ fn client_receives_notify_on_agent_state_change() {
     let mut report_reader = BufReader::new(report_stream);
     let mut report_response = String::new();
     report_reader.read_line(&mut report_response).unwrap();
+    let report_json: serde_json::Value = serde_json::from_str(&report_response).unwrap();
+    assert_eq!(report_json["error"]["code"], "invalid_request");
 
     stream
         .set_read_timeout(Some(Duration::from_millis(500)))
@@ -1070,7 +1072,7 @@ fn client_receives_notify_on_agent_state_change() {
 
     assert!(
         !found_notify,
-        "client should not receive a ServerMessage::Notify after inert pane.report_agent"
+        "client should not receive a ServerMessage::Notify after removed pane.report_agent"
     );
 
     cleanup_spawned_gmux(spawned, base);
