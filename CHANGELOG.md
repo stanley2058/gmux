@@ -8,6 +8,7 @@
 - Added tmux-style top-level CLI aliases for sessions, tabs, and panes, including `gmux new`, `gmux attach`, `gmux ls`, `gmux kill-session`, `gmux new-tab`, `gmux split-pane`, and `gmux kill-pane`.
 
 ### Changed
+- Removed the visible agent integrations tab and first-run integration setup path from Settings.
 - Updated user documentation to present Gmux as sessions, tabs, and panes without a public workspace layer.
 - Updated first-run and empty-session copy to present tabs and panes instead of workspaces or agent setup.
 - Updated the mobile switcher to present sessions instead of spaces/workspaces.

@@ -1038,12 +1038,7 @@ impl App {
 
     pub(crate) fn open_settings_from_onboarding(&mut self) {
         self.mark_onboarding_complete();
-        self.refresh_integration_recommendations();
-        crate::app::input::open_settings_at(&mut self.state, state::SettingsSection::Integrations);
-    }
-
-    pub(crate) fn refresh_integration_recommendations(&mut self) {
-        self.state.integration_recommendations = crate::integration::integration_recommendations();
+        self.state.mode = state::Mode::Terminal;
     }
 
     pub(crate) fn install_recommended_integrations(&mut self) {
@@ -3647,11 +3642,7 @@ last_pane = "prefix+tab"
 
         app.route_client_input(b"\r".to_vec());
 
-        assert_eq!(app.state.mode, Mode::Settings);
-        assert_eq!(
-            app.state.settings.section,
-            state::SettingsSection::Integrations
-        );
+        assert_eq!(app.state.mode, Mode::Terminal);
     }
 
     #[test]

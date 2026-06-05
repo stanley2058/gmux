@@ -15,6 +15,7 @@
 - Added `gmux integration install droid` for Factory Droid hooks that report session ids through Gmux's socket API. When native agent session restore is enabled, Gmux can resume Droid panes with `droid --resume <id>`.
 
 ### Changed
+- Removed the visible agent integrations tab and first-run integration setup path from Settings.
 - Updated user documentation to present Gmux as sessions, tabs, and panes without a public workspace layer.
 - Updated first-run and empty-session copy to present tabs and panes instead of workspaces or agent setup.
 - Updated the mobile switcher to present sessions instead of spaces/workspaces.

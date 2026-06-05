@@ -851,7 +851,6 @@ impl SettingsSection {
         Self::Sound,
         Self::Toast,
         Self::PaneLabels,
-        Self::Integrations,
         Self::Experiments,
     ];
 
@@ -1364,23 +1363,17 @@ impl AppState {
         self.switch_ascii_input_source_in_prefix
     }
 
-    pub(crate) fn integration_updates_available(&self) -> bool {
-        self.integration_recommendations
-            .iter()
-            .any(|item| item.state == crate::integration::IntegrationStatusKind::Outdated)
-    }
-
     pub(crate) fn global_menu_attention_badge_visible(&self) -> bool {
-        self.update_available.is_some() || self.integration_updates_available()
+        self.update_available.is_some()
     }
 
     pub(crate) fn global_menu_item_has_badge(&self, item: &str) -> bool {
-        (item == "update ready" && self.update_available.is_some())
-            || (item == "settings" && self.integration_updates_available())
+        item == "update ready" && self.update_available.is_some()
     }
 
     pub(crate) fn settings_section_has_badge(&self, section: SettingsSection) -> bool {
-        section == SettingsSection::Integrations && self.integration_updates_available()
+        let _ = section;
+        false
     }
 
     pub(crate) fn focused_pane_requests_mouse_capture_from(

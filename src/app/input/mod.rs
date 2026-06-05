@@ -39,7 +39,6 @@ pub(crate) use self::{
         handle_keybind_help_key, handle_navigator_key, handle_rename_key, handle_resize_key,
     },
     navigate::terminal_direct_navigation_action,
-    settings::open_settings_at,
 };
 use self::{
     modal::{
@@ -206,7 +205,6 @@ impl App {
         let handled_pane_double_click = self.handle_pane_double_click(mouse);
 
         let previous_agent_panel_scope = self.state.agent_panel_scope;
-        let previous_settings_section = self.state.settings.section;
         if !handled_pane_double_click {
             if let Some(action) = self.state.handle_mouse(&mut self.terminal_runtimes, mouse) {
                 match action {
@@ -229,11 +227,6 @@ impl App {
                     }
                 }
             }
-        }
-        if previous_settings_section != crate::app::state::SettingsSection::Integrations
-            && self.state.settings.section == crate::app::state::SettingsSection::Integrations
-        {
-            self.refresh_integration_recommendations();
         }
         if self.state.agent_panel_scope != previous_agent_panel_scope {
             self.save_agent_panel_scope(self.state.agent_panel_scope);

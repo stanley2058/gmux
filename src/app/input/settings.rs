@@ -38,7 +38,6 @@ fn experiment_toggle_action(state: &AppState, idx: usize) -> Option<SettingsActi
 
 impl App {
     pub(crate) fn handle_settings_key(&mut self, key: KeyEvent) {
-        let previous_section = self.state.settings.section;
         if let Some(action) = update_settings_state(&mut self.state, key) {
             match action {
                 SettingsAction::SaveTheme(name) => self.save_theme(&name),
@@ -57,11 +56,6 @@ impl App {
                     self.install_recommended_integrations()
                 }
             }
-        }
-        if previous_section != SettingsSection::Integrations
-            && self.state.settings.section == SettingsSection::Integrations
-        {
-            self.refresh_integration_recommendations();
         }
     }
 }
@@ -234,7 +228,7 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 state.settings.list.selected = toast_delivery_index(state.toast_delivery());
             }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
-                state.settings.section = SettingsSection::Integrations;
+                state.settings.section = SettingsSection::Experiments;
                 state.settings.list.selected = 0;
             }
             _ => {
@@ -254,8 +248,8 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 return experiment_toggle_action(state, state.settings.list.selected);
             }
             KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                state.settings.section = SettingsSection::Integrations;
-                state.settings.list.selected = 0;
+                state.settings.section = SettingsSection::PaneLabels;
+                state.settings.list.selected = usize::from(!state.agent_border_labels_enabled());
             }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                 state.settings.section = SettingsSection::Theme;
@@ -299,6 +293,11 @@ pub(crate) fn open_settings(state: &mut AppState) {
 pub(crate) fn open_settings_at(state: &mut AppState, section: SettingsSection) {
     state.settings.original_palette = Some(state.palette.clone());
     state.settings.original_theme = Some(state.theme_name.clone());
+    let section = if section == SettingsSection::Integrations {
+        SettingsSection::Theme
+    } else {
+        section
+    };
     state.settings.section = section;
     state.settings.list.selected = match section {
         SettingsSection::Theme => current_theme_index(&state.theme_name),
@@ -578,12 +577,6 @@ mod tests {
             &mut state,
             KeyEvent::new(KeyCode::Tab, KeyModifiers::empty()),
         );
-        assert_eq!(state.settings.section, SettingsSection::Integrations);
-
-        update_settings_state(
-            &mut state,
-            KeyEvent::new(KeyCode::Tab, KeyModifiers::empty()),
-        );
         assert_eq!(state.settings.section, SettingsSection::Experiments);
 
         update_settings_state(
@@ -602,25 +595,15 @@ mod tests {
             &mut state,
             KeyEvent::new(KeyCode::BackTab, KeyModifiers::empty()),
         );
-        assert_eq!(state.settings.section, SettingsSection::Integrations);
+        assert_eq!(state.settings.section, SettingsSection::PaneLabels);
     }
 
     #[test]
-    fn integrations_enter_does_nothing_when_nothing_needs_install() {
+    fn opening_integrations_settings_falls_back_to_theme() {
         let mut state = state_with_workspaces(&["test"]);
         open_settings_at(&mut state, SettingsSection::Integrations);
 
-        let enter_action = update_settings_state(
-            &mut state,
-            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
-        );
-        assert_eq!(enter_action, None);
-
-        let space_action = update_settings_state(
-            &mut state,
-            KeyEvent::new(KeyCode::Char(' '), KeyModifiers::empty()),
-        );
-        assert_eq!(space_action, None);
+        assert_eq!(state.settings.section, SettingsSection::Theme);
     }
 
     #[test]
@@ -673,35 +656,7 @@ mod tests {
     }
 
     #[test]
-    fn integration_update_badge_only_tracks_outdated_recommendations() {
-        let mut state = state_with_workspaces(&["test"]);
-        state.integration_recommendations = vec![integration_recommendation(
-            crate::integration::IntegrationStatusKind::NotInstalled,
-            true,
-        )];
-        assert!(!state.integration_updates_available());
-
-        state.integration_recommendations = vec![integration_recommendation(
-            crate::integration::IntegrationStatusKind::NotInstalled,
-            false,
-        )];
-        assert!(!state.integration_updates_available());
-
-        state.integration_recommendations = vec![integration_recommendation(
-            crate::integration::IntegrationStatusKind::Current,
-            true,
-        )];
-        assert!(!state.integration_updates_available());
-
-        state.integration_recommendations = vec![integration_recommendation(
-            crate::integration::IntegrationStatusKind::Outdated,
-            true,
-        )];
-        assert!(state.integration_updates_available());
-    }
-
-    #[test]
-    fn settings_tab_hit_area_includes_integration_update_badge() {
+    fn settings_tab_hit_area_excludes_integrations_tab() {
         let mut state = state_with_workspaces(&["test"]);
         state.integration_recommendations = vec![integration_recommendation(
             crate::integration::IntegrationStatusKind::Outdated,
@@ -711,27 +666,11 @@ mod tests {
 
         let inner = state.settings_inner_rect();
         let tab_y = inner.y + 1;
-        let integrations_idx = SettingsSection::ALL
-            .iter()
-            .position(|section| *section == SettingsSection::Integrations)
-            .expect("integrations section should be present");
-        let integrations_x = inner.x
-            + SettingsSection::ALL[..integrations_idx]
-                .iter()
-                .map(|section| {
-                    let badge_width = if state.settings_section_has_badge(*section) {
-                        2
-                    } else {
-                        0
-                    };
-                    section.label().len() as u16 + 3 + badge_width
-                })
-                .sum::<u16>();
-        let dotted_width = SettingsSection::Integrations.label().len() as u16 + 4;
 
+        assert!(!SettingsSection::ALL.contains(&SettingsSection::Integrations));
         assert_eq!(
-            state.settings_tab_at(integrations_x + dotted_width - 1, tab_y),
-            Some(SettingsSection::Integrations)
+            state.settings_tab_at(inner.x + inner.width - 1, tab_y),
+            None
         );
     }
 
