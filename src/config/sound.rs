@@ -2,8 +2,6 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use crate::detect::Agent;
-
 use super::io::resolve_config_relative_path;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -54,14 +52,6 @@ pub enum AgentSoundSetting {
 }
 
 impl SoundConfig {
-    pub fn allows(&self, agent: Option<Agent>) -> bool {
-        if !self.enabled {
-            return false;
-        }
-
-        !matches!(self.agents.for_agent(agent), AgentSoundSetting::Off)
-    }
-
     pub fn path_for(&self, sound: crate::sound::Sound) -> Option<PathBuf> {
         let path = match sound {
             crate::sound::Sound::Done => self.done_path.as_ref().or(self.path.as_ref()),
@@ -111,31 +101,6 @@ impl SoundConfig {
             }
         }
         diagnostics
-    }
-}
-
-impl AgentSoundOverrides {
-    pub fn for_agent(&self, agent: Option<Agent>) -> AgentSoundSetting {
-        match agent {
-            Some(Agent::Pi) => self.pi,
-            Some(Agent::Claude) => self.claude,
-            Some(Agent::Codex) => self.codex,
-            Some(Agent::Gemini) => self.gemini,
-            Some(Agent::Cursor) => self.cursor,
-            Some(Agent::Antigravity) => self.agy,
-            Some(Agent::Cline) => self.cline,
-            Some(Agent::OpenCode) => self.open_code,
-            Some(Agent::GithubCopilot) => self.github_copilot,
-            Some(Agent::Kimi) => self.kimi,
-            Some(Agent::Kiro) => self.kiro,
-            Some(Agent::Droid) => self.droid,
-            Some(Agent::Amp) => self.amp,
-            Some(Agent::Grok) => self.grok,
-            Some(Agent::Hermes) => self.hermes,
-            Some(Agent::Kilo) => self.kilo,
-            Some(Agent::Qodercli) => self.qodercli,
-            None => AgentSoundSetting::Default,
-        }
     }
 }
 

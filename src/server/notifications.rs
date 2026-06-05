@@ -1,6 +1,4 @@
 use crate::config;
-use crate::detect::AgentState;
-use crate::layout::PaneId;
 use crate::protocol;
 
 pub(crate) fn should_forward_toast_to_clients(delivery: config::ToastDelivery) -> bool {
@@ -13,13 +11,4 @@ pub(crate) fn toast_notify_kind(delivery: config::ToastDelivery) -> Option<proto
         config::ToastDelivery::System => Some(protocol::NotifyKind::SystemToast),
         config::ToastDelivery::Off | config::ToastDelivery::Gmux => None,
     }
-}
-
-pub(crate) fn toast_message_from_state_change(
-    _pane_id: PaneId,
-    _suppress_active_tab_notifications: bool,
-    _prev_state: AgentState,
-    _new_state: AgentState,
-) -> Option<String> {
-    None
 }

@@ -1,8 +1,5 @@
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
-
-// Effective state arbitration is intentionally centralized here while the
-// detector-backed status model is being retired.
+use std::time::Duration;
 
 use crate::detect::{Agent, AgentState};
 use crate::terminal::TerminalId;
@@ -11,16 +8,6 @@ use crate::terminal::TerminalId;
 mod metadata;
 
 const CLAUDE_WORKING_HOLD: Duration = Duration::from_millis(1200);
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EffectiveStateChange {
-    pub previous_state: AgentState,
-    pub state: AgentState,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct TerminalStateMutation {
-    pub effective_state_change: Option<EffectiveStateChange>,
-}
 
 /// Pure state for a server-owned terminal.
 ///
@@ -65,11 +52,7 @@ impl TerminalState {
     }
 
     #[cfg(test)]
-    pub fn set_detected_state(
-        &mut self,
-        agent: Option<Agent>,
-        fallback_state: AgentState,
-    ) -> Option<EffectiveStateChange> {
+    pub fn set_detected_state(&mut self, agent: Option<Agent>, fallback_state: AgentState) {
         self.set_detected_state_with_visible_blocker(agent, fallback_state, false, false, false)
     }
 
@@ -81,35 +64,11 @@ impl TerminalState {
         visible_blocker: bool,
         visible_idle: bool,
         process_exited: bool,
-    ) -> Option<EffectiveStateChange> {
-        self.set_detected_state_with_screen_signals_at(
-            agent,
-            fallback_state,
-            visible_blocker,
-            visible_idle,
-            false,
-            process_exited,
-            Instant::now(),
-        )
-        .effective_state_change
-    }
-
-    pub fn set_detected_state_with_screen_signals_at(
-        &mut self,
-        agent: Option<Agent>,
-        fallback_state: AgentState,
-        _visible_blocker: bool,
-        _visible_idle: bool,
-        _visible_working: bool,
-        _process_exited: bool,
-        _now: Instant,
-    ) -> TerminalStateMutation {
-        let previous_state = self.state;
+    ) {
+        let _ = (visible_blocker, visible_idle, process_exited);
         self.detected_agent = agent;
         self.fallback_state = fallback_state;
-        TerminalStateMutation {
-            effective_state_change: self.recompute_effective_state(previous_state),
-        }
+        self.state = fallback_state;
     }
 
     pub fn set_manual_label(&mut self, label: String) {
@@ -131,23 +90,6 @@ impl TerminalState {
 
     pub fn border_label(&self) -> Option<String> {
         self.effective_title().or_else(|| self.manual_label.clone())
-    }
-
-    fn recompute_effective_state(
-        &mut self,
-        previous_state: AgentState,
-    ) -> Option<EffectiveStateChange> {
-        let state = self.fallback_state;
-
-        if previous_state == state {
-            return None;
-        }
-
-        self.state = state;
-        Some(EffectiveStateChange {
-            previous_state,
-            state,
-        })
     }
 }
 

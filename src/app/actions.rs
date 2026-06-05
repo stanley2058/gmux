@@ -7,64 +7,13 @@ use crate::detect::AgentState;
 use crate::events::AppEvent;
 use crate::layout::{find_in_direction, NavDirection, PaneId};
 use crate::selection::Selection;
-use crate::terminal::{EffectiveStateChange, TerminalStateMutation};
 use crate::workspace::WorkspaceGitStatus;
 use unicode_width::UnicodeWidthChar;
 
 use super::state::{
     text_matches_query, AppState, Mode, NavigatorRow, NavigatorTarget, PaneFocusTarget, ToastKind,
-    ToastNotification, ToastTarget, ViewLayout,
+    ToastNotification, ViewLayout,
 };
-
-pub fn active_tab_suppresses_notifications(
-    is_active_tab: bool,
-    outer_terminal_focus: Option<bool>,
-) -> bool {
-    is_active_tab && outer_terminal_focus != Some(false)
-}
-
-pub fn notification_sound_for_state_change(
-    _suppress_active_tab_notifications: bool,
-    _prev_state: AgentState,
-    _new_state: AgentState,
-) -> Option<crate::sound::Sound> {
-    None
-}
-
-pub fn notification_toast_for_state_change(
-    _suppress_active_tab_notifications: bool,
-    _prev_state: AgentState,
-    _new_state: AgentState,
-) -> Option<ToastKind> {
-    None
-}
-
-pub fn notification_context(
-    ws: &crate::workspace::Workspace,
-    workspace_label: &str,
-    ws_idx: usize,
-    pane_id: PaneId,
-) -> String {
-    let mut context = format!("{} · {}", workspace_label, ws_idx + 1);
-    if ws.tabs.len() > 1 {
-        if let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) {
-            let tab = &ws.tabs[tab_idx];
-            context.push_str(&format!(" · {}", tab.display_name()));
-        }
-    }
-    context
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PaneStateUpdate {
-    pub pane_id: PaneId,
-    pub ws_idx: usize,
-    pub previous_state: AgentState,
-    pub previous_seen: bool,
-    pub state: AgentState,
-    pub seen: bool,
-}
-
 // ---------------------------------------------------------------------------
 // Navigator operations
 // ---------------------------------------------------------------------------
@@ -529,18 +478,6 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 impl AppState {
-    pub(crate) fn pane_is_in_active_tab(&self, ws_idx: usize, pane_id: PaneId) -> bool {
-        let Some(active_ws_idx) = self.active else {
-            return false;
-        };
-        if active_ws_idx != ws_idx {
-            return false;
-        }
-        self.workspaces[ws_idx]
-            .find_tab_index_for_pane(pane_id)
-            .is_some_and(|tab_idx| tab_idx == self.workspaces[ws_idx].active_tab)
-    }
-
     pub fn switch_workspace(&mut self, idx: usize) {
         if idx < self.workspaces.len() {
             let previous_focus = self.current_pane_focus_target();
@@ -1699,11 +1636,10 @@ impl AppState {
         changed
     }
 
-    pub fn handle_app_event(&mut self, event: AppEvent) -> Vec<PaneStateUpdate> {
+    pub fn handle_app_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::PaneDied { pane_id } => {
                 self.handle_pane_died(pane_id);
-                Vec::new()
             }
             AppEvent::UpdateReady {
                 version,
@@ -1724,7 +1660,6 @@ impl AppState {
                         target: None,
                     });
                 }
-                Vec::new()
             }
             AppEvent::StateChanged {
                 pane_id,
@@ -1735,127 +1670,29 @@ impl AppState {
                 visible_working,
                 process_exited,
                 observed_at,
-            } => self
-                .update_terminal_state(pane_id, |terminal| {
-                    Some(terminal.set_detected_state_with_screen_signals_at(
-                        agent,
-                        state,
-                        visible_blocker,
-                        visible_idle,
-                        visible_working,
-                        process_exited,
-                        observed_at,
-                    ))
-                })
-                .into_iter()
-                .collect(),
+            } => {
+                let _ = (
+                    pane_id,
+                    agent,
+                    state,
+                    visible_blocker,
+                    visible_idle,
+                    visible_working,
+                    process_exited,
+                    observed_at,
+                );
+            }
             // Intercepted in App::handle_internal_event before reaching this
             // dispatch; never touches AppState.
-            AppEvent::ClipboardWrite { .. } => Vec::new(),
+            AppEvent::ClipboardWrite { .. } => {}
             AppEvent::GitStatusRefreshed {
                 results,
                 cache_updates,
             } => {
                 let _ = results;
                 let _ = cache_updates;
-                Vec::new()
             }
         }
-    }
-
-    fn update_terminal_state<F>(&mut self, pane_id: PaneId, update: F) -> Option<PaneStateUpdate>
-    where
-        F: FnOnce(&mut crate::terminal::TerminalState) -> Option<TerminalStateMutation>,
-    {
-        let ws_idx = self
-            .workspaces
-            .iter()
-            .position(|ws| ws.pane_state(pane_id).is_some())?;
-        let terminal_id = self.workspaces[ws_idx]
-            .pane_state(pane_id)?
-            .attached_terminal_id
-            .clone();
-        let previous_seen = self.workspaces[ws_idx].pane_state(pane_id)?.seen;
-        let mutation = {
-            let terminal = self.terminals.get_mut(&terminal_id)?;
-            update(terminal)?
-        };
-        let change = mutation.effective_state_change?;
-        let seen = self.apply_pane_state_change(ws_idx, pane_id, &change)?;
-        let update = PaneStateUpdate {
-            pane_id,
-            ws_idx,
-            previous_state: change.previous_state,
-            previous_seen,
-            state: change.state,
-            seen,
-        };
-        Some(update)
-    }
-
-    fn apply_pane_state_change(
-        &mut self,
-        ws_idx: usize,
-        pane_id: PaneId,
-        change: &EffectiveStateChange,
-    ) -> Option<bool> {
-        let is_active_tab = self.pane_is_in_active_tab(ws_idx, pane_id);
-        let suppress_active_tab_notifications =
-            active_tab_suppresses_notifications(is_active_tab, self.outer_terminal_focus);
-        let pane = self.workspaces[ws_idx]
-            .tabs
-            .iter_mut()
-            .find_map(|tab| tab.panes.get_mut(&pane_id))?;
-
-        if change.state != AgentState::Idle {
-            pane.seen = true;
-        }
-        let seen = pane.seen;
-
-        if self.local_sound_playback && self.sound.allows(None) {
-            if let Some(sound) = notification_sound_for_state_change(
-                suppress_active_tab_notifications,
-                change.previous_state,
-                change.state,
-            ) {
-                crate::sound::play(sound, &self.sound);
-            }
-        }
-
-        if matches!(
-            self.toast_config.delivery,
-            crate::config::ToastDelivery::Gmux
-        ) {
-            if let Some(kind) = notification_toast_for_state_change(
-                suppress_active_tab_notifications,
-                change.previous_state,
-                change.state,
-            ) {
-                let event_text = match kind {
-                    ToastKind::NeedsAttention => "needs attention",
-                    ToastKind::Finished => "finished",
-                    ToastKind::UpdateInstalled => "updated",
-                };
-                let workspace_label = self.workspaces[ws_idx].display_name();
-                let context = notification_context(
-                    &self.workspaces[ws_idx],
-                    &workspace_label,
-                    ws_idx,
-                    pane_id,
-                );
-                self.toast = Some(ToastNotification {
-                    kind,
-                    title: format!("pane {event_text}"),
-                    context,
-                    target: Some(ToastTarget {
-                        workspace_id: self.workspaces[ws_idx].id.clone(),
-                        pane_id,
-                    }),
-                });
-            }
-        }
-
-        Some(seen)
     }
 
     fn handle_pane_died(&mut self, pane_id: PaneId) {
@@ -1935,17 +1772,6 @@ mod tests {
             state.mode = Mode::Terminal;
         }
         state
-    }
-
-    #[test]
-    fn notification_context_formats_resolved_workspace_label() {
-        let state = app_with_workspaces(&["stale"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-
-        assert_eq!(
-            notification_context(&state.workspaces[0], "__gmux_projects__", 0, root),
-            "__gmux_projects__ · 1"
-        );
     }
 
     fn selected_word(row: &str, col: u16) -> Option<String> {
@@ -2469,12 +2295,11 @@ mod tests {
         let mut state = AppState::test_new();
         state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
 
-        let updates = state.handle_app_event(crate::events::AppEvent::UpdateReady {
+        state.handle_app_event(crate::events::AppEvent::UpdateReady {
             version: "0.5.0".into(),
             install_command: "gmux update".into(),
         });
 
-        assert!(updates.is_empty());
         assert_eq!(state.update_available.as_deref(), Some("0.5.0"));
         assert!(state.latest_release_notes_available);
         let toast = state.toast.as_ref().expect("update toast");
@@ -2944,9 +2769,16 @@ mod tests {
     }
 
     #[test]
-    fn state_changed_updates_pane() {
+    fn state_changed_is_ignored() {
         let mut state = app_with_workspaces(&["test"]);
         let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
+        let terminal_id = state.workspaces[0]
+            .panes
+            .get(&pane_id)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        let original_seen = state.workspaces[0].panes.get(&pane_id).unwrap().seen;
 
         state.handle_app_event(AppEvent::StateChanged {
             pane_id,
@@ -2959,271 +2791,14 @@ mod tests {
             observed_at: std::time::Instant::now(),
         });
 
-        let terminal_id = state.workspaces[0]
-            .panes
-            .get(&pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
         let terminal = state.terminals.get(&terminal_id).unwrap();
-        assert_eq!(terminal.state, AgentState::Working);
-        assert_eq!(terminal.detected_agent, Some(Agent::Pi));
-    }
-
-    #[test]
-    fn state_changed_idle_in_background_marks_unseen() {
-        let mut state = app_with_workspaces(&["active", "background"]);
-        state.active = Some(0);
-        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
-
-        // First set it to Working
-        let bg_terminal_id = state.workspaces[1]
-            .panes
-            .get(&bg_pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
-
-        // Now transition to Idle while in background
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id: bg_pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
-        assert!(pane.seen);
-    }
-
-    #[test]
-    fn active_tab_completion_marks_pane_seen() {
-        let mut state = app_with_workspaces(&["active"]);
-        state.active = Some(0);
-        state.outer_terminal_focus = Some(true);
-        let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
-        let terminal_id = state.workspaces[0]
-            .panes
-            .get(&pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        state.terminals.get_mut(&terminal_id).unwrap().state = AgentState::Working;
-        state.workspaces[0].panes.get_mut(&pane_id).unwrap().seen = false;
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        let terminal = state.terminals.get(&terminal_id).unwrap();
-        assert_eq!(terminal.state, AgentState::Idle);
-        let pane = state.workspaces[0].panes.get(&pane_id).unwrap();
-        assert!(!pane.seen);
-    }
-
-    #[test]
-    fn initial_idle_in_background_stays_seen() {
-        let mut state = app_with_workspaces(&["active", "background"]);
-        state.active = Some(0);
-        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id: bg_pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
-        assert!(pane.seen);
-    }
-
-    #[test]
-    fn waiting_sound_plays_even_in_active_workspace() {
+        assert_eq!(terminal.state, AgentState::Unknown);
+        assert_eq!(terminal.detected_agent, None);
         assert_eq!(
-            notification_sound_for_state_change(true, AgentState::Working, AgentState::Blocked),
-            None
+            state.workspaces[0].panes.get(&pane_id).unwrap().seen,
+            original_seen
         );
-    }
-
-    #[test]
-    fn done_sound_only_plays_in_background() {
-        assert_eq!(
-            notification_sound_for_state_change(false, AgentState::Working, AgentState::Idle),
-            None
-        );
-        assert_eq!(
-            notification_sound_for_state_change(true, AgentState::Working, AgentState::Idle),
-            None
-        );
-        assert_eq!(
-            notification_sound_for_state_change(false, AgentState::Unknown, AgentState::Idle),
-            None
-        );
-    }
-
-    #[test]
-    fn background_waiting_sets_attention_toast() {
-        let mut state = app_with_workspaces(&["active", "background"]);
-        state.active = Some(0);
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id: bg_pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Blocked,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
         assert!(state.toast.is_none());
-    }
-
-    #[test]
-    fn background_idle_sets_finished_toast() {
-        let mut state = app_with_workspaces(&["active", "background"]);
-        state.active = Some(0);
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        let bg_pane_id = *state.workspaces[1].panes.keys().next().unwrap();
-        let bg_terminal_id = state.workspaces[1]
-            .panes
-            .get(&bg_pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Working;
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id: bg_pane_id,
-            agent: Some(Agent::Droid),
-            state: AgentState::Idle,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        assert!(state.toast.is_none());
-    }
-
-    #[test]
-    fn background_toast_includes_tab_name_when_workspace_has_multiple_tabs() {
-        let mut state = app_with_workspaces(&["active", "background"]);
-        state.active = Some(0);
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        state.workspaces[1].tabs[0].set_custom_name("main".into());
-        let second_tab = state.workspaces[1].test_add_tab(Some("logs"));
-        state.ensure_test_terminals();
-        let bg_pane_id = state.workspaces[1].tabs[second_tab].root_pane;
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id: bg_pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Blocked,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        assert!(state.toast.is_none());
-    }
-
-    #[test]
-    fn background_tab_in_active_workspace_still_sets_toast() {
-        let mut state = app_with_workspaces(&["active"]);
-        state.active = Some(0);
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        state.workspaces[0].tabs[0].set_custom_name("main".into());
-        let second_tab = state.workspaces[0].test_add_tab(Some("logs"));
-        state.ensure_test_terminals();
-        let bg_pane_id = state.workspaces[0].tabs[second_tab].root_pane;
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id: bg_pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Blocked,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        assert!(state.toast.is_none());
-    }
-
-    #[test]
-    fn active_workspace_active_tab_does_not_set_toast() {
-        let mut state = app_with_workspaces(&["active"]);
-        state.active = Some(0);
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Blocked,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        assert!(state.toast.is_none());
-    }
-
-    #[test]
-    fn active_workspace_active_tab_keeps_gmux_toast_suppressed_when_outer_terminal_is_unfocused() {
-        let mut state = app_with_workspaces(&["active"]);
-        state.active = Some(0);
-        state.outer_terminal_focus = Some(false);
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-        let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
-
-        state.handle_app_event(AppEvent::StateChanged {
-            pane_id,
-            agent: Some(Agent::Pi),
-            state: AgentState::Blocked,
-            visible_blocker: false,
-            visible_idle: false,
-            visible_working: false,
-            process_exited: false,
-            observed_at: std::time::Instant::now(),
-        });
-
-        assert!(state.toast.is_none());
-    }
-
-    #[test]
-    fn active_tab_suppression_preserves_unknown_focus_behavior() {
-        assert!(active_tab_suppresses_notifications(true, None));
-        assert!(active_tab_suppresses_notifications(true, Some(true)));
-        assert!(!active_tab_suppresses_notifications(true, Some(false)));
-        assert!(!active_tab_suppresses_notifications(false, None));
     }
 
     #[test]
@@ -3231,12 +2806,11 @@ mod tests {
         let mut state = AppState::test_new();
         state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
 
-        let updates = state.handle_app_event(AppEvent::UpdateReady {
+        state.handle_app_event(AppEvent::UpdateReady {
             version: "0.5.0".into(),
             install_command: "gmux update".into(),
         });
 
-        assert!(updates.is_empty());
         assert_eq!(state.update_available.as_deref(), Some("0.5.0"));
         assert!(state.latest_release_notes_available);
         assert!(state.update_dismissed);

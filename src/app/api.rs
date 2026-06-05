@@ -91,10 +91,7 @@ impl App {
             None
         };
         let previous_toast = self.state.toast.clone();
-        let pane_updates = self.state.handle_app_event(ev);
-        for update in &pane_updates {
-            self.refresh_new_gmux_toast_context_for_update(update, &previous_toast);
-        }
+        self.state.handle_app_event(ev);
         if let Some(overlay) = overlay_state {
             self.restore_overlay_after_exit(overlay);
         }
@@ -114,76 +111,11 @@ impl App {
             if let Some((version, install_command)) = update_ready {
                 let instruction = crate::update::update_install_instruction(&install_command);
                 let _ = notify(&format!("v{version} available"), Some(&instruction));
-            } else {
-                for update in &pane_updates {
-                    let is_active_tab = self
-                        .state
-                        .pane_is_in_active_tab(update.ws_idx, update.pane_id);
-                    let suppress_active_tab_notifications =
-                        crate::app::actions::active_tab_suppresses_notifications(
-                            is_active_tab,
-                            self.state.outer_terminal_focus,
-                        );
-                    let Some(message) =
-                        crate::server::notifications::toast_message_from_state_change(
-                            update.pane_id,
-                            suppress_active_tab_notifications,
-                            update.previous_state,
-                            update.state,
-                        )
-                    else {
-                        continue;
-                    };
-                    let _ = notify(&message, None);
-                }
             }
         }
 
         self.sync_toast_deadline(previous_toast);
         self.shutdown_detached_terminal_runtimes();
-    }
-
-    pub(crate) fn refresh_new_gmux_toast_context_for_update(
-        &mut self,
-        update: &crate::app::actions::PaneStateUpdate,
-        previous_toast: &Option<crate::app::state::ToastNotification>,
-    ) {
-        if !matches!(
-            self.state.toast_config.delivery,
-            crate::config::ToastDelivery::Gmux
-        ) || self.state.toast == *previous_toast
-        {
-            return;
-        }
-
-        let Some(target) = self
-            .state
-            .toast
-            .as_ref()
-            .and_then(|toast| toast.target.as_ref())
-        else {
-            return;
-        };
-        if target.pane_id != update.pane_id {
-            return;
-        }
-        let Some(ws) = self.state.workspaces.get(update.ws_idx) else {
-            return;
-        };
-        if ws.id != target.workspace_id {
-            return;
-        }
-
-        let workspace_label = ws.display_name_from(&self.state.terminals, &self.terminal_runtimes);
-        let context = crate::app::actions::notification_context(
-            ws,
-            &workspace_label,
-            update.ws_idx,
-            update.pane_id,
-        );
-        if let Some(toast) = self.state.toast.as_mut() {
-            toast.context = context;
-        }
     }
 
     pub(crate) fn show_clipboard_feedback(&mut self) {
@@ -433,105 +365,6 @@ impl App {
 mod tests {
     use super::*;
     use crate::detect::{Agent, AgentState};
-
-    fn init_repo(path: &std::path::Path) {
-        let status = std::process::Command::new("git")
-            .args(["init", "-q"])
-            .current_dir(path)
-            .status()
-            .unwrap();
-        assert!(status.success(), "git init failed for {}", path.display());
-    }
-
-    #[tokio::test]
-    async fn gmux_toast_context_uses_live_root_runtime_cwd_label() {
-        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(
-            &crate::config::Config::default(),
-            true,
-            None,
-            api_rx,
-            crate::api::EventHub::default(),
-        );
-
-        let mut workspace = crate::workspace::Workspace::test_new("stale");
-        workspace.custom_name = None;
-        let root = workspace.tabs[0].root_pane;
-        let terminal_id = workspace.terminal_id(root).cloned().unwrap();
-        let temp_root = std::env::temp_dir().join(format!(
-            "gmux-toast-context-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let stale_cwd = temp_root.join("__gmux_original__");
-        let live_cwd = temp_root.join("__gmux_projects__");
-        std::fs::create_dir_all(&stale_cwd).unwrap();
-        std::fs::create_dir_all(&live_cwd).unwrap();
-        init_repo(&stale_cwd);
-        init_repo(&live_cwd);
-
-        workspace.identity_cwd = stale_cwd.clone();
-        app.state.workspaces = vec![workspace];
-        app.state.ensure_test_terminals();
-        app.state.terminals.get_mut(&terminal_id).unwrap().cwd = stale_cwd;
-        app.state.active = None;
-        app.state.selected = 0;
-        app.state.mode = Mode::Terminal;
-        app.state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-
-        let (events, _) = tokio::sync::mpsc::channel(4);
-        let runtime = crate::terminal::TerminalRuntime::spawn(
-            root,
-            24,
-            80,
-            live_cwd.clone(),
-            0,
-            crate::terminal_theme::TerminalTheme::default(),
-            crate::pane::PaneShellConfig::new("/bin/sh", crate::config::ShellModeConfig::NonLogin),
-            events,
-            std::sync::Arc::new(tokio::sync::Notify::new()),
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        )
-        .unwrap();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while runtime.cwd() != Some(live_cwd.clone()) && std::time::Instant::now() < deadline {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-        app.terminal_runtimes.insert(terminal_id.clone(), runtime);
-
-        let previous_toast = app.state.toast.clone();
-        app.state.toast = Some(crate::app::state::ToastNotification {
-            kind: ToastKind::Finished,
-            title: "codex finished".into(),
-            context: "__gmux_original__ · 1".into(),
-            target: Some(crate::app::state::ToastTarget {
-                workspace_id: app.state.workspaces[0].id.clone(),
-                pane_id: root,
-            }),
-        });
-        let update = crate::app::actions::PaneStateUpdate {
-            pane_id: root,
-            ws_idx: 0,
-            previous_state: AgentState::Working,
-            previous_seen: true,
-            state: AgentState::Working,
-            seen: true,
-        };
-        app.refresh_new_gmux_toast_context_for_update(&update, &previous_toast);
-
-        assert_eq!(
-            app.state.toast.as_ref().map(|toast| toast.context.as_str()),
-            Some("__gmux_projects__ · 1")
-        );
-
-        for (_, runtime) in app.terminal_runtimes.drain() {
-            runtime.shutdown();
-        }
-        let _ = std::fs::remove_dir_all(temp_root);
-    }
 
     #[tokio::test]
     async fn pane_died_respawns_shell_and_clears_agent_identity() {

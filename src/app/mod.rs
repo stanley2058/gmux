@@ -2895,7 +2895,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_internal_event_queue_eventually_applies_working_to_idle_transition() {
+    async fn full_internal_event_queue_drains_inert_state_changes_after_backpressure() {
         let mut app = test_app();
         let ws = Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
@@ -2923,7 +2923,7 @@ mod tests {
         });
         assert_eq!(
             app.state.terminals.get(&terminal_id).unwrap().state,
-            AgentState::Working
+            AgentState::Unknown
         );
 
         for i in 0..APP_EVENT_CHANNEL_CAPACITY {
@@ -2964,7 +2964,7 @@ mod tests {
 
         let max_drains = (APP_EVENT_CHANNEL_CAPACITY / APP_EVENT_DRAIN_LIMIT) + 2;
         for _ in 0..max_drains {
-            if app.state.terminals.get(&terminal_id).unwrap().state == AgentState::Idle {
+            if app.event_rx.is_empty() {
                 break;
             }
             app.drain_internal_events();
@@ -2972,9 +2972,10 @@ mod tests {
 
         assert_eq!(
             app.state.terminals.get(&terminal_id).unwrap().state,
-            AgentState::Idle,
-            "Working→Idle should still apply after temporary queue pressure"
+            AgentState::Unknown,
+            "detector state events should drain without changing terminal state"
         );
+        assert!(app.event_rx.is_empty());
     }
 
     #[test]
