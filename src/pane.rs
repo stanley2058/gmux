@@ -2480,7 +2480,7 @@ mod tests {
     }
 
     #[test]
-    fn stable_visible_idle_republishes_for_stale_hook_deadline() {
+    fn stable_visible_idle_republishes_after_refresh_interval() {
         let now = std::time::Instant::now();
         let previous = DetectionPublishState {
             state: AgentState::Idle,
@@ -2530,7 +2530,7 @@ mod tests {
     }
 
     #[test]
-    fn stable_visible_working_republishes_for_hook_override_refresh() {
+    fn stable_visible_working_republishes_after_refresh_interval() {
         let now = std::time::Instant::now();
         let previous = DetectionPublishState {
             state: AgentState::Working,
@@ -2555,7 +2555,7 @@ mod tests {
     }
 
     #[test]
-    fn stable_visible_blocker_republishes_for_hook_override_refresh() {
+    fn stable_visible_blocker_republishes_after_refresh_interval() {
         let now = std::time::Instant::now();
         let previous = DetectionPublishState {
             state: AgentState::Blocked,

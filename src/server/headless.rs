@@ -5725,7 +5725,7 @@ next_tab = ""
     }
 
     #[test]
-    fn stale_api_agent_report_does_not_forward_done_sound() {
+    fn inert_api_agent_report_does_not_forward_done_sound() {
         let mut server = test_headless_server();
         let background = crate::workspace::Workspace::test_new("background");
         let pane_id = background.tabs[0].root_pane;
@@ -5744,12 +5744,9 @@ next_tab = ""
             .terminals
             .get_mut(&terminal_id)
             .unwrap()
-            .set_hook_authority(
-                "gmux:pi".into(),
-                "pi".into(),
+            .set_detected_state(
+                Some(crate::detect::Agent::Pi),
                 crate::detect::AgentState::Working,
-                None,
-                Some(20),
             );
         server.app.state.active = Some(1);
         server.app.state.selected = 1;
@@ -5774,7 +5771,7 @@ next_tab = ""
         let (respond_to, response_rx) = std::sync::mpsc::channel();
         let changed = server.handle_api_request_with_shutdown_check(api::ApiRequestMessage {
             request: api::schema::Request {
-                id: "stale".into(),
+                id: "inert".into(),
                 method: api::schema::Method::PaneReportAgent(api::schema::PaneReportAgentParams {
                     pane_id: public_pane_id,
                     source: "gmux:pi".into(),
@@ -5800,7 +5797,7 @@ next_tab = ""
             client_control_rx
                 .recv_timeout(Duration::from_millis(50))
                 .is_err(),
-            "stale idle report must not forward a done sound"
+            "inert idle report must not forward a done sound"
         );
     }
 

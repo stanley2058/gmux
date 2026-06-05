@@ -1,9 +1,5 @@
-use std::collections::HashMap;
-use std::time::Instant;
-
-use crate::detect::AgentState;
-
 use super::TerminalState;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectivePresentation {
@@ -26,8 +22,7 @@ impl EffectivePresentation {
 
 impl TerminalState {
     pub fn effective_custom_status(&self) -> Option<String> {
-        self.effective_presentation_for_state_at(self.state, Instant::now())
-            .custom_status
+        None
     }
 
     pub fn effective_title(&self) -> Option<String> {
@@ -35,33 +30,14 @@ impl TerminalState {
     }
 
     pub fn effective_presentation(&self) -> EffectivePresentation {
-        self.effective_presentation_for_state_at(self.state, Instant::now())
+        EffectivePresentation::empty()
     }
 
     pub(super) fn effective_presentation_for_state_at(
         &self,
-        state: AgentState,
-        now: Instant,
+        _state: crate::detect::AgentState,
+        _now: std::time::Instant,
     ) -> EffectivePresentation {
-        let mut presentation = EffectivePresentation::empty();
-        presentation.custom_status = self.effective_custom_status_for_state_at(state, now);
-        presentation
-    }
-
-    fn effective_custom_status_for_state_at(
-        &self,
-        state: AgentState,
-        now: Instant,
-    ) -> Option<String> {
-        if self.visible_blocker_overrides_hook()
-            || self.visible_working_overrides_hook()
-            || self.visible_idle_masks_hook_custom_status(state, now)
-        {
-            return None;
-        }
-
-        self.hook_authority
-            .as_ref()
-            .and_then(|authority| authority.custom_status.clone())
+        EffectivePresentation::empty()
     }
 }
