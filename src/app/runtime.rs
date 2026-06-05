@@ -247,19 +247,6 @@ impl App {
             self.save_session_now();
         }
 
-        if let Some(deadline) = self
-            .agent_metadata_deadline
-            .filter(|deadline| now >= *deadline)
-        {
-            let previous_toast = self.state.toast.clone();
-            for update in self.state.expire_agent_metadata_at(deadline, now) {
-                self.refresh_new_gmux_toast_context_for_update(&update, &previous_toast);
-                self.emit_pane_state_update(&update);
-            }
-            self.sync_agent_metadata_deadline();
-            changed = true;
-        }
-
         self.sync_animation_timer(now);
         changed
     }
@@ -284,10 +271,6 @@ impl App {
             return true;
         }
         false
-    }
-
-    pub(crate) fn sync_agent_metadata_deadline(&mut self) {
-        self.agent_metadata_deadline = self.state.next_agent_metadata_expiry();
     }
 
     pub(crate) fn sync_animation_timer(&mut self, now: Instant) {
@@ -508,7 +491,6 @@ impl App {
                 .then(|| self.git_refresh_deadline())
                 .flatten(),
             self.next_auto_update_check,
-            self.agent_metadata_deadline,
             self.session_save_deadline,
             self.selection_autoscroll_deadline,
             self.selection_highlight_clear_deadline,

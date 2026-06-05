@@ -13,7 +13,7 @@ use crate::terminal::TerminalId;
 
 #[path = "metadata.rs"]
 mod metadata;
-pub use metadata::{AgentMetadata, AgentMetadataReport, EffectivePresentation};
+pub use metadata::EffectivePresentation;
 
 const CLAUDE_WORKING_HOLD: Duration = Duration::from_millis(1200);
 const STALE_HOOK_IDLE_GRACE: Duration = Duration::from_secs(2);
@@ -61,10 +61,8 @@ pub struct TerminalState {
     fallback_observed_at: Option<Instant>,
     stale_hook_idle_since: Option<Instant>,
     pub hook_authority: Option<HookAuthority>,
-    pub agent_metadata: HashMap<String, AgentMetadata>,
     pub manual_label: Option<String>,
     hook_report_sequences: HashMap<String, u64>,
-    metadata_report_sequences: HashMap<String, u64>,
     pub state: AgentState,
     pub revision: u64,
     pub launch_argv: Option<Vec<String>>,
@@ -84,10 +82,8 @@ impl TerminalState {
             fallback_observed_at: None,
             stale_hook_idle_since: None,
             hook_authority: None,
-            agent_metadata: HashMap::new(),
             manual_label: None,
             hook_report_sequences: HashMap::new(),
-            metadata_report_sequences: HashMap::new(),
             state: AgentState::Unknown,
             revision: 0,
             launch_argv: None,
@@ -517,7 +513,6 @@ impl TerminalState {
         self.fallback_observed_at = None;
         self.stale_hook_idle_since = None;
         self.hook_authority = None;
-        self.agent_metadata.clear();
         self.state = AgentState::Unknown;
         self.launch_argv = None;
         self.respawn_shell_on_exit = false;
@@ -555,7 +550,6 @@ impl TerminalState {
         let known_agent = self.effective_known_agent();
 
         let presentation = self.effective_presentation_for_state_at(state, now);
-        self.clear_expiry_pending_for_hidden_metadata();
 
         if previous_agent_label == agent_label
             && previous_state == state

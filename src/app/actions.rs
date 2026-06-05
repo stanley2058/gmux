@@ -581,63 +581,6 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 impl AppState {
-    pub(crate) fn next_agent_metadata_expiry(&self) -> Option<std::time::Instant> {
-        self.terminals
-            .values()
-            .filter_map(|terminal| terminal.next_agent_metadata_expiry())
-            .min()
-    }
-
-    pub(crate) fn expire_agent_metadata_at(
-        &mut self,
-        scheduled_deadline: std::time::Instant,
-        now: std::time::Instant,
-    ) -> Vec<PaneStateUpdate> {
-        let pane_terminals: Vec<_> = self
-            .workspaces
-            .iter()
-            .enumerate()
-            .flat_map(|(ws_idx, ws)| {
-                ws.tabs.iter().flat_map(move |tab| {
-                    tab.layout
-                        .pane_ids()
-                        .into_iter()
-                        .filter_map(move |pane_id| {
-                            ws.pane_state(pane_id)
-                                .map(|pane| (ws_idx, pane_id, pane.attached_terminal_id.clone()))
-                        })
-                })
-            })
-            .collect();
-        pane_terminals
-            .into_iter()
-            .filter_map(|(ws_idx, pane_id, terminal_id)| {
-                let previous_seen = self.workspaces[ws_idx].pane_state(pane_id)?.seen;
-                let mutation = self
-                    .terminals
-                    .get_mut(&terminal_id)?
-                    .expire_agent_metadata_at(scheduled_deadline, now)?;
-                let change = mutation.effective_state_change?;
-                let seen = self.apply_pane_state_change(ws_idx, pane_id, &change)?;
-                let update = PaneStateUpdate {
-                    pane_id,
-                    ws_idx,
-                    previous_agent_label: change.previous_agent_label.clone(),
-                    previous_known_agent: change.previous_known_agent,
-                    previous_state: change.previous_state,
-                    previous_seen,
-                    previous_presentation: change.previous_presentation.clone(),
-                    agent_label: change.agent_label.clone(),
-                    known_agent: change.known_agent,
-                    state: change.state,
-                    seen,
-                    presentation: change.presentation.clone(),
-                };
-                Some(update)
-            })
-            .collect()
-    }
-
     pub(crate) fn pane_is_in_active_tab(&self, ws_idx: usize, pane_id: PaneId) -> bool {
         let Some(active_ws_idx) = self.active else {
             return false;
@@ -1983,26 +1926,25 @@ impl AppState {
                 clear_state_labels,
                 seq,
                 ttl,
-            } => self
-                .update_terminal_state(pane_id, |terminal| {
-                    terminal.set_agent_metadata(crate::terminal::AgentMetadataReport {
-                        source,
-                        agent_label,
-                        applies_to_source,
-                        title,
-                        display_agent,
-                        custom_status,
-                        state_labels,
-                        clear_title,
-                        clear_display_agent,
-                        clear_custom_status,
-                        clear_state_labels,
-                        ttl,
-                        seq,
-                    })
-                })
-                .into_iter()
-                .collect(),
+            } => {
+                let _ = (
+                    pane_id,
+                    source,
+                    agent_label,
+                    applies_to_source,
+                    title,
+                    display_agent,
+                    custom_status,
+                    state_labels,
+                    clear_title,
+                    clear_display_agent,
+                    clear_custom_status,
+                    clear_state_labels,
+                    seq,
+                    ttl,
+                );
+                Vec::new()
+            }
             AppEvent::HookAuthorityCleared {
                 pane_id,
                 source,

@@ -121,7 +121,6 @@ impl App {
             self.refresh_new_gmux_toast_context_for_update(update, &previous_toast);
             self.emit_pane_state_update(update);
         }
-        self.sync_agent_metadata_deadline();
         if let Some((pane_id, agent)) = released_agent {
             if pane_updates.iter().any(|update| update.pane_id == pane_id) {
                 if let Some((ws_idx, _)) = self.find_pane(pane_id) {
