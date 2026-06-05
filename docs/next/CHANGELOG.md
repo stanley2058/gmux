@@ -12,7 +12,7 @@
 - Added top-level pane automation aliases `gmux capture-pane`, `gmux send-text`, and `gmux send-keys`.
 - Added top-level tab aliases `gmux list-tabs`, `gmux select-tab`, and `gmux kill-tab`.
 - Added tmux-style top-level CLI aliases for sessions, tabs, and panes, including `gmux new`, `gmux attach`, `gmux ls`, `gmux kill-session`, `gmux new-tab`, `gmux split-pane`, and `gmux kill-pane`.
-- Added `gmux integration install droid` for Factory Droid hooks that report session ids through Gmux's socket API. When native agent session restore is enabled, Gmux can resume Droid panes with `droid --resume <id>`.
+- Added `gmux integration install droid` for Factory Droid hooks that report session ids through Gmux's socket API.
 
 ### Changed
 - Removed the visible agent integrations tab and first-run integration setup path from Settings.
@@ -22,6 +22,7 @@
 - Removed agent-state row indicators from the session navigator.
 - Removed agent label fallback from pane border titles; pane borders now use neutral title or manual labels only.
 - Removed the agent allow-list from IME cursor reveal; `experimental.reveal_hidden_cursor_for_cjk_ime` now applies generically to the focused pane.
+- Removed the public `session.resume_agents_on_restore` setting; session restore now recreates panes as shells in their saved directories.
 - Renamed pane-panel key settings from `previous_agent`, `next_agent`, and `focus_agent` to `previous_pane_panel_entry`, `next_pane_panel_entry`, and `focus_pane_panel_entry`, while keeping the old keys as compatibility aliases.
 - Renamed the sidebar detail scope setting from `agent_panel_scope` to `pane_panel_scope`, while keeping the old key as a compatibility alias.
 - Updated the sidebar detail panel to present generic panes instead of agent status cards.

@@ -281,7 +281,7 @@ impl App {
                 config.advanced.scrollback_limit_bytes,
                 &config.terminal.default_shell,
                 config.terminal.shell_mode,
-                config.session.resume_agents_on_restore,
+                false,
                 event_tx.clone(),
                 render_notify.clone(),
                 render_dirty.clone(),

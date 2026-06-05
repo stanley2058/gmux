@@ -168,21 +168,9 @@ pub struct TerminalConfig {
     pub new_cwd: NewTerminalCwdConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
-pub struct SessionConfig {
-    /// Resume supported AI-agent panes into their native conversation sessions
-    /// when restoring a Gmux session. Default: false.
-    pub resume_agents_on_restore: bool,
-}
-
-impl Default for SessionConfig {
-    fn default() -> Self {
-        Self {
-            resume_agents_on_restore: false,
-        }
-    }
-}
+pub struct SessionConfig {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -682,19 +670,6 @@ new_cwd = "~/Projects"
             config.terminal.new_cwd,
             NewTerminalCwdConfig::Path("~/Projects".into())
         );
-    }
-
-    #[test]
-    fn resume_agents_on_restore_defaults_off_and_parses() {
-        let default_config = Config::default();
-        assert!(!default_config.session.resume_agents_on_restore);
-
-        let toml = r#"
-[session]
-resume_agents_on_restore = true
-"#;
-        let config: Config = toml::from_str(toml).unwrap();
-        assert!(config.session.resume_agents_on_restore);
     }
 
     #[test]

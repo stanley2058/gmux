@@ -356,7 +356,7 @@ You can also toggle it from Settings > Experiments > pane screen history.
 
 When enabled, Gmux stores saved pane history in `session-history.json` next to `session.json`.
 
-For how pane screen history differs from live persistence, snapshot restore, native agent session restore, and live handoff, see [Session state and restore](/docs/session-state/).
+For how pane screen history differs from live persistence, snapshot restore, and live handoff, see [Session state and restore](/docs/session-state/).
 
 ## Nested launches
 
@@ -379,21 +379,6 @@ kitty_graphics = false
 ```
 
 Leave this off unless you are testing terminal image behavior.
-
-## Agent session restore
-
-Gmux can restart supported agent panes in their native conversation sessions after a Gmux server restart.
-
-```toml
-[session]
-resume_agents_on_restore = true
-```
-
-This is enabled by default. Gmux only resumes panes that reported a native session reference through an official Gmux integration. Supported resume targets are Claude Code, Codex, GitHub Copilot CLI, Droid, Pi, Hermes Agent, and OpenCode. Unsupported, missing, invalid, duplicated, or stale session references restore as a normal shell in the saved pane directory.
-
-Session references are stored in the local Gmux session snapshot. They are not shown in normal pane, agent, status, or event output.
-
-For how native agent session restore differs from pane screen history and live handoff, see [Session state and restore](/docs/session-state/).
 
 ## IME cursor tracking
 

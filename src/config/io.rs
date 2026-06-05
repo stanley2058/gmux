@@ -488,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn load_live_config_parses_session_section() {
+    fn load_live_config_tolerates_legacy_session_restore_key() {
         let loaded = load_live_config_from_str(
             r#"
 [session]
@@ -497,7 +497,6 @@ resume_agents_on_restore = true
         )
         .unwrap();
 
-        assert!(loaded.config.session.resume_agents_on_restore);
         assert!(loaded.diagnostics.is_empty());
         assert!(loaded.invalid_sections.is_empty());
     }
