@@ -321,37 +321,13 @@ fn capture_tab(
             .get(id)
             .and_then(|pane| terminals.get(&pane.attached_terminal_id))
             .and_then(|terminal| terminal.launch_argv.clone());
-        let agent_session =
-            tab.panes
-                .get(id)
-                .and_then(|pane| terminals.get(&pane.attached_terminal_id))
-                .and_then(|terminal| {
-                    if let Some(authority) = terminal.hook_authority.as_ref() {
-                        if let Some(session_ref) = authority.session_ref.as_ref() {
-                            return Some(PaneAgentSessionSnapshot {
-                                source: authority.source.clone(),
-                                agent: authority.agent_label.clone(),
-                                kind: session_ref.kind,
-                                value: session_ref.value.clone(),
-                            });
-                        }
-                    }
-                    terminal.persisted_agent_session.as_ref().map(|session| {
-                        PaneAgentSessionSnapshot {
-                            source: session.source.clone(),
-                            agent: session.agent.clone(),
-                            kind: session.session_ref.kind,
-                            value: session.session_ref.value.clone(),
-                        }
-                    })
-                });
         panes.insert(
             id.raw(),
             PaneSnapshot {
                 cwd,
                 label,
                 agent_name,
-                agent_session,
+                agent_session: None,
                 launch_argv,
             },
         );
@@ -1033,7 +1009,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_tracks_hook_authority_agent_session() {
+    fn capture_contract_omits_hook_authority_agent_session() {
         let mut state = state_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
         state.ensure_test_terminals();
@@ -1055,22 +1031,16 @@ mod tests {
             );
 
         let snapshot = capture_from_state(&state);
-        let agent_session = snapshot.workspaces[0].tabs[0].panes[&root.raw()]
-            .agent_session
-            .as_ref()
-            .expect("agent session should be captured");
-
-        assert_eq!(agent_session.source, "gmux:pi");
-        assert_eq!(agent_session.agent, "pi");
-        assert_eq!(
-            agent_session.kind,
-            crate::agent_resume::AgentSessionRefKind::Path
+        assert!(
+            snapshot.workspaces[0].tabs[0].panes[&root.raw()]
+                .agent_session
+                .is_none(),
+            "agent session references should not be persisted"
         );
-        assert_eq!(agent_session.value, "/tmp/pi-session.jsonl");
     }
 
     #[test]
-    fn capture_contract_preserves_restored_agent_session() {
+    fn capture_contract_omits_restored_agent_session() {
         let mut state = state_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
         state.ensure_test_terminals();
@@ -1088,18 +1058,12 @@ mod tests {
             });
 
         let snapshot = capture_from_state(&state);
-        let agent_session = snapshot.workspaces[0].tabs[0].panes[&root.raw()]
-            .agent_session
-            .as_ref()
-            .expect("persisted agent session should be captured");
-
-        assert_eq!(agent_session.source, "gmux:opencode");
-        assert_eq!(agent_session.agent, "opencode");
-        assert_eq!(
-            agent_session.kind,
-            crate::agent_resume::AgentSessionRefKind::Id
+        assert!(
+            snapshot.workspaces[0].tabs[0].panes[&root.raw()]
+                .agent_session
+                .is_none(),
+            "restored agent session references should not be persisted"
         );
-        assert_eq!(agent_session.value, "opencode-session");
     }
 
     #[test]

@@ -658,13 +658,10 @@ fn persisted_agent_session_from_snapshot(
 }
 
 fn restored_terminal_agent_session(
-    session: Option<&PaneAgentSessionSnapshot>,
-    duplicate_agent_session: bool,
+    _session: Option<&PaneAgentSessionSnapshot>,
+    _duplicate_agent_session: bool,
 ) -> Option<crate::agent_resume::PersistedAgentSession> {
-    if duplicate_agent_session {
-        return None;
-    }
-    session.and_then(persisted_agent_session_from_snapshot)
+    None
 }
 
 #[cfg(test)]
@@ -968,7 +965,7 @@ mod tests {
     }
 
     #[test]
-    fn restore_rehydrates_agent_session_metadata() {
+    fn restore_does_not_rehydrate_agent_session_metadata() {
         let session = super::super::snapshot::PaneAgentSessionSnapshot {
             source: "gmux:hermes".into(),
             agent: "hermes".into(),
@@ -976,15 +973,11 @@ mod tests {
             value: "hermes-session".into(),
         };
 
-        let preserved = restored_terminal_agent_session(Some(&session), false)
-            .expect("restore should preserve metadata");
-        assert_eq!(preserved.source, "gmux:hermes");
-        assert_eq!(preserved.agent, "hermes");
-        assert_eq!(preserved.session_ref.value, "hermes-session");
+        assert!(restored_terminal_agent_session(Some(&session), false).is_none());
     }
 
     #[test]
-    fn restore_does_not_rehydrate_duplicate_agent_session_metadata() {
+    fn restore_does_not_rehydrate_agent_session_metadata_for_duplicates() {
         let session = super::super::snapshot::PaneAgentSessionSnapshot {
             source: "gmux:pi".into(),
             agent: "pi".into(),
@@ -999,7 +992,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_carries_persisted_agent_session_metadata() {
+    async fn restore_ignores_persisted_agent_session_metadata() {
         let cwd = std::env::current_dir().unwrap();
         let snapshot = SessionSnapshot {
             version: super::super::snapshot::SNAPSHOT_VERSION,
@@ -1059,17 +1052,11 @@ mod tests {
             .values()
             .next()
             .expect("restored terminal should exist");
+        assert!(!terminal.respawn_shell_on_exit);
         assert!(
-            !terminal.respawn_shell_on_exit,
-            "agent sessions should not use native restore lifecycle when resume_agents_on_restore is disabled"
+            terminal.persisted_agent_session.is_none(),
+            "agent session references should not be rehydrated into terminal state"
         );
-        let session = terminal
-            .persisted_agent_session
-            .as_ref()
-            .expect("persisted agent session should survive restore");
-        assert_eq!(session.source, "gmux:opencode");
-        assert_eq!(session.agent, "opencode");
-        assert_eq!(session.session_ref.value, "opencode-session");
     }
 
     #[tokio::test]
