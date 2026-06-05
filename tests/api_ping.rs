@@ -1465,7 +1465,7 @@ fn pane_report_agent_updates_effective_state() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn pane_report_agent_accepts_unknown_agent_labels() {
+fn pane_report_agent_accepts_unknown_agent_labels_without_tracking_state() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -1502,15 +1502,15 @@ fn pane_report_agent_accepts_unknown_agent_labels() {
             pane_id
         ),
     );
-    assert_eq!(pane["result"]["pane"]["agent"], "hermes");
-    assert_eq!(pane["result"]["pane"]["agent_status"], "working");
+    assert!(pane["result"]["pane"]["agent"].is_null());
+    assert_eq!(pane["result"]["pane"]["agent_status"], "unknown");
 
     cleanup_spawned_gmux(child, base);
 }
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn pane_release_agent_suppresses_reacquire_during_graceful_exit() {
+fn pane_release_agent_is_accepted_without_clearing_detected_state() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -1613,45 +1613,17 @@ fn pane_release_agent_suppresses_reacquire_during_graceful_exit() {
     );
     assert_eq!(released["result"]["type"], "ok");
 
-    let suppression_deadline = Instant::now() + Duration::from_millis(300);
-    while Instant::now() < suppression_deadline {
-        let pane = send_request(
-            &socket_path,
-            &format!(
-                r#"{{"id":"req_release_6","method":"pane.get","params":{{"pane_id":"{}"}}}}"#,
-                pane_id
-            ),
-        );
-        assert!(
-            pane["result"]["pane"]["agent"].is_null(),
-            "pane reacquired pi during graceful release: {pane}"
-        );
-        assert_eq!(pane["result"]["pane"]["agent_status"], "unknown");
-        thread::sleep(Duration::from_millis(50));
-    }
+    let pane = send_request(
+        &socket_path,
+        &format!(
+            r#"{{"id":"req_release_6","method":"pane.get","params":{{"pane_id":"{}"}}}}"#,
+            pane_id
+        ),
+    );
+    assert_eq!(pane["result"]["pane"]["agent"], "pi");
+    assert_eq!(pane["result"]["pane"]["agent_status"], "working");
 
     fs::write(&stop_file, "stop").unwrap();
-
-    let cleared_deadline = Instant::now() + Duration::from_secs(1);
-    loop {
-        let pane = send_request(
-            &socket_path,
-            &format!(
-                r#"{{"id":"req_release_7","method":"pane.get","params":{{"pane_id":"{}"}}}}"#,
-                pane_id
-            ),
-        );
-        if pane["result"]["pane"]["agent"].is_null()
-            && pane["result"]["pane"]["agent_status"] == "unknown"
-        {
-            break;
-        }
-        assert!(
-            Instant::now() < cleared_deadline,
-            "pi agent was not cleared promptly after release: {pane}"
-        );
-        thread::sleep(Duration::from_millis(50));
-    }
 
     cleanup_spawned_gmux(child, base);
 }

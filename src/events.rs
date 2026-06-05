@@ -38,47 +38,6 @@ pub enum AppEvent {
         process_exited: bool,
         observed_at: Instant,
     },
-    /// Hook-authoritative agent state was reported for a pane.
-    HookStateReported {
-        pane_id: PaneId,
-        source: String,
-        agent_label: String,
-        state: AgentState,
-        message: Option<String>,
-        custom_status: Option<String>,
-        seq: Option<u64>,
-    },
-    /// Display-only agent metadata was reported for a pane.
-    HookMetadataReported {
-        pane_id: PaneId,
-        source: String,
-        agent_label: Option<String>,
-        applies_to_source: Option<String>,
-        title: Option<String>,
-        display_agent: Option<String>,
-        custom_status: Option<String>,
-        state_labels: std::collections::HashMap<String, String>,
-        clear_title: bool,
-        clear_display_agent: bool,
-        clear_custom_status: bool,
-        clear_state_labels: bool,
-        seq: Option<u64>,
-        ttl: Option<std::time::Duration>,
-    },
-    /// Hook authority was explicitly cleared for a pane.
-    HookAuthorityCleared {
-        pane_id: PaneId,
-        source: Option<String>,
-        seq: Option<u64>,
-    },
-    /// The current detected agent gracefully released this pane back to the shell.
-    HookAgentReleased {
-        pane_id: PaneId,
-        source: String,
-        agent_label: String,
-        known_agent: Option<Agent>,
-        seq: Option<u64>,
-    },
     /// A new version is available through the active installation manager.
     UpdateReady {
         version: String,

@@ -95,17 +95,6 @@ impl App {
             }
         }
 
-        let released_agent = if let AppEvent::HookAgentReleased {
-            pane_id,
-            known_agent,
-            ..
-        } = &ev
-        {
-            known_agent.map(|agent| (*pane_id, agent))
-        } else {
-            None
-        };
-
         let update_ready = if let AppEvent::UpdateReady {
             version,
             install_command,
@@ -120,19 +109,6 @@ impl App {
         for update in &pane_updates {
             self.refresh_new_gmux_toast_context_for_update(update, &previous_toast);
             self.emit_pane_state_update(update);
-        }
-        if let Some((pane_id, agent)) = released_agent {
-            if pane_updates.iter().any(|update| update.pane_id == pane_id) {
-                if let Some((ws_idx, _)) = self.find_pane(pane_id) {
-                    if let Some(runtime) = self.state.runtime_for_pane_in_workspace(
-                        &self.terminal_runtimes,
-                        ws_idx,
-                        pane_id,
-                    ) {
-                        runtime.begin_graceful_release(agent);
-                    }
-                }
-            }
         }
         if let Some(overlay) = overlay_state {
             self.restore_overlay_after_exit(overlay);

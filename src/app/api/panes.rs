@@ -10,8 +10,7 @@ use crate::api::schema::{
 use crate::app::{App, Mode};
 
 use super::super::api_helpers::{
-    detect_state_from_api, encode_api_keys, encode_api_text, normalize_custom_status,
-    normalize_reported_agent_label,
+    encode_api_keys, encode_api_text, normalize_custom_status, normalize_reported_agent_label,
 };
 use super::responses::{encode_error, encode_success};
 
@@ -182,15 +181,15 @@ impl App {
         let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
             return invalid_agent(id);
         };
-        self.handle_internal_event(crate::events::AppEvent::HookStateReported {
+        let _ = (
             pane_id,
-            source: params.source,
             agent_label,
-            state: detect_state_from_api(params.state),
-            message: params.message,
-            custom_status: normalize_custom_status(params.custom_status),
-            seq: params.seq,
-        });
+            params.source,
+            params.state,
+            params.message,
+            params.custom_status,
+            params.seq,
+        );
 
         encode_success(id, ResponseResult::Ok {})
     }
@@ -288,7 +287,7 @@ impl App {
                 "missing metadata field to set or clear",
             );
         }
-        self.handle_internal_event(crate::events::AppEvent::HookMetadataReported {
+        let _ = (
             pane_id,
             source,
             agent_label,
@@ -297,13 +296,13 @@ impl App {
             display_agent,
             custom_status,
             state_labels,
-            clear_title: params.clear_title,
-            clear_display_agent: params.clear_display_agent,
-            clear_custom_status: params.clear_custom_status,
-            clear_state_labels: params.clear_state_labels,
-            seq: params.seq,
+            params.clear_title,
+            params.clear_display_agent,
+            params.clear_custom_status,
+            params.clear_state_labels,
+            params.seq,
             ttl,
-        });
+        );
 
         encode_success(id, ResponseResult::Ok {})
     }
@@ -316,11 +315,7 @@ impl App {
         let Some((_ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
-        self.handle_internal_event(crate::events::AppEvent::HookAuthorityCleared {
-            pane_id,
-            source: params.source,
-            seq: params.seq,
-        });
+        let _ = (pane_id, params.source, params.seq);
 
         encode_success(id, ResponseResult::Ok {})
     }
@@ -336,13 +331,7 @@ impl App {
         let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
             return invalid_agent(id);
         };
-        self.handle_internal_event(crate::events::AppEvent::HookAgentReleased {
-            pane_id,
-            source: params.source,
-            known_agent: crate::detect::parse_agent_label(&agent_label),
-            agent_label,
-            seq: params.seq,
-        });
+        let _ = (pane_id, agent_label, params.source, params.seq);
 
         encode_success(id, ResponseResult::Ok {})
     }
