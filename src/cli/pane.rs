@@ -39,7 +39,7 @@ fn pane_list(args: &[String]) -> std::io::Result<i32> {
 
     super::print_response(&super::send_request(&Request {
         id: "cli:pane:list".into(),
-        method: Method::PaneList(PaneListParams { workspace_id: None }),
+        method: Method::PaneList(PaneListParams::default()),
     })?)
 }
 
@@ -217,7 +217,6 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
     super::print_response(&super::send_request(&Request {
         id: "cli:pane:split".into(),
         method: Method::PaneSplit(PaneSplitParams {
-            workspace_id: None,
             target_pane_id: pane_id,
             direction,
             cwd,

@@ -34,7 +34,7 @@ fn tab_list(args: &[String]) -> std::io::Result<i32> {
 
     super::print_response(&super::send_request(&Request {
         id: "cli:tab:list".into(),
-        method: Method::TabList(TabListParams { workspace_id: None }),
+        method: Method::TabList(TabListParams::default()),
     })?)
 }
 
@@ -79,12 +79,7 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
 
     super::print_response(&super::send_request(&Request {
         id: "cli:tab:create".into(),
-        method: Method::TabCreate(TabCreateParams {
-            workspace_id: None,
-            cwd,
-            focus,
-            label,
-        }),
+        method: Method::TabCreate(TabCreateParams { cwd, focus, label }),
     })?)
 }
 

@@ -176,43 +176,18 @@ impl App {
         Ok(idx)
     }
 
-    pub(super) fn collect_panes_for_workspace(
-        &self,
-        workspace_id: Option<&str>,
-    ) -> Result<Vec<crate::api::schema::PaneInfo>, (String, String)> {
-        if let Some(workspace_id) = workspace_id {
-            let Some(ws_idx) = self.parse_workspace_id(workspace_id) else {
-                return Err((
-                    "workspace_not_found".into(),
-                    format!("workspace {workspace_id} not found"),
-                ));
-            };
-            let Some(ws) = self.state.workspaces.get(ws_idx) else {
-                return Err((
-                    "workspace_not_found".into(),
-                    format!("workspace {workspace_id} not found"),
-                ));
-            };
-            Ok(ws
-                .tabs
-                .iter()
-                .flat_map(|tab| tab.layout.pane_ids().into_iter())
-                .filter_map(|pane_id| self.pane_info(ws_idx, pane_id))
-                .collect())
-        } else {
-            Ok(self
-                .state
-                .workspaces
-                .iter()
-                .enumerate()
-                .flat_map(|(ws_idx, ws)| {
-                    ws.tabs
-                        .iter()
-                        .flat_map(|tab| tab.layout.pane_ids().into_iter())
-                        .filter_map(move |pane_id| self.pane_info(ws_idx, pane_id))
-                })
-                .collect())
-        }
+    pub(super) fn collect_panes(&self) -> Vec<crate::api::schema::PaneInfo> {
+        self.state
+            .workspaces
+            .iter()
+            .enumerate()
+            .flat_map(|(ws_idx, ws)| {
+                ws.tabs
+                    .iter()
+                    .flat_map(|tab| tab.layout.pane_ids().into_iter())
+                    .filter_map(move |pane_id| self.pane_info(ws_idx, pane_id))
+            })
+            .collect()
     }
 
     pub(super) fn tab_info(

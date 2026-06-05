@@ -571,12 +571,31 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
         serde_json::json!({
             "id": "test_workspace_panes",
             "method": "pane.list",
-            "params": { "workspace_id": workspace_id },
+            "params": {},
         }),
     );
     if let Some(panes) = panes["result"]["panes"].as_array() {
+        let target_workspace_id = workspace_id
+            .parse::<usize>()
+            .ok()
+            .and_then(|number| number.checked_sub(1))
+            .and_then(|index| {
+                panes
+                    .iter()
+                    .filter_map(|pane| pane["workspace_id"].as_str())
+                    .fold(Vec::<&str>::new(), |mut workspace_ids, id| {
+                        if !workspace_ids.contains(&id) {
+                            workspace_ids.push(id);
+                        }
+                        workspace_ids
+                    })
+                    .get(index)
+                    .map(|id| (*id).to_string())
+            })
+            .unwrap_or_else(|| workspace_id.to_string());
         let mut pane_ids: Vec<_> = panes
             .iter()
+            .filter(|pane| pane["workspace_id"].as_str() == Some(target_workspace_id.as_str()))
             .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
             .collect();
         pane_ids.reverse();

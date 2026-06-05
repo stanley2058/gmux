@@ -75,9 +75,8 @@ pub struct TabTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TabCreateParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     #[serde(default)]
@@ -87,10 +86,8 @@ pub struct TabCreateParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct TabListParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
-}
+#[serde(deny_unknown_fields)]
+pub struct TabListParams {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabRenameParams {
@@ -99,9 +96,8 @@ pub struct TabRenameParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PaneSplitParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
     pub target_pane_id: String,
     pub direction: SplitDirection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -118,10 +114,8 @@ pub enum SplitDirection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub struct PaneListParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
-}
+#[serde(deny_unknown_fields)]
+pub struct PaneListParams {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaneRenameParams {
@@ -660,7 +654,6 @@ mod tests {
         let request = Request {
             id: "req_1".into(),
             method: Method::TabCreate(TabCreateParams {
-                workspace_id: None,
                 cwd: Some("/tmp".into()),
                 focus: true,
                 label: Some("api".into()),

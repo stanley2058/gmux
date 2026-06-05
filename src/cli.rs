@@ -455,7 +455,7 @@ fn pane_target_or_focused(target: Option<String>) -> std::io::Result<Result<Stri
 
     let response = send_request(&Request {
         id: "cli:pane:focused".into(),
-        method: Method::PaneList(PaneListParams { workspace_id: None }),
+        method: Method::PaneList(PaneListParams::default()),
     })?;
     if let Some(error) = response.get("error") {
         eprintln!("{}", serde_json::to_string(error).unwrap());
@@ -577,7 +577,6 @@ fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {
     let response = send_request(&Request {
         id: "cli:split-pane".into(),
         method: Method::PaneSplit(PaneSplitParams {
-            workspace_id: None,
             target_pane_id: pane_id,
             direction: direction.unwrap_or(SplitDirection::Down),
             cwd,

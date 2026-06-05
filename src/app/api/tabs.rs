@@ -10,27 +10,15 @@ use super::responses::{encode_error, encode_success};
 
 impl App {
     pub(super) fn handle_tab_list(&mut self, id: String, params: TabListParams) -> String {
-        let tabs = if let Some(workspace_id) = params.workspace_id {
-            let Some(ws_idx) = self.parse_workspace_id(&workspace_id) else {
-                return workspace_not_found(id, &workspace_id);
-            };
-            let Some(ws) = self.state.workspaces.get(ws_idx) else {
-                return workspace_not_found(id, &workspace_id);
-            };
-            (0..ws.tabs.len())
-                .filter_map(|tab_idx| self.tab_info(ws_idx, tab_idx))
-                .collect()
-        } else {
-            let mut tabs = Vec::new();
-            for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
-                for tab_idx in 0..ws.tabs.len() {
-                    if let Some(tab) = self.tab_info(ws_idx, tab_idx) {
-                        tabs.push(tab);
-                    }
+        let TabListParams {} = params;
+        let mut tabs = Vec::new();
+        for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
+            for tab_idx in 0..ws.tabs.len() {
+                if let Some(tab) = self.tab_info(ws_idx, tab_idx) {
+                    tabs.push(tab);
                 }
             }
-            tabs
-        };
+        }
 
         encode_success(id, ResponseResult::TabList { tabs })
     }
@@ -47,18 +35,8 @@ impl App {
     }
 
     pub(super) fn handle_tab_create(&mut self, id: String, params: TabCreateParams) -> String {
-        let TabCreateParams {
-            workspace_id,
-            cwd,
-            focus,
-            label,
-        } = params;
-        let ws_idx = if let Some(workspace_id) = workspace_id {
-            let Some(ws_idx) = self.parse_workspace_id(&workspace_id) else {
-                return workspace_not_found(id, &workspace_id);
-            };
-            ws_idx
-        } else if let Some(active) = self.state.active {
+        let TabCreateParams { cwd, focus, label } = params;
+        let ws_idx = if let Some(active) = self.state.active {
             active
         } else {
             let cwd = cwd
@@ -266,14 +244,6 @@ impl App {
 
         encode_success(id, ResponseResult::Ok {})
     }
-}
-
-fn workspace_not_found(id: String, workspace_id: &str) -> String {
-    encode_error(
-        id,
-        "workspace_not_found",
-        format!("workspace {workspace_id} not found"),
-    )
 }
 
 fn tab_not_found(id: String, tab_id: &str) -> String {

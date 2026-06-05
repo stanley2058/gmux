@@ -77,10 +77,13 @@ impl App {
     }
 
     pub(super) fn handle_pane_list(&mut self, id: String, params: PaneListParams) -> String {
-        match self.collect_panes_for_workspace(params.workspace_id.as_deref()) {
-            Ok(panes) => encode_success(id, ResponseResult::PaneList { panes }),
-            Err((code, message)) => encode_error(id, &code, message),
-        }
+        let PaneListParams {} = params;
+        encode_success(
+            id,
+            ResponseResult::PaneList {
+                panes: self.collect_panes(),
+            },
+        )
     }
 
     pub(super) fn handle_pane_get(&mut self, id: String, target: PaneTarget) -> String {

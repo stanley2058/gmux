@@ -185,12 +185,10 @@ fn workspace_list(socket_path: &PathBuf) -> Value {
     })
 }
 
-fn pane_list(socket_path: &PathBuf, workspace_id: &str) -> Value {
+fn pane_list(socket_path: &PathBuf, _workspace_id: &str) -> Value {
     send_json_request(
         socket_path,
-        &format!(
-            r#"{{"id":"pane_list","method":"pane.list","params":{{"workspace_id":"{workspace_id}"}}}}"#
-        ),
+        r#"{"id":"pane_list","method":"pane.list","params":{}}"#,
     )
 }
 

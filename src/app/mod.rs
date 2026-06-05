@@ -2419,9 +2419,9 @@ mod tests {
     fn read_only_api_requests_do_not_force_rerender() {
         let read_only = crate::api::schema::Request {
             id: "req_1".into(),
-            method: crate::api::schema::Method::TabList(crate::api::schema::TabListParams {
-                workspace_id: None,
-            }),
+            method: crate::api::schema::Method::TabList(
+                crate::api::schema::TabListParams::default(),
+            ),
         };
         let mutating = crate::api::schema::Request {
             id: "req_2".into(),
@@ -2627,7 +2627,6 @@ mod tests {
         let response = app.handle_api_request(crate::api::schema::Request {
             id: "req_pane_split_background_tab".into(),
             method: crate::api::schema::Method::PaneSplit(crate::api::schema::PaneSplitParams {
-                workspace_id: None,
                 target_pane_id,
                 direction: crate::api::schema::SplitDirection::Right,
                 cwd: None,
@@ -2705,7 +2704,6 @@ mod tests {
         let response = app.handle_api_request(crate::api::schema::Request {
             id: "req_pane_split_focus_background_tab".into(),
             method: crate::api::schema::Method::PaneSplit(crate::api::schema::PaneSplitParams {
-                workspace_id: None,
                 target_pane_id,
                 direction: crate::api::schema::SplitDirection::Right,
                 cwd: None,
