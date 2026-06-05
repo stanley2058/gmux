@@ -164,7 +164,7 @@ pub struct TerminalConfig {
     pub default_shell: String,
     /// Startup mode for new interactive pane shells.
     pub shell_mode: ShellModeConfig,
-    /// CWD policy for new interactive panes, tabs, and workspaces.
+    /// CWD policy for new interactive panes and tabs.
     pub new_cwd: NewTerminalCwdConfig,
 }
 
@@ -230,19 +230,19 @@ pub struct KeysConfig {
     pub help: BindingConfig,
     /// Open settings. Default: "prefix+s"
     pub settings: BindingConfig,
-    /// Create a new workspace. Unset by default.
+    /// Legacy internal container creation binding. Unset by default.
     pub new_workspace: BindingConfig,
-    /// Rename the selected workspace. Unset by default.
+    /// Legacy internal container rename binding. Unset by default.
     pub rename_workspace: BindingConfig,
-    /// Close the selected workspace. Unset by default.
+    /// Legacy internal container close binding. Unset by default.
     pub close_workspace: BindingConfig,
-    /// Open the workspace navigation surface. Unset by default.
+    /// Legacy internal container navigation surface. Unset by default.
     pub workspace_picker: BindingConfig,
     /// Open the session navigator. Default: "prefix+g"
     pub goto: BindingConfig,
-    /// Move workspace selection up in navigate mode. Default: "up".
+    /// Legacy internal container selection up in navigate mode. Unset by default.
     pub navigate_workspace_up: BindingConfig,
-    /// Move workspace selection down in navigate mode. Default: "down".
+    /// Legacy internal container selection down in navigate mode. Unset by default.
     pub navigate_workspace_down: BindingConfig,
     /// Focus the pane to the left in navigate mode. Default: "h". Left arrow is always an alias.
     pub navigate_pane_left: BindingConfig,
@@ -258,9 +258,9 @@ pub struct KeysConfig {
     pub reload_config: BindingConfig,
     /// Focus the currently visible notification target. Default: "prefix+o".
     pub open_notification_target: BindingConfig,
-    /// Select the previous workspace. Unset by default.
+    /// Legacy internal container previous binding. Unset by default.
     pub previous_workspace: BindingConfig,
-    /// Select the next workspace. Unset by default.
+    /// Legacy internal container next binding. Unset by default.
     pub next_workspace: BindingConfig,
     /// Focus the previous pane shown in the pane panel. Unset by default.
     #[serde(alias = "previous_agent")]
@@ -271,7 +271,7 @@ pub struct KeysConfig {
     /// Focus a pane-panel entry by index 1-9. Unset by default.
     #[serde(alias = "focus_agent")]
     pub focus_pane_panel_entry: BindingConfig,
-    /// Create a new tab in the active workspace. Default: "prefix+c"
+    /// Create a new tab in the active session. Default: "prefix+c"
     pub new_tab: BindingConfig,
     /// Rename the active tab. Default: "prefix+comma" with "prefix+shift+t" as a legacy alias.
     pub rename_tab: BindingConfig,
@@ -281,7 +281,7 @@ pub struct KeysConfig {
     pub next_tab: BindingConfig,
     /// Switch to tab 1-9. Default: "prefix+1..9".
     pub switch_tab: BindingConfig,
-    /// Switch to workspace 1-9 from prefix mode. Unset by default.
+    /// Legacy internal container indexed switch binding. Unset by default.
     pub switch_workspace: BindingConfig,
     /// Close the active tab. Default: "prefix+ampersand" with "prefix+shift+x" as a legacy alias.
     pub close_tab: BindingConfig,
@@ -303,7 +303,7 @@ pub struct KeysConfig {
     pub cycle_pane_next: BindingConfig,
     /// Cycle to the previous pane. Default: "prefix+shift+tab".
     pub cycle_pane_previous: BindingConfig,
-    /// Focus the last focused pane across workspaces and tabs. Unset by default.
+    /// Focus the last focused pane across tabs. Unset by default.
     pub last_pane: BindingConfig,
     /// Split pane vertically (side by side). Default: "prefix+percent" with "prefix+v" as a legacy alias.
     pub split_vertical: BindingConfig,
@@ -330,9 +330,9 @@ pub struct KeysConfig {
 pub struct IndexedKeysConfig {
     /// Modifier combo for tab shortcuts 1-9. Unset by default.
     pub tabs: String,
-    /// Modifier combo for workspace shortcuts 1-9. Unset by default.
+    /// Legacy internal container shortcuts 1-9. Unset by default.
     pub workspaces: String,
-    /// Modifier combo for agent shortcuts 1-9. Unset by default.
+    /// Legacy pane-panel shortcuts 1-9. Unset by default.
     pub agents: String,
 }
 
@@ -354,7 +354,7 @@ pub struct UiConfig {
     pub redraw_on_focus_gained: bool,
     /// Lines to scroll per mouse wheel notch. Default: 3.
     pub mouse_scroll_lines: Option<NonZeroUsize>,
-    /// Ask for confirmation before closing a workspace. Default: true.
+    /// Ask for confirmation before closing a session item. Default: true.
     pub confirm_close: bool,
     /// Ask for a tab name before creating a new tab. Default: true.
     pub prompt_new_tab_name: bool,
@@ -364,9 +364,9 @@ pub struct UiConfig {
     /// Accent color for highlights, borders, and navigation UI.
     /// Accepts hex (#89b4fa), named colors (cyan, blue), or RGB (rgb(137,180,250)).
     pub accent: String,
-    /// Optional visual toast notifications for background workspace events.
+    /// Optional visual toast notifications for background session events.
     pub toast: ToastConfig,
-    /// Play sounds when agents change state in background workspaces.
+    /// Play sounds for background notification events.
     pub sound: SoundConfig,
 }
 

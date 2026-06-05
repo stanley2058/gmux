@@ -673,7 +673,7 @@ fn main() -> io::Result<()> {
         )?;
         ratatui::restore();
 
-        // Drop app (and all workspaces/panes) before runtime shuts down
+        // Drop app (and all session panes) before runtime shuts down
         drop(app);
 
         result
