@@ -2,9 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Direction, Rect};
 
 use crate::{
-    app::state::{
-        AppState, ContextMenuKind, ContextMenuState, MenuListState, Mode, NavigatorStateFilter,
-    },
+    app::state::{AppState, ContextMenuKind, ContextMenuState, MenuListState, Mode},
     input::TerminalKey,
     layout::NavDirection,
 };
@@ -165,7 +163,6 @@ pub(crate) fn handle_navigator_key(
                     leave_modal(state);
                 } else {
                     state.navigator.query.clear();
-                    state.navigator.state_filter = None;
                     state.navigator.search_focused = false;
                     state.clamp_navigator_selection_from(terminal_runtimes);
                 }
@@ -174,7 +171,6 @@ pub(crate) fn handle_navigator_key(
                 state.accept_navigator_selection_from(terminal_runtimes);
             }
             KeyCode::Backspace => {
-                state.navigator.state_filter = None;
                 state.navigator.query.pop();
                 state.clamp_navigator_selection_from(terminal_runtimes);
             }
@@ -188,13 +184,11 @@ pub(crate) fn handle_navigator_key(
             }
             KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
                 state.navigator.query.clear();
-                state.navigator.state_filter = None;
                 state.clamp_navigator_selection_from(terminal_runtimes);
             }
             KeyCode::Char(c)
                 if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
             {
-                state.navigator.state_filter = None;
                 state.navigator.query.push(c);
                 state.clamp_navigator_selection_from(terminal_runtimes);
             }
@@ -205,11 +199,10 @@ pub(crate) fn handle_navigator_key(
 
     match key.code {
         KeyCode::Esc => {
-            if state.navigator.query.is_empty() && state.navigator.state_filter.is_none() {
+            if state.navigator.query.is_empty() {
                 leave_modal(state);
             } else {
                 state.navigator.query.clear();
-                state.navigator.state_filter = None;
                 state.clamp_navigator_selection_from(terminal_runtimes);
             }
         }
@@ -218,37 +211,7 @@ pub(crate) fn handle_navigator_key(
         }
         KeyCode::Char('/') => {
             state.navigator.query.clear();
-            state.navigator.state_filter = None;
             state.navigator.search_focused = true;
-            state.clamp_navigator_selection_from(terminal_runtimes);
-        }
-        KeyCode::Backspace if state.navigator.state_filter.is_some() => {
-            state.navigator.state_filter = None;
-            state.clamp_navigator_selection_from(terminal_runtimes);
-        }
-        KeyCode::Char('a') if key.modifiers.is_empty() => {
-            state.navigator.query.clear();
-            state.navigator.state_filter = None;
-            state.clamp_navigator_selection_from(terminal_runtimes);
-        }
-        KeyCode::Char('b') if key.modifiers.is_empty() => {
-            state.navigator.query.clear();
-            state.navigator.state_filter = Some(NavigatorStateFilter::Blocked);
-            state.clamp_navigator_selection_from(terminal_runtimes);
-        }
-        KeyCode::Char('w') if key.modifiers.is_empty() => {
-            state.navigator.query.clear();
-            state.navigator.state_filter = Some(NavigatorStateFilter::Working);
-            state.clamp_navigator_selection_from(terminal_runtimes);
-        }
-        KeyCode::Char('i') if key.modifiers.is_empty() => {
-            state.navigator.query.clear();
-            state.navigator.state_filter = Some(NavigatorStateFilter::Idle);
-            state.clamp_navigator_selection_from(terminal_runtimes);
-        }
-        KeyCode::Char('d') if key.modifiers.is_empty() => {
-            state.navigator.query.clear();
-            state.navigator.state_filter = Some(NavigatorStateFilter::Done);
             state.clamp_navigator_selection_from(terminal_runtimes);
         }
         KeyCode::Char('j') | KeyCode::Down => {

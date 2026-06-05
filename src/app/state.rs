@@ -790,21 +790,12 @@ pub(crate) struct NavigatorRow {
     pub search_text: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NavigatorStateFilter {
-    Blocked,
-    Working,
-    Idle,
-    Done,
-}
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NavigatorState {
     pub query: String,
     pub selected: usize,
     pub scroll: usize,
     pub search_focused: bool,
-    pub state_filter: Option<NavigatorStateFilter>,
     pub expanded_workspaces: std::collections::HashSet<String>,
 }
 

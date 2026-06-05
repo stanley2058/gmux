@@ -11,7 +11,7 @@ use super::{
     status::{agent_icon, state_label_color},
     widgets::{panel_contrast_fg, render_panel_shell},
 };
-use crate::app::state::{AppState, NavigatorRow, NavigatorStateFilter, NavigatorTarget};
+use crate::app::state::{AppState, NavigatorRow, NavigatorTarget};
 use crate::terminal::TerminalRuntimeRegistry;
 
 pub(super) fn render_navigator_overlay(
@@ -55,44 +55,13 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
         .sum::<usize>();
     let mut spans = vec![Span::styled(" / ", focus_style)];
     let query = app.navigator.query.trim();
-    match app.navigator.state_filter {
-        Some(NavigatorStateFilter::Blocked) => push_state_chip(
-            &mut spans,
-            crate::detect::AgentState::Blocked,
-            true,
-            app.spinner_tick,
-            "blocked",
-            app,
-        ),
-        Some(NavigatorStateFilter::Working) => push_state_chip(
-            &mut spans,
-            crate::detect::AgentState::Working,
-            true,
-            app.spinner_tick,
-            "working",
-            app,
-        ),
-        Some(NavigatorStateFilter::Idle) => push_state_chip(
-            &mut spans,
-            crate::detect::AgentState::Idle,
-            true,
-            app.spinner_tick,
-            "idle",
-            app,
-        ),
-        Some(NavigatorStateFilter::Done) => push_state_chip(
-            &mut spans,
-            crate::detect::AgentState::Idle,
-            false,
-            app.spinner_tick,
-            "done",
-            app,
-        ),
-        None if query.is_empty() => spans.push(Span::styled(
+    if query.is_empty() {
+        spans.push(Span::styled(
             "search panes",
             Style::default().fg(p.overlay0),
-        )),
-        None => spans.push(Span::styled(query.to_string(), Style::default().fg(p.text))),
+        ));
+    } else {
+        spans.push(Span::styled(query.to_string(), Style::default().fg(p.text)));
     }
     spans.push(Span::styled(
         format!(
@@ -102,25 +71,6 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
         Style::default().fg(p.overlay0),
     ));
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
-}
-
-fn push_state_chip(
-    spans: &mut Vec<Span<'static>>,
-    state: crate::detect::AgentState,
-    seen: bool,
-    tick: u32,
-    label: &'static str,
-    app: &AppState,
-) {
-    let (icon, icon_style) = agent_icon(state, seen, tick, &app.palette);
-    spans.push(Span::styled(icon, icon_style.add_modifier(Modifier::BOLD)));
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(
-        label,
-        Style::default()
-            .fg(state_label_color(state, seen, &app.palette))
-            .add_modifier(Modifier::BOLD),
-    ));
 }
 
 fn render_separator(frame: &mut Frame, area: Rect, app: &AppState) {
@@ -394,27 +344,6 @@ fn pane_detail(
             let presentation = terminal.effective_presentation();
             if let Some(title) = presentation.title {
                 parts.push(title);
-            }
-            let display_agent = terminal.effective_display_agent();
-            if let Some(agent) = display_agent.as_deref().or_else(|| {
-                terminal
-                    .agent_name
-                    .as_deref()
-                    .or_else(|| terminal.effective_agent_label())
-            }) {
-                parts.push(agent.to_string());
-                let seen = tab
-                    .panes
-                    .get(&pane_id)
-                    .map(|pane| pane.seen)
-                    .unwrap_or(true);
-                let state = row_state(app, ws_idx, tab_idx, pane_id);
-                let status = presentation
-                    .state_labels
-                    .get(display_state(state, seen))
-                    .cloned()
-                    .unwrap_or_else(|| display_state(state, seen).to_string());
-                parts.push(status);
             } else {
                 parts.push("shell".to_string());
             }
@@ -436,31 +365,6 @@ fn rowless_workspace_activity(
         .find(|row| matches!(row.target, NavigatorTarget::Workspace { ws_idx: row_ws_idx } if row_ws_idx == ws_idx))
         .map(|row| row.meta)
         .unwrap_or_default()
-}
-
-fn row_state(
-    app: &AppState,
-    ws_idx: usize,
-    tab_idx: usize,
-    pane_id: crate::layout::PaneId,
-) -> crate::detect::AgentState {
-    app.workspaces
-        .get(ws_idx)
-        .and_then(|ws| ws.tabs.get(tab_idx))
-        .and_then(|tab| tab.terminal_id(pane_id))
-        .and_then(|terminal_id| app.terminals.get(terminal_id))
-        .map(|terminal| terminal.state)
-        .unwrap_or(crate::detect::AgentState::Unknown)
-}
-
-fn display_state(state: crate::detect::AgentState, seen: bool) -> &'static str {
-    match (state, seen) {
-        (crate::detect::AgentState::Blocked, _) => "blocked",
-        (crate::detect::AgentState::Working, _) => "working",
-        (crate::detect::AgentState::Idle, false) => "done",
-        (crate::detect::AgentState::Idle, true) => "idle",
-        (crate::detect::AgentState::Unknown, _) => "unknown",
-    }
 }
 
 fn middle_elide(text: &str, max_width: usize) -> String {
@@ -497,8 +401,6 @@ fn render_footer(app: &AppState, frame: &mut Frame, area: Rect) {
         Span::styled(" switch  ", dim),
         Span::styled("/", key),
         Span::styled(" search  ", dim),
-        Span::styled("b/w/i/d/a", key),
-        Span::styled(" states  ", dim),
         Span::styled("j/k/↑↓", key),
         Span::styled(" move  ", dim),
         Span::styled("esc", key),
