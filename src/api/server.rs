@@ -280,6 +280,8 @@ fn api_method_name(method: &Method) -> &'static str {
         Method::PaneSplit(_) => "pane.split",
         Method::PaneList(_) => "pane.list",
         Method::PaneGet(_) => "pane.get",
+        Method::PaneFocus(_) => "pane.focus",
+        Method::PaneResize(_) => "pane.resize",
         Method::PaneRename(_) => "pane.rename",
         Method::PaneSendText(_) => "pane.send_text",
         Method::PaneSendKeys(_) => "pane.send_keys",

@@ -752,10 +752,18 @@ pub(super) fn execute_navigate_action_in_context(
                 super::modal::open_rename_pane(state, pane_id);
             }
         }
-        NavigateAction::FocusPaneLeft => state.navigate_pane(NavDirection::Left),
-        NavigateAction::FocusPaneDown => state.navigate_pane(NavDirection::Down),
-        NavigateAction::FocusPaneUp => state.navigate_pane(NavDirection::Up),
-        NavigateAction::FocusPaneRight => state.navigate_pane(NavDirection::Right),
+        NavigateAction::FocusPaneLeft => {
+            state.navigate_pane(NavDirection::Left);
+        }
+        NavigateAction::FocusPaneDown => {
+            state.navigate_pane(NavDirection::Down);
+        }
+        NavigateAction::FocusPaneUp => {
+            state.navigate_pane(NavDirection::Up);
+        }
+        NavigateAction::FocusPaneRight => {
+            state.navigate_pane(NavDirection::Right);
+        }
         NavigateAction::SplitVertical => {
             state.split_pane(terminal_runtimes, Direction::Horizontal);
             leave_navigate_mode(state);

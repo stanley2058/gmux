@@ -1,11 +1,13 @@
 use bytes::Bytes;
 
 use crate::api::schema::{
-    EventData, EventEnvelope, EventKind, PaneListParams, PaneReadParams, PaneReadResult,
-    PaneRenameParams, PaneSendInputParams, PaneSendKeysParams, PaneSendTextParams, PaneSplitParams,
-    PaneTarget, ReadFormat, ReadSource, ResponseResult,
+    EventData, EventEnvelope, EventKind, PaneDirection, PaneFocusParams, PaneInfo, PaneListParams,
+    PaneReadParams, PaneReadResult, PaneRenameParams, PaneResizeParams, PaneSendInputParams,
+    PaneSendKeysParams, PaneSendTextParams, PaneSplitParams, PaneTarget, ReadFormat, ReadSource,
+    ResponseResult,
 };
 use crate::app::{App, Mode};
+use crate::layout::NavDirection;
 
 use super::super::api_helpers::{encode_api_keys, encode_api_text};
 use super::responses::{encode_error, encode_success};
@@ -92,6 +94,68 @@ impl App {
         };
         let Some(pane) = self.pane_info(ws_idx, pane_id) else {
             return pane_not_found(id, &target.pane_id);
+        };
+
+        encode_success(id, ResponseResult::PaneInfo { pane })
+    }
+
+    pub(super) fn handle_pane_focus(&mut self, id: String, params: PaneFocusParams) -> String {
+        match (params.pane_id, params.direction) {
+            (Some(pane_id), None) => {
+                let Some((ws_idx, raw_pane_id)) = self.parse_pane_id(&pane_id) else {
+                    return pane_not_found(id, &pane_id);
+                };
+                self.state.focus_pane_in_workspace(ws_idx, raw_pane_id);
+                self.state.mode = Mode::Terminal;
+                let Some(pane) = self.pane_info(ws_idx, raw_pane_id) else {
+                    return pane_not_found(id, &pane_id);
+                };
+                encode_success(id, ResponseResult::PaneInfo { pane })
+            }
+            (None, Some(direction)) => {
+                self.state.navigate_pane(nav_direction_from_api(direction));
+                self.state.mode = Mode::Terminal;
+                let Some(pane) = self.focused_pane_info() else {
+                    return encode_error(id, "no_focused_pane", "no focused pane");
+                };
+                encode_success(id, ResponseResult::PaneInfo { pane })
+            }
+            (Some(_), Some(_)) => encode_error(
+                id,
+                "invalid_request",
+                "pane.focus accepts either pane_id or direction, not both",
+            ),
+            (None, None) => encode_error(
+                id,
+                "invalid_request",
+                "pane.focus requires pane_id or direction",
+            ),
+        }
+    }
+
+    pub(super) fn handle_pane_resize(&mut self, id: String, params: PaneResizeParams) -> String {
+        if params.amount == 0 {
+            return encode_error(
+                id,
+                "invalid_request",
+                "pane.resize amount must be at least 1",
+            );
+        }
+        if params.amount > 100 {
+            return encode_error(
+                id,
+                "invalid_request",
+                "pane.resize amount must be no greater than 100",
+            );
+        }
+
+        let direction = nav_direction_from_api(params.direction);
+        for _ in 0..params.amount {
+            self.state.resize_pane(direction);
+        }
+        self.state.mode = Mode::Terminal;
+        let Some(pane) = self.focused_pane_info() else {
+            return encode_error(id, "no_focused_pane", "no focused pane");
         };
 
         encode_success(id, ResponseResult::PaneInfo { pane })
@@ -285,6 +349,23 @@ fn pane_not_found(id: String, pane_id: &str) -> String {
     encode_error(id, "pane_not_found", format!("pane {pane_id} not found"))
 }
 
+fn nav_direction_from_api(direction: PaneDirection) -> NavDirection {
+    match direction {
+        PaneDirection::Left => NavDirection::Left,
+        PaneDirection::Right => NavDirection::Right,
+        PaneDirection::Up => NavDirection::Up,
+        PaneDirection::Down => NavDirection::Down,
+    }
+}
+
+impl App {
+    fn focused_pane_info(&self) -> Option<PaneInfo> {
+        let ws_idx = self.state.active?;
+        let pane_id = self.state.workspaces.get(ws_idx)?.focused_pane_id()?;
+        self.pane_info(ws_idx, pane_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +381,7 @@ mod tests {
             crate::api::EventHub::default(),
         );
         app.state.workspaces = vec![Workspace::test_new("issue")];
+        app.state.ensure_test_terminals();
         app
     }
 
@@ -319,5 +401,62 @@ mod tests {
         let success: SuccessResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(success.id, "req");
         assert!(app.state.workspaces.is_empty());
+    }
+
+    #[test]
+    fn api_pane_focus_targets_pane() {
+        let mut app = app_with_workspace();
+        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let public_pane_id = app.public_pane_id(0, pane_id).unwrap();
+
+        let response = app.handle_pane_focus(
+            "req".into(),
+            PaneFocusParams {
+                pane_id: Some(public_pane_id.clone()),
+                direction: None,
+            },
+        );
+
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        assert_eq!(success.id, "req");
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.mode, Mode::Terminal);
+        let ResponseResult::PaneInfo { pane } = success.result else {
+            panic!("expected pane info response");
+        };
+        assert_eq!(pane.pane_id, public_pane_id);
+        assert!(pane.focused);
+    }
+
+    #[test]
+    fn api_pane_focus_rejects_ambiguous_target() {
+        let mut app = app_with_workspace();
+
+        let response = app.handle_pane_focus(
+            "req".into(),
+            PaneFocusParams {
+                pane_id: Some("1-1".into()),
+                direction: Some(PaneDirection::Left),
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(value["error"]["code"], "invalid_request");
+    }
+
+    #[test]
+    fn api_pane_resize_rejects_zero_amount() {
+        let mut app = app_with_workspace();
+
+        let response = app.handle_pane_resize(
+            "req".into(),
+            PaneResizeParams {
+                direction: PaneDirection::Right,
+                amount: 0,
+            },
+        );
+
+        let value: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(value["error"]["code"], "invalid_request");
     }
 }

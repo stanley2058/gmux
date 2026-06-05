@@ -4,8 +4,9 @@ use serde::Serialize;
 
 use crate::api::client::{ApiClient, ApiClientError};
 use crate::api::schema::{
-    Method, OutputMatch, PaneListParams, PaneSendInputParams, PaneSplitParams,
-    PaneWaitForOutputParams, ReadFormat, ReadSource, Request, SplitDirection,
+    Method, OutputMatch, PaneDirection, PaneFocusParams, PaneListParams, PaneResizeParams,
+    PaneSendInputParams, PaneSplitParams, PaneWaitForOutputParams, ReadFormat, ReadSource, Request,
+    SplitDirection,
 };
 
 mod pane;
@@ -41,6 +42,8 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "rename-tab" => rename_tab_alias(&args[2..])?,
         "kill-tab" => kill_tab_alias(&args[2..])?,
         "capture-pane" => capture_pane_alias(&args[2..])?,
+        "select-pane" => select_pane_alias(&args[2..])?,
+        "resize-pane" => resize_pane_alias(&args[2..])?,
         "send-text" => send_text_alias(&args[2..])?,
         "send-keys" => send_keys_alias(&args[2..])?,
         "split-pane" => split_pane_alias(&args[2..])?,
@@ -358,6 +361,170 @@ fn capture_pane_alias(args: &[String]) -> std::io::Result<i32> {
     let mut read_args = vec!["read".to_string(), pane_id];
     read_args.extend(pane_args);
     pane::run_pane_command(&read_args)
+}
+
+fn select_pane_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux select-pane [-L|-R|-U|-D|-t pane]");
+        return Ok(0);
+    }
+
+    let mut target = None;
+    let mut direction = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-t" | "--target" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for {}", args[index]);
+                    return Ok(2);
+                };
+                target = Some(value.clone());
+                index += 2;
+            }
+            value if value.starts_with("--target=") => {
+                target = Some(
+                    value
+                        .split_once('=')
+                        .map(|(_, value)| value.to_string())
+                        .unwrap_or_default(),
+                );
+                index += 1;
+            }
+            "-L" | "--left" => {
+                direction = Some(PaneDirection::Left);
+                index += 1;
+            }
+            "-R" | "--right" => {
+                direction = Some(PaneDirection::Right);
+                index += 1;
+            }
+            "-U" | "--up" => {
+                direction = Some(PaneDirection::Up);
+                index += 1;
+            }
+            "-D" | "--down" => {
+                direction = Some(PaneDirection::Down);
+                index += 1;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+            value if target.is_none() && direction.is_none() => {
+                target = Some(value.to_string());
+                index += 1;
+            }
+            _ => {
+                eprintln!("usage: gmux select-pane [-L|-R|-U|-D|-t pane]");
+                return Ok(2);
+            }
+        }
+    }
+
+    if target.is_some() && direction.is_some() {
+        eprintln!("usage: gmux select-pane [-L|-R|-U|-D|-t pane]");
+        return Ok(2);
+    }
+
+    let method = if let Some(target) = target {
+        let target = target.trim();
+        if target.is_empty() {
+            eprintln!("missing pane target");
+            return Ok(2);
+        }
+        Method::PaneFocus(PaneFocusParams {
+            pane_id: Some(normalize_pane_id(target)),
+            direction: None,
+        })
+    } else if let Some(direction) = direction {
+        Method::PaneFocus(PaneFocusParams {
+            pane_id: None,
+            direction: Some(direction),
+        })
+    } else {
+        eprintln!("usage: gmux select-pane [-L|-R|-U|-D|-t pane]");
+        return Ok(2);
+    };
+
+    print_response(&send_request(&Request {
+        id: "cli:select-pane".into(),
+        method,
+    })?)
+}
+
+fn resize_pane_alias(args: &[String]) -> std::io::Result<i32> {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("usage: gmux resize-pane [-L|-R|-U|-D [N]] [--amount N]");
+        return Ok(0);
+    }
+
+    let mut direction = None;
+    let mut amount = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-L" | "--left" => {
+                direction = Some(PaneDirection::Left);
+                index += 1;
+            }
+            "-R" | "--right" => {
+                direction = Some(PaneDirection::Right);
+                index += 1;
+            }
+            "-U" | "--up" => {
+                direction = Some(PaneDirection::Up);
+                index += 1;
+            }
+            "-D" | "--down" => {
+                direction = Some(PaneDirection::Down);
+                index += 1;
+            }
+            "--direction" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --direction");
+                    return Ok(2);
+                };
+                direction = Some(parse_pane_direction(value)?);
+                index += 2;
+            }
+            "--amount" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --amount");
+                    return Ok(2);
+                };
+                amount = Some(parse_u16_flag("--amount", value)?);
+                index += 2;
+            }
+            value if amount.is_none() && direction.is_some() && !value.starts_with('-') => {
+                amount = Some(parse_u16_flag("amount", value)?);
+                index += 1;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+
+    let Some(direction) = direction else {
+        eprintln!("usage: gmux resize-pane [-L|-R|-U|-D [N]] [--amount N]");
+        return Ok(2);
+    };
+
+    print_response(&send_request(&Request {
+        id: "cli:resize-pane".into(),
+        method: Method::PaneResize(PaneResizeParams {
+            direction,
+            amount: amount.unwrap_or(1),
+        }),
+    })?)
 }
 
 fn send_text_alias(args: &[String]) -> std::io::Result<i32> {
@@ -1243,6 +1410,18 @@ pub(super) fn parse_split_direction(value: &str) -> std::io::Result<SplitDirecti
     }
 }
 
+pub(super) fn parse_pane_direction(value: &str) -> std::io::Result<PaneDirection> {
+    match value {
+        "left" => Ok(PaneDirection::Left),
+        "right" => Ok(PaneDirection::Right),
+        "up" => Ok(PaneDirection::Up),
+        "down" => Ok(PaneDirection::Down),
+        _ => Err(std::io::Error::other(format!(
+            "invalid pane direction: {value}"
+        ))),
+    }
+}
+
 pub(super) fn parse_read_source(value: &str) -> std::io::Result<ReadSource> {
     match value {
         "visible" => Ok(ReadSource::Visible),
@@ -1267,6 +1446,12 @@ pub(super) fn parse_read_format(value: &str) -> std::io::Result<ReadFormat> {
 pub(super) fn parse_u32_flag(flag: &str, value: &str) -> std::io::Result<u32> {
     value
         .parse::<u32>()
+        .map_err(|_| std::io::Error::other(format!("invalid value for {flag}: {value}")))
+}
+
+pub(super) fn parse_u16_flag(flag: &str, value: &str) -> std::io::Result<u16> {
+    value
+        .parse::<u16>()
         .map_err(|_| std::io::Error::other(format!("invalid value for {flag}: {value}")))
 }
 

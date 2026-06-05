@@ -79,6 +79,8 @@ gmux tab close <tab_id>
 ```bash
 gmux split-pane [-h|-v] [-c CWD] [command...]
 gmux capture-pane [-t pane] [-S lines] [-e]
+gmux select-pane [-L|-R|-U|-D|-t pane]
+gmux resize-pane [-L|-R|-U|-D [N]]
 gmux send-text [-t pane] <text>
 gmux send-keys [-t pane] <key> [key ...]
 gmux kill-pane [-t pane]

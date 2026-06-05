@@ -483,6 +483,8 @@ impl App {
             Method::PaneSplit(params) => return self.handle_pane_split(request.id, params),
             Method::PaneList(params) => return self.handle_pane_list(request.id, params),
             Method::PaneGet(target) => return self.handle_pane_get(request.id, target),
+            Method::PaneFocus(params) => return self.handle_pane_focus(request.id, params),
+            Method::PaneResize(params) => return self.handle_pane_resize(request.id, params),
             Method::PaneRename(params) => return self.handle_pane_rename(request.id, params),
             Method::PaneRead(params) => return self.handle_pane_read(request.id, params),
             Method::PaneSendText(params) => return self.handle_pane_send_text(request.id, params),

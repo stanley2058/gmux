@@ -751,6 +751,8 @@ fn help_commands_exit_successfully() {
         &["rename-tab", "-h"],
         &["kill-tab", "-h"],
         &["capture-pane", "-h"],
+        &["select-pane", "-h"],
+        &["resize-pane", "-h"],
         &["send-text", "-h"],
         &["send-keys", "-h"],
         &["split-pane", "-h"],
@@ -1564,6 +1566,44 @@ fn top_level_tab_and_pane_aliases_work() {
         .as_str()
         .unwrap()
         .to_string();
+
+    let selected_pane = run_cli(&socket_path, &["select-pane", "-t", &root_pane_id]);
+    assert!(
+        selected_pane.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&selected_pane.stderr)
+    );
+    let selected_pane_json: serde_json::Value =
+        serde_json::from_slice(&selected_pane.stdout).unwrap();
+    assert_eq!(
+        selected_pane_json["result"]["pane"]["pane_id"].as_str(),
+        Some(root_pane_id.as_str())
+    );
+
+    let moved_pane = run_cli(&socket_path, &["select-pane", "-R"]);
+    assert!(
+        moved_pane.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&moved_pane.stderr)
+    );
+    let moved_pane_json: serde_json::Value = serde_json::from_slice(&moved_pane.stdout).unwrap();
+    assert_eq!(
+        moved_pane_json["result"]["pane"]["pane_id"].as_str(),
+        Some(split_pane_id.as_str())
+    );
+
+    let resized_pane = run_cli(&socket_path, &["resize-pane", "-L", "2"]);
+    assert!(
+        resized_pane.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&resized_pane.stderr)
+    );
+    let resized_pane_json: serde_json::Value =
+        serde_json::from_slice(&resized_pane.stdout).unwrap();
+    assert_eq!(
+        resized_pane_json["result"]["pane"]["pane_id"].as_str(),
+        Some(split_pane_id.as_str())
+    );
 
     let closed = run_cli(&socket_path, &["kill-pane", "-t", &split_pane_id]);
     assert!(closed.status.success());

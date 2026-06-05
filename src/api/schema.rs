@@ -38,6 +38,10 @@ pub enum Method {
     PaneList(PaneListParams),
     #[serde(rename = "pane.get")]
     PaneGet(PaneTarget),
+    #[serde(rename = "pane.focus")]
+    PaneFocus(PaneFocusParams),
+    #[serde(rename = "pane.resize")]
+    PaneResize(PaneResizeParams),
     #[serde(rename = "pane.rename")]
     PaneRename(PaneRenameParams),
     #[serde(rename = "pane.send_text")]
@@ -113,9 +117,35 @@ pub enum SplitDirection {
     Down,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaneDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct PaneListParams {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PaneFocusParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<PaneDirection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PaneResizeParams {
+    pub direction: PaneDirection,
+    #[serde(default = "default_resize_amount")]
+    pub amount: u16,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaneRenameParams {
@@ -572,6 +602,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_resize_amount() -> u16 {
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -672,6 +706,46 @@ mod tests {
         assert_eq!(params.pane_id, "p_1");
         assert!(params.text.is_empty());
         assert!(params.keys.is_empty());
+    }
+
+    #[test]
+    fn pane_focus_parses_direction() {
+        let json = r#"
+        {
+            "id": "req_1",
+            "method": "pane.focus",
+            "params": {
+                "direction": "left"
+            }
+        }
+        "#;
+
+        let request: Request = serde_json::from_str(json).unwrap();
+        let Method::PaneFocus(params) = request.method else {
+            panic!("wrong method parsed");
+        };
+        assert_eq!(params.direction, Some(PaneDirection::Left));
+        assert_eq!(params.pane_id, None);
+    }
+
+    #[test]
+    fn pane_resize_defaults_amount() {
+        let json = r#"
+        {
+            "id": "req_1",
+            "method": "pane.resize",
+            "params": {
+                "direction": "right"
+            }
+        }
+        "#;
+
+        let request: Request = serde_json::from_str(json).unwrap();
+        let Method::PaneResize(params) = request.method else {
+            panic!("wrong method parsed");
+        };
+        assert_eq!(params.direction, PaneDirection::Right);
+        assert_eq!(params.amount, 1);
     }
 
     #[test]

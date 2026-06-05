@@ -566,10 +566,18 @@ pub(crate) fn handle_resize_key(state: &mut AppState, raw_key: TerminalKey) {
     }
 
     match key.code {
-        KeyCode::Char('h') | KeyCode::Left => state.resize_pane(NavDirection::Left),
-        KeyCode::Char('l') | KeyCode::Right => state.resize_pane(NavDirection::Right),
-        KeyCode::Char('j') | KeyCode::Down => state.resize_pane(NavDirection::Down),
-        KeyCode::Char('k') | KeyCode::Up => state.resize_pane(NavDirection::Up),
+        KeyCode::Char('h') | KeyCode::Left => {
+            state.resize_pane(NavDirection::Left);
+        }
+        KeyCode::Char('l') | KeyCode::Right => {
+            state.resize_pane(NavDirection::Right);
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            state.resize_pane(NavDirection::Down);
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            state.resize_pane(NavDirection::Up);
+        }
         _ => {}
     }
 }

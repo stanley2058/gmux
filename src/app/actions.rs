@@ -1090,12 +1090,12 @@ impl AppState {
 // ---------------------------------------------------------------------------
 
 impl AppState {
-    pub fn navigate_pane(&mut self, direction: NavDirection) {
+    pub fn navigate_pane(&mut self, direction: NavDirection) -> bool {
         let Some(ws_idx) = self.active else {
-            return;
+            return false;
         };
         let Some(tab) = self.workspaces.get(ws_idx).and_then(|ws| ws.active_tab()) else {
-            return;
+            return false;
         };
         let panes = if tab.zoomed {
             tab.layout.panes(self.view.terminal_area)
@@ -1105,12 +1105,13 @@ impl AppState {
 
         if let Some(focused) = panes.iter().find(|p| p.is_focused) {
             if let Some(target) = find_in_direction(focused, direction, &panes) {
-                self.focus_pane_in_workspace(ws_idx, target);
+                return self.focus_pane_in_workspace(ws_idx, target);
             }
         }
+        false
     }
 
-    pub fn resize_pane(&mut self, direction: NavDirection) {
+    pub fn resize_pane(&mut self, direction: NavDirection) -> bool {
         if let Some(first) = self.view.pane_infos.first() {
             let area = self
                 .view
@@ -1124,8 +1125,10 @@ impl AppState {
             {
                 tab.layout.resize_focused(direction, 0.05, area);
                 self.mark_session_dirty();
+                return true;
             }
         }
+        false
     }
 
     pub fn cycle_pane(&mut self, reverse: bool) {
