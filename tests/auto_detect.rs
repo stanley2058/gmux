@@ -469,18 +469,18 @@ fn cli_subcommands_work_through_server() {
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
-    // Test `gmux workspace list` through the server's API socket.
-    let output = run_cli(&api_socket, &["workspace", "list"]);
+    // Test `gmux tab list` through the server's API socket.
+    let output = run_cli(&api_socket, &["tab", "list"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
-        "workspace list should succeed: stderr={}",
+        "tab list should succeed: stderr={}",
         String::from_utf8_lossy(&output.stderr)
     );
     // The response should be valid JSON with a "result" field.
     assert!(
         stdout.contains("result"),
-        "workspace list output should contain 'result': {stdout}"
+        "tab list output should contain 'result': {stdout}"
     );
 
     // Test `gmux pane list` through the server's API socket.

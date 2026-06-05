@@ -430,6 +430,78 @@ fn send_request(socket_path: &Path, json: &str) -> serde_json::Value {
     serde_json::from_str(&line).unwrap()
 }
 
+fn send_json_request(socket_path: &Path, request: serde_json::Value) -> serde_json::Value {
+    send_request(socket_path, &request.to_string())
+}
+
+fn create_workspace_api(
+    socket_path: &Path,
+    cwd: Option<&Path>,
+    label: Option<&str>,
+    focus: bool,
+) -> serde_json::Value {
+    let mut params = serde_json::Map::new();
+    if let Some(cwd) = cwd {
+        params.insert("cwd".to_string(), cwd.display().to_string().into());
+    }
+    if let Some(label) = label {
+        params.insert("label".to_string(), label.to_string().into());
+    }
+    params.insert("focus".to_string(), focus.into());
+    send_json_request(
+        socket_path,
+        serde_json::json!({
+            "id": "test_workspace_create",
+            "method": "workspace.create",
+            "params": params,
+        }),
+    )
+}
+
+fn list_workspaces_api(socket_path: &Path) -> serde_json::Value {
+    send_json_request(
+        socket_path,
+        serde_json::json!({
+            "id": "test_workspace_list",
+            "method": "workspace.list",
+            "params": {},
+        }),
+    )
+}
+
+fn focus_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Value {
+    send_json_request(
+        socket_path,
+        serde_json::json!({
+            "id": "test_workspace_focus",
+            "method": "workspace.focus",
+            "params": { "workspace_id": workspace_id },
+        }),
+    )
+}
+
+fn rename_workspace_api(socket_path: &Path, workspace_id: &str, label: &str) -> serde_json::Value {
+    send_json_request(
+        socket_path,
+        serde_json::json!({
+            "id": "test_workspace_rename",
+            "method": "workspace.rename",
+            "params": { "workspace_id": workspace_id, "label": label },
+        }),
+    )
+}
+
+fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Value {
+    send_json_request(
+        socket_path,
+        serde_json::json!({
+            "id": "test_workspace_close",
+            "method": "workspace.close",
+            "params": { "workspace_id": workspace_id },
+        }),
+    )
+}
+
 #[test]
 fn pane_run_sends_one_send_input_request_with_enter_key() {
     let base = unique_test_dir();
@@ -550,7 +622,6 @@ fn help_commands_exit_successfully() {
         &["--help"],
         &["status", "-h"],
         &["server", "-h"],
-        &["workspace", "-h"],
         &["tab", "-h"],
         &["pane", "-h"],
         &["wait", "-h"],
@@ -648,7 +719,7 @@ fn removed_show_changelog_flag_fails_before_nested_guard() {
 }
 
 #[test]
-fn named_sessions_use_separate_servers_and_workspace_state() {
+fn named_sessions_use_separate_servers_and_tab_state() {
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
@@ -665,64 +736,58 @@ fn named_sessions_use_separate_servers_and_workspace_state() {
         Duration::from_secs(5),
     );
 
-    run_named_cli_json(
-        &config_home,
-        &runtime_dir,
-        &[
-            "--session",
-            "alpha",
-            "workspace",
-            "create",
-            "--label",
-            "alpha-ws",
-            "--no-focus",
-        ],
+    let alpha_workspace = create_workspace_api(
+        &named_session_socket(&config_home, "alpha"),
+        None,
+        Some("alpha-ws"),
+        true,
     );
-    run_named_cli_json(
-        &config_home,
-        &runtime_dir,
-        &[
-            "--session",
-            "beta",
-            "workspace",
-            "create",
-            "--label",
-            "beta-ws",
-            "--no-focus",
-        ],
+    let beta_workspace = create_workspace_api(
+        &named_session_socket(&config_home, "beta"),
+        None,
+        Some("beta-ws"),
+        true,
     );
+    let alpha_workspace_id = alpha_workspace["result"]["workspace"]["workspace_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let beta_workspace_id = beta_workspace["result"]["workspace"]["workspace_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let alpha_list = run_named_cli_json(
         &config_home,
         &runtime_dir,
-        &["--session", "alpha", "workspace", "list"],
+        &["--session", "alpha", "tab", "list"],
     );
     let beta_list = run_named_cli_json(
         &config_home,
         &runtime_dir,
-        &["--session", "beta", "workspace", "list"],
+        &["--session", "beta", "tab", "list"],
     );
 
-    let alpha_labels: Vec<_> = alpha_list["result"]["workspaces"]
+    let alpha_workspace_ids: Vec<_> = alpha_list["result"]["tabs"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|workspace| workspace["label"].as_str().unwrap())
+        .map(|tab| tab["workspace_id"].as_str().unwrap())
         .collect();
-    let beta_labels: Vec<_> = beta_list["result"]["workspaces"]
+    let beta_workspace_ids: Vec<_> = beta_list["result"]["tabs"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|workspace| workspace["label"].as_str().unwrap())
+        .map(|tab| tab["workspace_id"].as_str().unwrap())
         .collect();
 
-    assert_eq!(alpha_labels, vec!["alpha-ws"]);
-    assert_eq!(beta_labels, vec!["beta-ws"]);
+    assert_eq!(alpha_workspace_ids, vec![alpha_workspace_id.as_str()]);
+    assert_eq!(beta_workspace_ids, vec![beta_workspace_id.as_str()]);
 
     let beta_via_explicit_session = run_named_cli_with_socket_override(
         &config_home,
         &runtime_dir,
-        &["--session", "beta", "workspace", "list"],
+        &["--session", "beta", "tab", "list"],
         Some(&named_session_socket(&config_home, "alpha")),
     );
     assert!(
@@ -732,13 +797,13 @@ fn named_sessions_use_separate_servers_and_workspace_state() {
     );
     let beta_via_explicit_session: serde_json::Value =
         serde_json::from_slice(&beta_via_explicit_session.stdout).unwrap();
-    let labels_via_explicit: Vec<_> = beta_via_explicit_session["result"]["workspaces"]
+    let workspace_ids_via_explicit: Vec<_> = beta_via_explicit_session["result"]["tabs"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|workspace| workspace["label"].as_str().unwrap())
+        .map(|tab| tab["workspace_id"].as_str().unwrap())
         .collect();
-    assert_eq!(labels_via_explicit, vec!["beta-ws"]);
+    assert_eq!(workspace_ids_via_explicit, vec![beta_workspace_id.as_str()]);
 
     let human_sessions = run_named_cli(&config_home, &runtime_dir, &["session", "list"]);
     assert!(human_sessions.status.success());
@@ -1053,17 +1118,7 @@ fn server_stop_then_restart_restores_pane_history() {
     wait_for_socket(&socket_path, Duration::from_secs(5));
     wait_for_socket(&client_socket, Duration::from_secs(5));
 
-    let created = run_cli_json(
-        &socket_path,
-        &[
-            "workspace",
-            "create",
-            "--cwd",
-            base.to_str().expect("test path should be utf-8"),
-            "--label",
-            "history-restart",
-        ],
-    );
+    let created = create_workspace_api(&socket_path, Some(&base), Some("history-restart"), true);
     let pane_id = created["result"]["root_pane"]["pane_id"]
         .as_str()
         .expect("workspace create should return root pane id")
@@ -1101,7 +1156,7 @@ fn server_stop_then_restart_restores_pane_history() {
     wait_for_socket(&socket_path, Duration::from_secs(5));
     wait_for_socket(&client_socket, Duration::from_secs(5));
 
-    let workspaces = run_cli_json(&socket_path, &["workspace", "list"]);
+    let workspaces = list_workspaces_api(&socket_path);
     let workspace_id = workspaces["result"]["workspaces"]
         .as_array()
         .expect("workspace.list should return workspaces")
@@ -1133,7 +1188,7 @@ fn server_stop_then_restart_restores_pane_history() {
 }
 
 #[test]
-fn workspace_and_pane_management_commands_work() {
+fn pane_management_commands_work() {
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
@@ -1152,9 +1207,7 @@ fn workspace_and_pane_management_commands_work() {
     assert_eq!(reload_json["result"]["type"], "config_reload");
     assert_eq!(reload_json["result"]["status"], "applied");
 
-    let listed = run_cli(&socket_path, &["workspace", "list"]);
-    assert!(listed.status.success());
-    let listed_json: serde_json::Value = serde_json::from_slice(&listed.stdout).unwrap();
+    let listed_json = list_workspaces_api(&socket_path);
     assert_eq!(listed_json["result"]["type"], "workspace_list");
     assert_eq!(
         listed_json["result"]["workspaces"]
@@ -1164,12 +1217,7 @@ fn workspace_and_pane_management_commands_work() {
         0
     );
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
-    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
     let workspace_id = created_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()
@@ -1202,21 +1250,16 @@ fn workspace_and_pane_management_commands_work() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let renamed = run_cli(
-        &socket_path,
-        &["workspace", "rename", &workspace_id, "demo"],
-    );
-    assert!(renamed.status.success());
-    let renamed_json: serde_json::Value = serde_json::from_slice(&renamed.stdout).unwrap();
+    let renamed_json = rename_workspace_api(&socket_path, &workspace_id, "demo");
     assert_eq!(renamed_json["result"]["workspace"]["label"], "demo");
 
-    let focused = run_cli(&socket_path, &["workspace", "focus", &workspace_id]);
-    assert!(focused.status.success());
+    let focused_json = focus_workspace_api(&socket_path, &workspace_id);
+    assert_eq!(
+        focused_json["result"]["workspace"]["workspace_id"],
+        workspace_id
+    );
 
-    let closed_workspace = run_cli(&socket_path, &["workspace", "close", &workspace_id]);
-    assert!(closed_workspace.status.success());
-    let closed_workspace_json: serde_json::Value =
-        serde_json::from_slice(&closed_workspace.stdout).unwrap();
+    let closed_workspace_json = close_workspace_api(&socket_path, &workspace_id);
     assert_eq!(closed_workspace_json["result"]["type"], "ok");
 
     cleanup_spawned_gmux(gmux, base);
@@ -1240,6 +1283,23 @@ fn worktree_command_is_not_public_cli() {
 }
 
 #[test]
+fn workspace_command_is_not_public_cli() {
+    let base = unique_test_dir();
+    fs::create_dir_all(&base).unwrap();
+    let socket_path = base.join("missing.sock");
+
+    let output = run_cli(&socket_path, &["workspace", "list"]);
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unknown command: workspace"),
+        "stderr: {stderr}"
+    );
+
+    cleanup_test_base(&base);
+}
+
+#[test]
 fn tab_management_commands_work() {
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -1249,12 +1309,7 @@ fn tab_management_commands_work() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
-    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
     let workspace_id = created_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()
@@ -1317,12 +1372,7 @@ fn top_level_tab_and_pane_aliases_work() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
-    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
     let first_tab_id = created_json["result"]["workspace"]["active_tab_id"]
         .as_str()
         .unwrap()
@@ -1467,12 +1517,7 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
-    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
     let workspace_id = created_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()
@@ -1494,9 +1539,7 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let workspaces = run_cli(&socket_path, &["workspace", "list"]);
-    assert!(workspaces.status.success());
-    let workspaces_json: serde_json::Value = serde_json::from_slice(&workspaces.stdout).unwrap();
+    let workspaces_json = list_workspaces_api(&socket_path);
     assert_eq!(
         workspaces_json["result"]["workspaces"]
             .as_array()
@@ -1527,12 +1570,7 @@ fn pane_close_removes_the_workspace_when_it_closes_the_last_pane() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
-    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
+    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
     let root_pane_id = created_json["result"]["root_pane"]["pane_id"]
         .as_str()
         .unwrap()
@@ -1543,9 +1581,7 @@ fn pane_close_removes_the_workspace_when_it_closes_the_last_pane() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let workspaces = run_cli(&socket_path, &["workspace", "list"]);
-    assert!(workspaces.status.success());
-    let workspaces_json: serde_json::Value = serde_json::from_slice(&workspaces.stdout).unwrap();
+    let workspaces_json = list_workspaces_api(&socket_path);
     assert!(workspaces_json["result"]["workspaces"]
         .as_array()
         .unwrap()
@@ -1678,11 +1714,8 @@ fn wait_output_matches_recent_unwrapped_text() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
+    let created = create_workspace_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["workspace"]["workspace_id"].is_string());
 
     let token = "WRAP_WAIT_TEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789";
     let script = base.join("emit-long-token.sh");
@@ -1753,11 +1786,8 @@ fn closing_pane_terminates_processes_inside_it() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
+    let created = create_workspace_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["workspace"]["workspace_id"].is_string());
 
     let split = run_cli(
         &socket_path,
@@ -1814,11 +1844,8 @@ fn closing_workspace_terminates_processes_inside_it() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
+    let created = create_workspace_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["workspace"]["workspace_id"].is_string());
 
     let pid_file = base.join("workspace-close.pid");
     let command = format!(
@@ -1843,12 +1870,8 @@ fn closing_workspace_terminates_processes_inside_it() {
     });
     assert!(process_exists(pid), "child process was not running");
 
-    let closed = run_cli(&socket_path, &["workspace", "close", "1"]);
-    assert!(
-        closed.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&closed.stderr)
-    );
+    let closed = close_workspace_api(&socket_path, "1");
+    assert_eq!(closed["result"]["type"], "ok");
     assert!(
         wait_for_pid_exit(pid, Duration::from_secs(3)),
         "process {pid} survived workspace close"
@@ -1867,10 +1890,7 @@ fn workspace_ids_are_stable_and_pane_numbers_stay_compact() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let ws1_json = run_cli_json(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
+    let ws1_json = create_workspace_api(&socket_path, Some(&base), None, true);
     let ws1_id = ws1_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()
@@ -1894,22 +1914,15 @@ fn workspace_ids_are_stable_and_pane_numbers_stay_compact() {
         format!("{ws1_id}-3")
     );
 
-    let ws2_json = run_cli_json(
-        &socket_path,
-        &["workspace", "create", "--cwd", "/tmp", "--no-focus"],
-    );
+    let ws2_json = create_workspace_api(&socket_path, Some(Path::new("/tmp")), None, false);
     let ws2_id = ws2_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()
         .to_string();
     assert_ne!(ws2_id, ws1_id);
 
-    let ws2_focus = run_cli(&socket_path, &["workspace", "focus", &ws2_id]);
-    assert!(
-        ws2_focus.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&ws2_focus.stderr)
-    );
+    let ws2_focus = focus_workspace_api(&socket_path, &ws2_id);
+    assert_eq!(ws2_focus["result"]["workspace"]["workspace_id"], ws2_id);
 
     let ws2_split_json = run_cli_json(
         &socket_path,
@@ -1920,10 +1933,7 @@ fn workspace_ids_are_stable_and_pane_numbers_stay_compact() {
         format!("{ws2_id}-2")
     );
 
-    let ws3_json = run_cli_json(
-        &socket_path,
-        &["workspace", "create", "--cwd", "/", "--no-focus"],
-    );
+    let ws3_json = create_workspace_api(&socket_path, Some(Path::new("/")), None, false);
     let ws3_id = ws3_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()
@@ -1931,14 +1941,10 @@ fn workspace_ids_are_stable_and_pane_numbers_stay_compact() {
     assert_ne!(ws3_id, ws1_id);
     assert_ne!(ws3_id, ws2_id);
 
-    let close_ws2 = run_cli(&socket_path, &["workspace", "close", &ws2_id]);
-    assert!(
-        close_ws2.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&close_ws2.stderr)
-    );
+    let close_ws2 = close_workspace_api(&socket_path, &ws2_id);
+    assert_eq!(close_ws2["result"]["type"], "ok");
 
-    let workspaces_json = run_cli_json(&socket_path, &["workspace", "list"]);
+    let workspaces_json = list_workspaces_api(&socket_path);
     let ids: Vec<String> = workspaces_json["result"]["workspaces"]
         .as_array()
         .unwrap()
@@ -1947,10 +1953,7 @@ fn workspace_ids_are_stable_and_pane_numbers_stay_compact() {
         .collect();
     assert_eq!(ids, vec![ws1_id.clone(), ws3_id.clone()]);
 
-    let new_ws_json = run_cli_json(
-        &socket_path,
-        &["workspace", "create", "--cwd", "/var/tmp", "--no-focus"],
-    );
+    let new_ws_json = create_workspace_api(&socket_path, Some(Path::new("/var/tmp")), None, false);
     let new_ws_id = new_ws_json["result"]["workspace"]["workspace_id"]
         .as_str()
         .unwrap()

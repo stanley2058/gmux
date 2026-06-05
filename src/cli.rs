@@ -12,7 +12,6 @@ mod pane;
 mod server;
 mod status;
 mod tab;
-mod workspace;
 
 pub enum CommandOutcome {
     Handled(i32),
@@ -47,7 +46,6 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "split-pane" => split_pane_alias(&args[2..])?,
         "kill-pane" => kill_pane_alias(&args[2..])?,
         "detach" => detach_alias(&args[2..])?,
-        "workspace" => workspace::run_workspace_command(&args[2..])?,
         "tab" => tab::run_tab_command(&args[2..])?,
         "terminal" => run_terminal_command(&args[2..])?,
         "pane" => pane::run_pane_command(&args[2..])?,
