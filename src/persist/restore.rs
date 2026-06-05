@@ -684,114 +684,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_ignores_persisted_agent_session_metadata() {
-        let cwd = std::env::current_dir().unwrap();
-        let snapshot = SessionSnapshot {
-            version: super::super::snapshot::SNAPSHOT_VERSION,
-            workspaces: vec![WorkspaceSnapshot {
-                id: Some("workspace".into()),
-                custom_name: None,
-                identity_cwd: cwd.clone(),
-                worktree_space: None,
-                tabs: vec![TabSnapshot {
-                    custom_name: None,
-                    layout: LayoutSnapshot::Pane(0),
-                    panes: HashMap::from([(
-                        0,
-                        super::super::snapshot::PaneSnapshot {
-                            cwd,
-                            label: None,
-                            agent_name: None,
-                            agent_session: Some(super::super::snapshot::PaneAgentSessionSnapshot {
-                                source: "gmux:opencode".into(),
-                                agent: "opencode".into(),
-                                kind: crate::agent_resume::AgentSessionRefKind::Id,
-                                value: "opencode-session".into(),
-                            }),
-                            launch_argv: None,
-                        },
-                    )]),
-                    zoomed: false,
-                    focused: Some(0),
-                    root_pane: Some(0),
-                }],
-                active_tab: 0,
-            }],
-            active: Some(0),
-            selected: 0,
-            pane_panel_scope: Default::default(),
-            sidebar_width: None,
-            sidebar_section_split: None,
-            collapsed_space_keys: Default::default(),
-        };
-        let (events, _event_rx) = mpsc::channel(4);
-
-        let (_workspaces, terminals, _runtimes) = restore(
-            &snapshot,
-            None,
-            24,
-            80,
-            0,
-            "/usr/bin/true",
-            crate::config::ShellModeConfig::NonLogin,
-            events,
-            Arc::new(Notify::new()),
-            Arc::new(AtomicBool::new(false)),
-        );
-
-        let terminal = terminals
-            .values()
-            .next()
-            .expect("restored terminal should exist");
-        assert!(!terminal.respawn_shell_on_exit);
-        assert!(
-            terminal.persisted_agent_session.is_none(),
-            "agent session references should not be rehydrated into terminal state"
-        );
-    }
-
-    #[tokio::test]
     #[cfg(unix)]
-    async fn agent_session_snapshot_restores_as_shell_runtime() {
+    async fn legacy_agent_session_snapshot_restores_as_shell_runtime() {
         let cwd = std::env::current_dir().unwrap();
-        let snapshot = SessionSnapshot {
-            version: super::super::snapshot::SNAPSHOT_VERSION,
-            workspaces: vec![WorkspaceSnapshot {
-                id: Some("workspace".into()),
-                custom_name: None,
-                identity_cwd: cwd.clone(),
-                worktree_space: None,
-                tabs: vec![TabSnapshot {
-                    custom_name: None,
-                    layout: LayoutSnapshot::Pane(0),
-                    panes: HashMap::from([(
-                        0,
-                        super::super::snapshot::PaneSnapshot {
-                            cwd,
-                            label: None,
-                            agent_name: None,
-                            agent_session: Some(super::super::snapshot::PaneAgentSessionSnapshot {
-                                source: "gmux:codex".into(),
-                                agent: "codex".into(),
-                                kind: crate::agent_resume::AgentSessionRefKind::Id,
-                                value: "codex-session".into(),
-                            }),
-                            launch_argv: None,
-                        },
-                    )]),
-                    zoomed: false,
-                    focused: Some(0),
-                    root_pane: Some(0),
+        let cwd = cwd.display().to_string();
+        let snapshot_json = serde_json::json!({
+            "version": super::super::snapshot::SNAPSHOT_VERSION,
+            "workspaces": [{
+                "id": "workspace",
+                "identity_cwd": cwd,
+                "tabs": [{
+                    "layout": { "Pane": 0 },
+                    "panes": {
+                        "0": {
+                            "cwd": cwd,
+                            "agent_session": {
+                                "source": "gmux:codex",
+                                "agent": "codex",
+                                "kind": "id",
+                                "value": "codex-session"
+                            }
+                        }
+                    },
+                    "zoomed": false,
+                    "focused": 0,
+                    "root_pane": 0
                 }],
-                active_tab: 0,
+                "active_tab": 0
             }],
-            active: Some(0),
-            selected: 0,
-            pane_panel_scope: Default::default(),
-            sidebar_width: None,
-            sidebar_section_split: None,
-            collapsed_space_keys: Default::default(),
-        };
+            "active": 0,
+            "selected": 0
+        })
+        .to_string();
+        let snapshot = super::super::snapshot::parse_snapshot(&snapshot_json)
+            .expect("legacy agent session snapshots should still parse");
         let (events, _event_rx) = mpsc::channel(4);
 
         let (_workspaces, terminals, runtimes) = restore(
@@ -810,12 +736,11 @@ mod tests {
         let terminal = terminals
             .values()
             .next()
-            .expect("agent session snapshot should create terminal state");
+            .expect("legacy agent session snapshot should create terminal state");
         assert!(!terminal.respawn_shell_on_exit);
-        assert!(terminal.persisted_agent_session.is_none());
         assert!(
             !runtimes.is_empty(),
-            "agent session snapshots should restore as normal shell runtimes"
+            "legacy agent session snapshots should restore as normal shell runtimes"
         );
         let mut imports = HashMap::new();
         let (_handoff_workspaces, handoff_terminals, handoff_runtimes) = restore_handoff(
@@ -833,10 +758,10 @@ mod tests {
             .values()
             .next()
             .expect("handoff restore should create terminal state");
-        assert!(handoff_terminal.persisted_agent_session.is_none());
+        assert!(!handoff_terminal.respawn_shell_on_exit);
         assert!(
             !handoff_runtimes.is_empty(),
-            "handoff restore should use shell runtimes for agent session snapshots"
+            "handoff restore should use shell runtimes for legacy agent session snapshots"
         );
     }
 
@@ -925,7 +850,6 @@ mod tests {
                 cwd: cwd.clone(),
                 label: None,
                 agent_name: None,
-                agent_session: None,
                 launch_argv: None,
             },
         );

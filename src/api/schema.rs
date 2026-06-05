@@ -867,7 +867,7 @@ pub struct PaneInfo {
 pub struct AgentSessionInfo {
     pub source: String,
     pub agent: String,
-    pub kind: crate::agent_resume::AgentSessionRefKind,
+    pub kind: String,
     pub value: String,
 }
 

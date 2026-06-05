@@ -21,6 +21,16 @@ fn is_background_completion_transition(prev_state: AgentState, new_state: AgentS
         && matches!(prev_state, AgentState::Working | AgentState::Blocked)
 }
 
+fn is_reserved_native_state_source(source: &str, agent: &str) -> bool {
+    matches!(
+        (source, agent),
+        ("gmux:claude", "claude")
+            | ("gmux:codex", "codex")
+            | ("gmux:droid", "droid")
+            | ("gmux:opencode", "opencode")
+    )
+}
+
 pub fn active_tab_suppresses_notifications(
     is_active_tab: bool,
     outer_terminal_focus: Option<bool>,
@@ -1939,42 +1949,25 @@ impl AppState {
                 message,
                 custom_status,
                 seq,
-                session_ref,
             } => {
-                if crate::agent_resume::is_reserved_native_state_source(&source, &agent_label) {
-                    self.update_terminal_state(pane_id, |terminal| {
-                        terminal.set_agent_session_ref(source, agent_label, session_ref, seq)
-                    })
-                    .into_iter()
-                    .collect()
+                if is_reserved_native_state_source(&source, &agent_label) {
+                    Vec::new()
                 } else {
                     self.update_terminal_state(pane_id, |terminal| {
-                        terminal.set_hook_authority_with_session_ref(
+                        terminal.set_hook_authority_with_custom_status_at(
                             source,
                             agent_label,
                             state,
                             message,
                             custom_status,
-                            session_ref,
                             seq,
+                            std::time::Instant::now(),
                         )
                     })
                     .into_iter()
                     .collect()
                 }
             }
-            AppEvent::AgentSessionReported {
-                pane_id,
-                source,
-                agent_label,
-                seq,
-                session_ref,
-            } => self
-                .update_terminal_state(pane_id, |terminal| {
-                    terminal.set_agent_session_ref(source, agent_label, session_ref, seq)
-                })
-                .into_iter()
-                .collect(),
             AppEvent::HookMetadataReported {
                 pane_id,
                 source,
@@ -2027,7 +2020,7 @@ impl AppState {
                 seq,
                 ..
             } => {
-                if crate::agent_resume::is_reserved_native_state_source(&source, &agent_label) {
+                if is_reserved_native_state_source(&source, &agent_label) {
                     Vec::new()
                 } else {
                     self.update_terminal_state(pane_id, |terminal| {
@@ -2070,9 +2063,6 @@ impl AppState {
             let terminal = self.terminals.get_mut(&terminal_id)?;
             update(terminal)?
         };
-        if mutation.session_ref_changed {
-            self.mark_session_dirty();
-        }
         let change = mutation.effective_state_change?;
         let seen = self.apply_pane_state_change(ws_idx, pane_id, &change)?;
         let update = PaneStateUpdate {
@@ -3499,7 +3489,6 @@ mod tests {
             message: None,
             custom_status: None,
             seq: None,
-            session_ref: None,
         });
 
         let toast = state.toast.as_ref().unwrap();
@@ -3539,7 +3528,6 @@ mod tests {
             message: None,
             custom_status: None,
             seq: Some(1),
-            session_ref: None,
         });
         state.handle_app_event(AppEvent::StateChanged {
             pane_id: bg_pane_id,
@@ -3590,12 +3578,10 @@ mod tests {
             message: None,
             custom_status: None,
             seq: Some(1),
-            session_ref: crate::agent_resume::AgentSessionRef::id("claude-session"),
         });
         let terminal = state.terminals.get(&terminal_id).unwrap();
         assert_eq!(terminal.state, AgentState::Working);
         assert!(terminal.hook_authority.is_none());
-        assert!(terminal.persisted_agent_session.is_some());
 
         state.handle_app_event(AppEvent::StateChanged {
             pane_id,
@@ -3645,39 +3631,6 @@ mod tests {
         let terminal = state.terminals.get(&terminal_id).unwrap();
         assert_eq!(terminal.state, AgentState::Working);
         assert_eq!(terminal.detected_agent, Some(Agent::Claude));
-    }
-
-    #[test]
-    fn hidden_session_ref_only_update_marks_session_dirty_without_visible_update() {
-        let mut state = app_with_workspaces(&["active"]);
-        let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
-
-        let first_updates = state.handle_app_event(AppEvent::HookStateReported {
-            pane_id,
-            source: "gmux:pi".into(),
-            agent_label: "pi".into(),
-            state: AgentState::Working,
-            message: None,
-            custom_status: None,
-            seq: Some(20),
-            session_ref: crate::agent_resume::AgentSessionRef::path("/tmp/one.jsonl"),
-        });
-        assert_eq!(first_updates.len(), 1);
-        state.session_dirty = false;
-
-        let second_updates = state.handle_app_event(AppEvent::HookStateReported {
-            pane_id,
-            source: "gmux:pi".into(),
-            agent_label: "pi".into(),
-            state: AgentState::Working,
-            message: None,
-            custom_status: None,
-            seq: Some(21),
-            session_ref: crate::agent_resume::AgentSessionRef::path("/tmp/two.jsonl"),
-        });
-
-        assert!(second_updates.is_empty());
-        assert!(state.session_dirty);
     }
 
     #[test]

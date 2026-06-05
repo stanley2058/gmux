@@ -184,12 +184,6 @@ impl App {
         };
         self.handle_internal_event(crate::events::AppEvent::HookStateReported {
             pane_id,
-            session_ref: crate::agent_resume::session_ref_from_report(
-                &params.source,
-                &agent_label,
-                params.agent_session_id,
-                params.agent_session_path,
-            ),
             source: params.source,
             agent_label,
             state: detect_state_from_api(params.state),
@@ -212,18 +206,8 @@ impl App {
         let Some(agent_label) = normalize_reported_agent_label(&params.agent) else {
             return invalid_agent(id);
         };
-        self.handle_internal_event(crate::events::AppEvent::AgentSessionReported {
-            pane_id,
-            session_ref: crate::agent_resume::session_ref_from_report(
-                &params.source,
-                &agent_label,
-                params.agent_session_id,
-                params.agent_session_path,
-            ),
-            source: params.source,
-            agent_label,
-            seq: params.seq,
-        });
+        let _ = (pane_id, agent_label, params.source, params.seq);
+        let _ = (params.agent_session_id, params.agent_session_path);
 
         encode_success(id, ResponseResult::Ok {})
     }

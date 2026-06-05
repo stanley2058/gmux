@@ -18,7 +18,6 @@ const NESTED_GMUX_MESSAGES: [&str; 6] = [
     "recursion detected. base case not found. aborting.",
 ];
 
-mod agent_resume;
 mod api;
 mod app;
 mod build_info;

@@ -705,7 +705,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pane_died_respawns_shell_and_clears_restored_agent_session() {
+    async fn pane_died_respawns_shell_and_clears_agent_identity() {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &crate::config::Config::default(),
@@ -726,12 +726,6 @@ mod tests {
             .expect("test terminal should exist");
         terminal.respawn_shell_on_exit = true;
         terminal.set_agent_name("codex".into());
-        terminal.set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
-            source: "gmux:codex".into(),
-            agent: "codex".into(),
-            session_ref: crate::agent_resume::AgentSessionRef::id("codex-session")
-                .expect("test session id should be valid"),
-        });
 
         app.handle_internal_event(AppEvent::PaneDied { pane_id });
 
@@ -745,7 +739,6 @@ mod tests {
             .get(&terminal_id)
             .expect("terminal should survive respawn");
         assert!(!terminal.respawn_shell_on_exit);
-        assert!(terminal.persisted_agent_session.is_none());
         assert!(terminal.agent_name.is_none());
 
         for (_, runtime) in app.terminal_runtimes.drain() {

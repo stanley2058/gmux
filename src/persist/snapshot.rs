@@ -96,17 +96,7 @@ pub struct PaneSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_session: Option<PaneAgentSessionSnapshot>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launch_argv: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PaneAgentSessionSnapshot {
-    pub source: String,
-    pub agent: String,
-    pub kind: crate::agent_resume::AgentSessionRefKind,
-    pub value: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -327,7 +317,6 @@ fn capture_tab(
                 cwd,
                 label,
                 agent_name,
-                agent_session: None,
                 launch_argv,
             },
         );
@@ -563,7 +552,6 @@ mod tests {
                 cwd: PathBuf::from("/home/can/Projects/gmux"),
                 label: None,
                 agent_name: None,
-                agent_session: None,
                 launch_argv: None,
             },
         );
@@ -573,7 +561,6 @@ mod tests {
                 cwd: PathBuf::from("/home/can/Projects/website"),
                 label: Some("website".into()),
                 agent_name: None,
-                agent_session: None,
                 launch_argv: None,
             },
         );
@@ -1009,64 +996,6 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_omits_hook_authority_agent_session() {
-        let mut state = state_with_workspaces(&["one"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        state.ensure_test_terminals();
-        let terminal_id = state.workspaces[0].tabs[0].panes[&root]
-            .attached_terminal_id
-            .clone();
-        state
-            .terminals
-            .get_mut(&terminal_id)
-            .unwrap()
-            .set_hook_authority_with_session_ref(
-                "gmux:pi".into(),
-                "pi".into(),
-                crate::detect::AgentState::Working,
-                None,
-                None,
-                crate::agent_resume::AgentSessionRef::path("/tmp/pi-session.jsonl"),
-                Some(20),
-            );
-
-        let snapshot = capture_from_state(&state);
-        assert!(
-            snapshot.workspaces[0].tabs[0].panes[&root.raw()]
-                .agent_session
-                .is_none(),
-            "agent session references should not be persisted"
-        );
-    }
-
-    #[test]
-    fn capture_contract_omits_restored_agent_session() {
-        let mut state = state_with_workspaces(&["one"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        state.ensure_test_terminals();
-        let terminal_id = state.workspaces[0].tabs[0].panes[&root]
-            .attached_terminal_id
-            .clone();
-        state
-            .terminals
-            .get_mut(&terminal_id)
-            .unwrap()
-            .set_persisted_agent_session(crate::agent_resume::PersistedAgentSession {
-                source: "gmux:opencode".into(),
-                agent: "opencode".into(),
-                session_ref: crate::agent_resume::AgentSessionRef::id("opencode-session").unwrap(),
-            });
-
-        let snapshot = capture_from_state(&state);
-        assert!(
-            snapshot.workspaces[0].tabs[0].panes[&root.raw()]
-                .agent_session
-                .is_none(),
-            "restored agent session references should not be persisted"
-        );
-    }
-
-    #[test]
     fn old_unversioned_snapshot_loads_as_version_0() {
         let json = r#"{"workspaces":[],"active":null,"selected":0}"#;
         let snap = parse_snapshot(json).unwrap();
@@ -1095,7 +1024,6 @@ mod tests {
                 cwd: PathBuf::from("/tmp/this-directory-does-not-exist-for-gmux-test"),
                 label: None,
                 agent_name: None,
-                agent_session: None,
                 launch_argv: None,
             },
         );
@@ -1107,7 +1035,6 @@ mod tests {
                     .unwrap_or_else(|_| PathBuf::from("/tmp")),
                 label: None,
                 agent_name: None,
-                agent_session: None,
                 launch_argv: None,
             },
         );
