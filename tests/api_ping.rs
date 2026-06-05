@@ -473,6 +473,49 @@ fn workspace_list_and_create_round_trip() {
 
 #[cfg(not(target_os = "macos"))]
 #[test]
+fn tab_create_initializes_empty_session() {
+    let _lock = test_lock();
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("gmux.sock");
+
+    let child = spawn_gmux(&config_home, &runtime_dir, &socket_path);
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let created = send_request(
+        &socket_path,
+        &format!(
+            r#"{{"id":"req_tab_empty","method":"tab.create","params":{{"cwd":"{}","label":"initial","focus":true}}}}"#,
+            base.display()
+        ),
+    );
+    assert_eq!(created["result"]["type"], "tab_created");
+    assert_eq!(created["result"]["tab"]["label"], "initial");
+    assert_eq!(created["result"]["tab"]["number"], 1);
+    assert_eq!(created["result"]["tab"]["focused"], true);
+    assert_eq!(
+        created["result"]["root_pane"]["workspace_id"],
+        created["result"]["tab"]["workspace_id"]
+    );
+    assert_eq!(
+        created["result"]["root_pane"]["tab_id"],
+        created["result"]["tab"]["tab_id"]
+    );
+
+    let listed = send_request(
+        &socket_path,
+        r#"{"id":"req_tab_empty_list","method":"tab.list","params":{}}"#,
+    );
+    let tabs = listed["result"]["tabs"].as_array().unwrap();
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0]["tab_id"], created["result"]["tab"]["tab_id"]);
+
+    cleanup_spawned_gmux(child, base);
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
 fn tab_methods_round_trip_over_socket() {
     let _lock = test_lock();
     let base = unique_test_dir();

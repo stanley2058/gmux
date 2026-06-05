@@ -61,7 +61,56 @@ impl App {
         } else if let Some(active) = self.state.active {
             active
         } else {
-            return encode_error(id, "workspace_not_found", "no active workspace");
+            let cwd = cwd
+                .map(PathBuf::from)
+                .unwrap_or_else(|| self.resolve_new_terminal_cwd(None));
+            return match self.create_workspace_with_options(cwd, focus) {
+                Ok(ws_idx) => {
+                    if let Some(label) = label {
+                        let workspace_id = self.state.workspaces[ws_idx].id.clone();
+                        let tab_id = self
+                            .public_tab_id(ws_idx, 0)
+                            .unwrap_or_else(|| format!("{workspace_id}:1"));
+                        if let Some(tab) = self
+                            .state
+                            .workspaces
+                            .get_mut(ws_idx)
+                            .and_then(|ws| ws.tabs.get_mut(0))
+                        {
+                            tab.set_custom_name(label);
+                            crate::logging::tab_renamed(&workspace_id, &tab_id);
+                            self.schedule_session_save();
+                        }
+                    }
+                    let workspace = self.workspace_info(ws_idx);
+                    let tab = self
+                        .tab_info(ws_idx, 0)
+                        .expect("new workspace should have an initial tab");
+                    let root_pane = self
+                        .root_pane_info(ws_idx, 0)
+                        .expect("new workspace should have an initial root pane");
+                    self.emit_event(EventEnvelope {
+                        event: EventKind::WorkspaceCreated,
+                        data: EventData::WorkspaceCreated { workspace },
+                    });
+                    self.emit_event(EventEnvelope {
+                        event: EventKind::TabCreated,
+                        data: EventData::TabCreated { tab: tab.clone() },
+                    });
+                    self.emit_event(EventEnvelope {
+                        event: EventKind::PaneCreated,
+                        data: EventData::PaneCreated {
+                            pane: root_pane.clone(),
+                        },
+                    });
+                    encode_success(
+                        id,
+                        self.tab_created_result(ws_idx, 0)
+                            .expect("new workspace should produce a tab create response"),
+                    )
+                }
+                Err(err) => encode_error(id, "tab_create_failed", err.to_string()),
+            };
         };
         let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| {
             let follow_cwd = self
