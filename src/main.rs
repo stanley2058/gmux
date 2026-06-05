@@ -25,8 +25,6 @@ mod checksum;
 mod cli;
 mod client;
 mod config;
-#[allow(dead_code)]
-mod detect;
 mod events;
 mod ghostty;
 mod handoff_runtime;
