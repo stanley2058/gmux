@@ -6,12 +6,10 @@ use ratatui::{
     Frame,
 };
 
-use super::sidebar::{agent_panel_entries, agent_panel_entries_from, AgentPanelEntry};
-use super::status::{agent_icon, state_dot};
+use super::status::state_dot;
 use crate::app::state::{Palette, ToastKind, ToastNotification};
 use crate::app::AppState;
 use crate::detect::AgentState;
-use crate::layout::PaneId;
 use crate::terminal::TerminalRuntimeRegistry;
 
 const SWITCH_BUTTON_WIDTH: u16 = 10;
@@ -33,11 +31,6 @@ pub(crate) enum MobileSwitcherTarget {
     Workspace(usize),
     NewTab,
     Tab(usize),
-    Agent {
-        ws_idx: usize,
-        tab_idx: usize,
-        pane_id: PaneId,
-    },
     Menu(usize),
 }
 
@@ -137,19 +130,6 @@ pub(crate) fn mobile_switcher_target_at(
         }
         cursor = tabs_end;
     }
-
-    cursor += 1; // agents title
-    let agents = agent_panel_entries(app);
-    let agents_end = cursor + agents.len() * 2;
-    if doc_row >= cursor && doc_row < agents_end {
-        let idx = (doc_row - cursor) / 2;
-        return agents.get(idx).map(|entry| MobileSwitcherTarget::Agent {
-            ws_idx: entry.ws_idx,
-            tab_idx: entry.tab_idx,
-            pane_id: entry.pane_id,
-        });
-    }
-    cursor = agents_end;
 
     cursor += 1; // menu title
     let menu_idx = doc_row.checked_sub(cursor)?;
@@ -398,9 +378,8 @@ fn mobile_switcher_content_height(app: &AppState) -> usize {
         .and_then(|idx| app.workspaces.get(idx))
         .map(|ws| 2 + ws.tabs.len())
         .unwrap_or(0);
-    let agents_h = 1 + agent_panel_entries(app).len() * 2;
     let menu_h = 1 + app.global_menu_labels().len();
-    sessions_h + tabs_h + agents_h + menu_h
+    sessions_h + tabs_h + menu_h
 }
 
 fn render_mobile_switcher_content(
@@ -542,58 +521,6 @@ fn render_mobile_switcher_content(
         }
     }
 
-    let focused_agent = app.active.and_then(|ws_idx| {
-        let ws = app.workspaces.get(ws_idx)?;
-        ws.focused_pane_id()
-            .map(|pane_id| (ws_idx, ws.active_tab, pane_id))
-    });
-    let entries = agent_panel_entries_from(app, terminal_runtimes);
-    render_section_title_at(
-        frame,
-        viewport,
-        content,
-        doc_y,
-        app.mobile_switcher_scroll,
-        "agents",
-        p,
-    );
-    doc_y += 1;
-    for entry in &entries {
-        let active = focused_agent.is_some_and(|(ws_idx, tab_idx, pane_id)| {
-            entry.ws_idx == ws_idx && entry.tab_idx == tab_idx && entry.pane_id == pane_id
-        });
-        let bg = mobile_item_bg(false, active, p);
-        let (icon, icon_style) = agent_icon(entry.state, entry.seen, app.spinner_tick, p);
-        let title = Line::from(vec![
-            Span::styled("  ", Style::default().bg(bg)),
-            Span::styled(icon, icon_style.bg(bg)),
-            Span::styled(" ", Style::default().bg(bg)),
-            Span::styled(
-                truncate(
-                    &entry.primary_label,
-                    content.width.saturating_sub(5) as usize,
-                ),
-                Style::default()
-                    .fg(p.text)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]);
-        let detail = mobile_agent_detail(entry);
-        render_two_line_item(
-            frame,
-            viewport,
-            content,
-            doc_y,
-            app.mobile_switcher_scroll,
-            bg,
-            title,
-            truncate(&detail, content.width as usize),
-            p.overlay0,
-        );
-        doc_y += 2;
-    }
-
     render_section_title_at(
         frame,
         viewport,
@@ -614,30 +541,6 @@ fn render_mobile_switcher_content(
         }
         doc_y += 1;
     }
-}
-
-fn mobile_agent_detail(entry: &AgentPanelEntry) -> String {
-    let mut parts = Vec::new();
-    if let Some(tab_label) = entry.primary_tab_label.as_deref() {
-        parts.push(tab_label.to_string());
-    }
-    let status = entry
-        .state_labels
-        .get(super::sidebar::agent_panel_status_key(
-            entry.state,
-            entry.seen,
-        ))
-        .cloned()
-        .unwrap_or_else(|| super::status::state_label(entry.state, entry.seen).to_string());
-    parts.push(status);
-    if let Some(agent_label) = entry.agent_label.as_deref() {
-        parts.push(agent_label.to_string());
-    }
-    if let Some(custom_status) = entry.custom_status.as_deref() {
-        parts.push(custom_status.to_string());
-    }
-
-    format!("  {}", parts.join(" · "))
 }
 
 fn render_section_title_at(
@@ -935,35 +838,6 @@ fn truncate(text: &str, max_width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn agent_entry(primary_tab_label: Option<&str>, agent_label: Option<&str>) -> AgentPanelEntry {
-        AgentPanelEntry {
-            ws_idx: 0,
-            tab_idx: 0,
-            pane_id: PaneId::from_raw(1),
-            primary_label: "gmux".into(),
-            primary_tab_label: primary_tab_label.map(str::to_string),
-            agent_label: agent_label.map(str::to_string),
-            state: AgentState::Idle,
-            seen: true,
-            custom_status: None,
-            state_labels: std::collections::HashMap::new(),
-        }
-    }
-
-    #[test]
-    fn mobile_agent_detail_includes_tab_context_when_available() {
-        let entry = agent_entry(Some("mobile-state"), Some("pi"));
-
-        assert_eq!(mobile_agent_detail(&entry), "  mobile-state · idle · pi");
-    }
-
-    #[test]
-    fn mobile_agent_detail_keeps_existing_compact_detail_without_tab_context() {
-        let entry = agent_entry(None, Some("pi"));
-
-        assert_eq!(mobile_agent_detail(&entry), "  idle · pi");
-    }
 
     #[tokio::test]
     async fn mobile_header_uses_live_root_runtime_cwd_for_workspace_label() {

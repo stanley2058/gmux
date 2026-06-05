@@ -1041,14 +1041,6 @@ impl AppState {
                 self.switch_tab(tab_idx);
                 self.mode = Mode::Terminal;
             }
-            Some(crate::ui::MobileSwitcherTarget::Agent {
-                ws_idx,
-                tab_idx: _,
-                pane_id,
-            }) => {
-                self.focus_pane_in_workspace(ws_idx, pane_id);
-                self.mode = Mode::Terminal;
-            }
             Some(crate::ui::MobileSwitcherTarget::Menu(action_idx)) => {
                 let actions = global_menu_actions(self);
                 if let Some(action) = actions.get(action_idx).copied() {
