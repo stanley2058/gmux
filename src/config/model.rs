@@ -354,7 +354,6 @@ pub struct UiConfig {
     /// Ask for a tab name before creating a new tab. Default: true.
     pub prompt_new_tab_name: bool,
     /// Pane detail panel scope. Saved values are "current" or "all". Default: "all".
-    #[serde(alias = "agent_panel_scope")]
     pub pane_panel_scope: PanePanelScopeConfig,
     /// Accent color for highlights, borders, and navigation UI.
     /// Accepts hex (#89b4fa), named colors (cyan, blue), or RGB (rgb(137,180,250)).
@@ -647,16 +646,6 @@ pane_panel_scope = "all"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(config.ui.pane_panel_scope, PanePanelScopeConfig::All);
-    }
-
-    #[test]
-    fn legacy_agent_panel_scope_config_still_parses() {
-        let toml = r#"
-[ui]
-agent_panel_scope = "current"
-"#;
-        let config: Config = toml::from_str(toml).unwrap();
-        assert_eq!(config.ui.pane_panel_scope, PanePanelScopeConfig::Current);
     }
 
     #[test]

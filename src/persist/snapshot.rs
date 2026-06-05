@@ -20,7 +20,7 @@ pub struct SessionSnapshot {
     pub workspaces: Vec<WorkspaceSnapshot>,
     pub active: Option<usize>,
     pub selected: usize,
-    #[serde(default, alias = "agent_panel_scope")]
+    #[serde(default)]
     pub pane_panel_scope: crate::app::state::PanePanelScope,
     #[serde(default)]
     pub sidebar_width: Option<u16>,
@@ -151,7 +151,7 @@ struct RawSessionSnapshot {
     active: Option<usize>,
     #[serde(default)]
     selected: usize,
-    #[serde(default, alias = "agent_panel_scope")]
+    #[serde(default)]
     pane_panel_scope: crate::app::state::PanePanelScope,
     #[serde(default)]
     sidebar_width: Option<u16>,
@@ -649,22 +649,6 @@ mod tests {
         assert_eq!(restored.pane_panel_scope, PanePanelScope::AllWorkspaces);
         assert_eq!(restored.sidebar_width, None);
         assert_eq!(restored.sidebar_section_split, None);
-    }
-
-    #[test]
-    fn legacy_agent_panel_scope_snapshot_key_still_parses() {
-        let json = serde_json::json!({
-            "version": SNAPSHOT_VERSION,
-            "workspaces": [],
-            "active": null,
-            "selected": 0,
-            "agent_panel_scope": "CurrentWorkspace"
-        })
-        .to_string();
-
-        let restored = parse_snapshot(&json).unwrap();
-
-        assert_eq!(restored.pane_panel_scope, PanePanelScope::CurrentWorkspace);
     }
 
     #[test]

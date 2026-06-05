@@ -25,7 +25,7 @@
 - Removed the public `session.resume_agents_on_restore` setting; session restore now recreates panes as shells in their saved directories.
 - Stopped writing or rehydrating agent session references in session snapshots.
 - Removed legacy pane-panel key aliases `previous_agent`, `next_agent`, `focus_agent`, and `[keys.indexed].agents`; use `previous_pane_panel_entry`, `next_pane_panel_entry`, and `focus_pane_panel_entry` instead.
-- Renamed the sidebar detail scope setting from `agent_panel_scope` to `pane_panel_scope`, while keeping the old key as a compatibility alias.
+- Removed the legacy `agent_panel_scope` config and snapshot alias; use `pane_panel_scope` instead.
 - Updated the sidebar detail panel to present generic panes instead of agent status cards.
 - Updated sidebar and mobile session markers to use active-session indicators instead of agent status rollups.
 - Updated the mobile header and toast copy to use pane-focused wording instead of agent status summaries.
