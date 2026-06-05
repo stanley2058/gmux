@@ -29,6 +29,7 @@ impl TerminalState {
         None
     }
 
+    #[cfg(test)]
     pub fn effective_presentation(&self) -> EffectivePresentation {
         EffectivePresentation::empty()
     }

@@ -309,11 +309,7 @@ impl AppState {
                     launch_label(terminal.and_then(|terminal| terminal.launch_argv.as_ref()))
                 })
                 .unwrap_or_else(|| format!("pane {pane_number}"));
-            let custom_status = terminal.and_then(|terminal| terminal.effective_custom_status());
-            let state = terminal
-                .map(|terminal| terminal.state)
-                .unwrap_or(AgentState::Unknown);
-            let meta = custom_status.unwrap_or_else(|| "shell".to_string());
+            let meta = "shell".to_string();
             let is_current = self.is_active_pane(ws_idx, tab_idx, pane_id);
             let search_text = format!("{label} {meta}").to_lowercase();
             rows.push(NavigatorRow {
@@ -325,7 +321,7 @@ impl AppState {
                 depth: if multi_tab { 2 } else { 1 },
                 label,
                 meta,
-                status: state,
+                status: AgentState::Unknown,
                 seen: pane.seen,
                 is_current,
                 is_workspace: false,

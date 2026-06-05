@@ -327,14 +327,10 @@ fn pane_detail(
     }
     if let Some(terminal_id) = tab.terminal_id(pane_id) {
         if let Some(terminal) = app.terminals.get(terminal_id) {
-            let presentation = terminal.effective_presentation();
-            if let Some(title) = presentation.title {
+            if let Some(title) = terminal.effective_title() {
                 parts.push(title);
             } else {
                 parts.push("shell".to_string());
-            }
-            if let Some(status) = terminal.effective_custom_status() {
-                parts.push(status.to_string());
             }
         }
     }
