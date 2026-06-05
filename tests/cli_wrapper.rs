@@ -1252,18 +1252,15 @@ fn server_stop_then_restart_restores_pane_history() {
     wait_for_socket(&client_socket, Duration::from_secs(5));
 
     let workspaces = list_workspaces_api(&socket_path);
-    let workspace_id = workspaces["result"]["workspaces"]
-        .as_array()
-        .expect("tab.list should return tabs")
-        .iter()
-        .find(|workspace| workspace["label"] == "history-restart")
-        .and_then(|workspace| workspace["workspace_id"].as_str())
-        .expect("restored workspace should exist")
-        .to_string();
-    let panes = run_cli_json(
-        &socket_path,
-        &["pane", "list", "--workspace", &workspace_id],
+    assert!(
+        workspaces["result"]["workspaces"]
+            .as_array()
+            .expect("tab.list should return tabs")
+            .iter()
+            .any(|workspace| workspace["label"] == "history-restart"),
+        "restored workspace should exist"
     );
+    let panes = run_cli_json(&socket_path, &["pane", "list"]);
     let restored_pane_id = panes["result"]["panes"]
         .as_array()
         .expect("pane.list should return panes")
@@ -1318,7 +1315,7 @@ fn pane_management_commands_work() {
         .unwrap()
         .to_string();
 
-    let panes = run_cli(&socket_path, &["pane", "list", "--workspace", "1"]);
+    let panes = run_cli(&socket_path, &["pane", "list"]);
     assert!(panes.status.success());
     let panes_json: serde_json::Value = serde_json::from_slice(&panes.stdout).unwrap();
     assert_eq!(panes_json["result"]["panes"].as_array().unwrap().len(), 1);
@@ -1395,6 +1392,29 @@ fn workspace_command_is_not_public_cli() {
 }
 
 #[test]
+fn workspace_filter_flags_are_not_public_cli() {
+    let base = unique_test_dir();
+    fs::create_dir_all(&base).unwrap();
+    let socket_path = base.join("missing.sock");
+
+    for args in [
+        &["tab", "list", "--workspace", "1"][..],
+        &["tab", "create", "--workspace", "1"][..],
+        &["pane", "list", "--workspace", "1"][..],
+    ] {
+        let output = run_cli(&socket_path, args);
+        assert_eq!(output.status.code(), Some(2));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("unknown option: --workspace"),
+            "stderr: {stderr}"
+        );
+    }
+
+    cleanup_test_base(&base);
+}
+
+#[test]
 fn tab_management_commands_work() {
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -1414,10 +1434,7 @@ fn tab_management_commands_work() {
         .unwrap()
         .to_string();
 
-    let created_tab = run_cli(
-        &socket_path,
-        &["tab", "create", "--workspace", &workspace_id],
-    );
+    let created_tab = run_cli(&socket_path, &["tab", "create"]);
     assert!(created_tab.status.success());
     let created_tab_json: serde_json::Value = serde_json::from_slice(&created_tab.stdout).unwrap();
     let second_tab_id = created_tab_json["result"]["tab"]["tab_id"]
@@ -1426,7 +1443,7 @@ fn tab_management_commands_work() {
         .to_string();
     assert_eq!(second_tab_id, format!("{workspace_id}:2"));
 
-    let listed_tabs = run_cli(&socket_path, &["tab", "list", "--workspace", &workspace_id]);
+    let listed_tabs = run_cli(&socket_path, &["tab", "list"]);
     assert!(listed_tabs.status.success());
     let listed_tabs_json: serde_json::Value = serde_json::from_slice(&listed_tabs.stdout).unwrap();
     assert_eq!(
@@ -1618,10 +1635,7 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
         .unwrap()
         .to_string();
 
-    let created_tab = run_cli(
-        &socket_path,
-        &["tab", "create", "--workspace", &workspace_id],
-    );
+    let created_tab = run_cli(&socket_path, &["tab", "create"]);
     assert!(created_tab.status.success());
     let created_tab_json: serde_json::Value = serde_json::from_slice(&created_tab.stdout).unwrap();
     let second_root_pane_id = created_tab_json["result"]["root_pane"]["pane_id"]
@@ -1647,7 +1661,7 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
         workspace_id
     );
 
-    let tabs = run_cli(&socket_path, &["tab", "list", "--workspace", &workspace_id]);
+    let tabs = run_cli(&socket_path, &["tab", "list"]);
     assert!(tabs.status.success());
     let tabs_json: serde_json::Value = serde_json::from_slice(&tabs.stdout).unwrap();
     assert_eq!(tabs_json["result"]["tabs"].as_array().unwrap().len(), 1);
@@ -2010,7 +2024,7 @@ fn pane_numbers_stay_compact_after_close() {
         String::from_utf8_lossy(&close_middle.stderr)
     );
 
-    let ws1_panes_json = run_cli_json(&socket_path, &["pane", "list", "--workspace", &ws1_id]);
+    let ws1_panes_json = run_cli_json(&socket_path, &["pane", "list"]);
     let pane_ids: Vec<String> = ws1_panes_json["result"]["panes"]
         .as_array()
         .unwrap()

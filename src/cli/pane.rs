@@ -32,29 +32,14 @@ pub(super) fn run_pane_command(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_list(args: &[String]) -> std::io::Result<i32> {
-    let mut workspace_id = None;
-
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--workspace" => {
-                let Some(value) = args.get(index + 1) else {
-                    eprintln!("missing value for --workspace");
-                    return Ok(2);
-                };
-                workspace_id = Some(super::normalize_workspace_id(value));
-                index += 2;
-            }
-            other => {
-                eprintln!("unknown option: {other}");
-                return Ok(2);
-            }
-        }
+    if let Some(other) = args.first() {
+        eprintln!("unknown option: {other}");
+        return Ok(2);
     }
 
     super::print_response(&super::send_request(&Request {
         id: "cli:pane:list".into(),
-        method: Method::PaneList(PaneListParams { workspace_id }),
+        method: Method::PaneList(PaneListParams { workspace_id: None }),
     })?)
 }
 
@@ -298,7 +283,7 @@ fn pane_run(args: &[String]) -> std::io::Result<i32> {
 
 fn print_pane_help() {
     eprintln!("gmux pane commands:");
-    eprintln!("  gmux pane list [--workspace <workspace_id>]");
+    eprintln!("  gmux pane list");
     eprintln!("  gmux pane get <pane_id>");
     eprintln!("  gmux pane rename <pane_id> <label>|--clear");
     eprintln!("  gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]");

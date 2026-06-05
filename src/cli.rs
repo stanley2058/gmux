@@ -1226,10 +1226,6 @@ fn api_client_error_to_io(err: ApiClientError) -> std::io::Error {
     }
 }
 
-pub(super) fn normalize_workspace_id(value: &str) -> String {
-    value.to_string()
-}
-
 pub(super) fn normalize_tab_id(value: &str) -> String {
     value.to_string()
 }

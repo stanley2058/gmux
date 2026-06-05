@@ -27,34 +27,18 @@ pub(super) fn run_tab_command(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_list(args: &[String]) -> std::io::Result<i32> {
-    let mut workspace_id = None;
-
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--workspace" => {
-                let Some(value) = args.get(index + 1) else {
-                    eprintln!("missing value for --workspace");
-                    return Ok(2);
-                };
-                workspace_id = Some(super::normalize_workspace_id(value));
-                index += 2;
-            }
-            other => {
-                eprintln!("unknown option: {other}");
-                return Ok(2);
-            }
-        }
+    if let Some(other) = args.first() {
+        eprintln!("unknown option: {other}");
+        return Ok(2);
     }
 
     super::print_response(&super::send_request(&Request {
         id: "cli:tab:list".into(),
-        method: Method::TabList(TabListParams { workspace_id }),
+        method: Method::TabList(TabListParams { workspace_id: None }),
     })?)
 }
 
 fn tab_create(args: &[String]) -> std::io::Result<i32> {
-    let mut workspace_id = None;
     let mut cwd = None;
     let mut focus = false;
     let mut label = None;
@@ -62,14 +46,6 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--workspace" => {
-                let Some(value) = args.get(index + 1) else {
-                    eprintln!("missing value for --workspace");
-                    return Ok(2);
-                };
-                workspace_id = Some(super::normalize_workspace_id(value));
-                index += 2;
-            }
             "--cwd" => {
                 let Some(value) = args.get(index + 1) else {
                     eprintln!("missing value for --cwd");
@@ -104,7 +80,7 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
     super::print_response(&super::send_request(&Request {
         id: "cli:tab:create".into(),
         method: Method::TabCreate(TabCreateParams {
-            workspace_id,
+            workspace_id: None,
             cwd,
             focus,
             label,
@@ -183,10 +159,8 @@ fn tab_close(args: &[String]) -> std::io::Result<i32> {
 
 fn print_tab_help() {
     eprintln!("gmux tab commands:");
-    eprintln!("  gmux tab list [--workspace <workspace_id>]");
-    eprintln!(
-        "  gmux tab create [--workspace <workspace_id>] [--cwd PATH] [--label TEXT] [--focus] [--no-focus]"
-    );
+    eprintln!("  gmux tab list");
+    eprintln!("  gmux tab create [--cwd PATH] [--label TEXT] [--focus] [--no-focus]");
     eprintln!("  gmux tab get <tab_id>");
     eprintln!("  gmux tab focus <tab_id>");
     eprintln!("  gmux tab rename <tab_id> <label>");
