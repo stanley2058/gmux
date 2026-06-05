@@ -11,7 +11,6 @@ pub struct PaneDetail {
     pub tab_idx: usize,
     pub tab_label: String,
     pub label: String,
-    pub custom_status: Option<String>,
 }
 
 impl Tab {
@@ -43,7 +42,6 @@ impl Tab {
                     tab_idx: self.number.saturating_sub(1),
                     tab_label: self.display_name(),
                     label,
-                    custom_status: terminal.effective_custom_status(),
                 })
             })
             .collect()

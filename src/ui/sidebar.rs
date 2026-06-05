@@ -20,7 +20,6 @@ pub(crate) struct PanePanelEntry {
     pub pane_id: crate::layout::PaneId,
     pub primary_label: String,
     pub primary_tab_label: Option<String>,
-    pub custom_status: Option<String>,
 }
 
 fn sidebar_section_heights(total_h: u16, split_ratio: f32) -> (u16, u16) {
@@ -144,7 +143,6 @@ fn pane_panel_entries_with_runtimes(
                     pane_id: detail.pane_id,
                     primary_label: detail.label,
                     primary_tab_label: None,
-                    custom_status: detail.custom_status,
                 })
                 .collect()
         }
@@ -163,7 +161,6 @@ fn pane_panel_entries_with_runtimes(
                         pane_id: detail.pane_id,
                         primary_label: workspace_label.clone(),
                         primary_tab_label: multi_tab.then_some(detail.tab_label),
-                        custom_status: detail.custom_status,
                     })
             })
             .collect(),
@@ -1078,12 +1075,10 @@ fn render_pane_detail(
         );
         row_y += 1;
 
-        let mut status_spans = vec![Span::styled(" ", Style::default())];
-        if let Some(custom_status) = &detail.custom_status {
-            status_spans.push(Span::styled(custom_status.clone(), detail_style));
-        } else {
-            status_spans.push(Span::styled("pane", detail_style));
-        }
+        let status_spans = vec![
+            Span::styled(" ", Style::default()),
+            Span::styled("pane", detail_style),
+        ];
         frame.render_widget(
             Paragraph::new(Line::from(status_spans)).style(row_style),
             Rect::new(body.x, row_y, body.width, 1),
@@ -1291,7 +1286,6 @@ mod tests {
             pane_id: crate::layout::PaneId::from_raw(1),
             primary_label: "agent-browser".into(),
             primary_tab_label: Some("test-escalation".into()),
-            custom_status: None,
         };
 
         let label = format_pane_panel_primary_label(&entry, 18);
