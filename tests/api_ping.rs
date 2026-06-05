@@ -679,34 +679,12 @@ fn pane_info_reports_foreground_cwd_without_changing_pane_cwd() {
         foreground.display().to_string()
     );
 
-    let reported = send_request(
-        &socket_path,
-        &format!(
-            r#"{{"id":"fg_report","method":"pane.report_agent","params":{{"pane_id":"{}","source":"test","agent":"probe","state":"working"}}}}"#,
-            pane_id
-        ),
-    );
-    assert_eq!(reported["result"]["type"], "ok");
-
-    let agents = send_request(
-        &socket_path,
-        r#"{"id":"fg_agents","method":"agent.list","params":{}}"#,
-    );
-    assert_eq!(
-        agents["result"]["agents"][0]["cwd"],
-        base.display().to_string()
-    );
-    assert_eq!(
-        agents["result"]["agents"][0]["foreground_cwd"],
-        foreground.display().to_string()
-    );
-
     cleanup_spawned_gmux(child, base);
 }
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn agent_start_returns_removed_error_over_socket() {
+fn agent_start_is_not_socket_api() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -723,20 +701,13 @@ fn agent_start_returns_removed_error_over_socket() {
             base.display()
         ),
     );
-    assert_eq!(started["error"]["code"], "agent_api_removed");
-
-    let listed = send_request(
-        &socket_path,
-        r#"{"id":"agent_start_list","method":"agent.list","params":{}}"#,
-    );
-    let agents = listed["result"]["agents"].as_array().unwrap();
-    assert!(agents.is_empty());
+    assert_eq!(started["error"]["code"], "invalid_request");
 
     cleanup_spawned_gmux(child, base);
 }
 
 #[test]
-fn agent_methods_are_removed_over_socket() {
+fn agent_methods_are_not_socket_api() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -780,8 +751,7 @@ fn agent_methods_are_removed_over_socket() {
         &socket_path,
         r#"{"id":"agent_list","method":"agent.list","params":{}}"#,
     );
-    let agents = listed["result"]["agents"].as_array().unwrap();
-    assert!(agents.is_empty());
+    assert_eq!(listed["error"]["code"], "invalid_request");
 
     let fetched_by_detected_agent = send_request(
         &socket_path,
@@ -789,32 +759,32 @@ fn agent_methods_are_removed_over_socket() {
     );
     assert_eq!(
         fetched_by_detected_agent["error"]["code"],
-        "agent_api_removed"
+        "invalid_request"
     );
 
     let renamed_first_agent = send_request(
         &socket_path,
         r#"{"id":"agent_rename_first","method":"agent.rename","params":{"target":"pi","name":"worker"}}"#,
     );
-    assert_eq!(renamed_first_agent["error"]["code"], "agent_api_removed");
+    assert_eq!(renamed_first_agent["error"]["code"], "invalid_request");
 
     let read = send_request(
         &socket_path,
         r#"{"id":"agent_read","method":"agent.read","params":{"target":"worker","source":"visible"}}"#,
     );
-    assert_eq!(read["error"]["code"], "agent_api_removed");
+    assert_eq!(read["error"]["code"], "invalid_request");
 
     let sent = send_request(
         &socket_path,
         r#"{"id":"agent_send","method":"agent.send","params":{"target":"worker","text":"echo agent-send-ok\n"}}"#,
     );
-    assert_eq!(sent["error"]["code"], "agent_api_removed");
+    assert_eq!(sent["error"]["code"], "invalid_request");
 
     let focused = send_request(
         &socket_path,
         r#"{"id":"agent_focus","method":"agent.focus","params":{"target":"worker"}}"#,
     );
-    assert_eq!(focused["error"]["code"], "agent_api_removed");
+    assert_eq!(focused["error"]["code"], "invalid_request");
 
     cleanup_spawned_gmux(child, base);
 }
@@ -1300,7 +1270,7 @@ fn pane_report_agent_updates_effective_state() {
         &socket_path,
         r#"{"id":"req_hook_metadata_agent","method":"agent.get","params":{"target":"pi"}}"#,
     );
-    assert_eq!(agent["error"]["code"], "agent_api_removed");
+    assert_eq!(agent["error"]["code"], "invalid_request");
 
     let invalid_metadata = send_request(
         &socket_path,

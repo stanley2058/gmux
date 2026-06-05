@@ -2833,33 +2833,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn agent_start_returns_removed_error() {
-        let mut app = test_app();
-        let workspace = Workspace::test_new("agent-start-focus");
-        app.state.workspaces = vec![workspace];
-        app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
-
-        let response = app.handle_api_request(crate::api::schema::Request {
-            id: "req_agent_start_focus".into(),
-            method: crate::api::schema::Method::AgentStart(crate::api::schema::AgentStartParams {
-                name: "worker".into(),
-                cwd: None,
-                workspace_id: None,
-                tab_id: None,
-                split: Some(crate::api::schema::SplitDirection::Right),
-                focus: true,
-                argv: vec!["/usr/bin/true".into()],
-            }),
-        });
-        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
-
-        assert_eq!(response["error"]["code"], "agent_api_removed");
-        assert_eq!(app.state.workspaces[0].tabs[0].panes.len(), 1);
-    }
-
     #[test]
     fn pane_close_request_closes_only_the_target_tab_when_other_tabs_exist() {
         let mut app = test_app();

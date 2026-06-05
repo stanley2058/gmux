@@ -1,7 +1,6 @@
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-mod agents;
 mod integrations;
 mod panes;
 mod responses;
@@ -522,13 +521,6 @@ impl App {
             Method::TabFocus(target) => return self.handle_tab_focus(request.id, target),
             Method::TabRename(params) => return self.handle_tab_rename(request.id, params),
             Method::TabClose(target) => return self.handle_tab_close(request.id, target),
-            Method::AgentList(_) => return self.handle_agent_list(request.id),
-            Method::AgentGet(target) => return self.handle_agent_get(request.id, target),
-            Method::AgentFocus(target) => return self.handle_agent_focus(request.id, target),
-            Method::AgentRename(params) => return self.handle_agent_rename(request.id, params),
-            Method::AgentStart(params) => return self.handle_agent_start(request.id, params),
-            Method::AgentRead(params) => return self.handle_agent_read(request.id, params),
-            Method::AgentSend(params) => return self.handle_agent_send(request.id, params),
             Method::PaneSplit(params) => return self.handle_pane_split(request.id, params),
             Method::PaneList(params) => return self.handle_pane_list(request.id, params),
             Method::PaneGet(target) => return self.handle_pane_get(request.id, target),

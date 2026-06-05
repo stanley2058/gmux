@@ -949,12 +949,6 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
             }
         }),
     ));
-    let agents = request(
-        &api_socket,
-        serde_json::json!({"id":"test:agent-list","method":"agent.list","params":{}}),
-    );
-    assert_eq!(agents["result"]["agents"].as_array().unwrap().len(), 0);
-
     let _ = request(
         &api_socket,
         serde_json::json!({"id":"test:stop","method":"server.stop","params":{}}),
@@ -963,7 +957,7 @@ fn live_handoff_accepts_old_pane_id_from_child_env() {
 }
 
 #[test]
-fn live_handoff_agent_start_returns_removed_error() {
+fn live_handoff_agent_start_is_not_socket_api() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -987,7 +981,7 @@ fn live_handoff_agent_start_returns_removed_error() {
             }
         }),
     );
-    assert_eq!(started["error"]["code"], "agent_api_removed");
+    assert_eq!(started["error"]["code"], "invalid_request");
 
     let _ = request(
         &api_socket,
