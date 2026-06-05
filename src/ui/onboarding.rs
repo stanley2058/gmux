@@ -56,14 +56,14 @@ fn render_onboarding_welcome(app: &AppState, frame: &mut Frame, area: Rect) {
         header_rows[0],
     );
     frame.render_widget(
-        Paragraph::new("  terminal workspace manager for coding agents")
+        Paragraph::new("  terminal multiplexer for sessions, tabs, and panes")
             .style(Style::default().fg(app.palette.overlay0)),
         header_rows[1],
     );
 
     frame.render_widget(
         Paragraph::new(
-            "  this is a mouse-first terminal.\n  click the sidebar to switch workspaces, drag pane\n  borders to resize, right-click for context menus.",
+            "  this is a mouse-first terminal.\n  switch tabs from the sidebar, drag pane borders\n  to resize, right-click for context menus.",
         )
         .style(Style::default().fg(app.palette.overlay1)),
         content_rows[0],
@@ -95,7 +95,7 @@ fn render_onboarding_welcome(app: &AppState, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(key_line), content_rows[2]);
 
     frame.render_widget(
-        Paragraph::new("  next: install optional agent integrations for more reliable state")
+        Paragraph::new("  next: create a tab, split a pane, or detach and reattach later")
             .style(Style::default().fg(app.palette.overlay1)),
         content_rows[3],
     );

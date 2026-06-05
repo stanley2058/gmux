@@ -470,16 +470,16 @@ fn render_empty(app: &AppState, frame: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(""),
         Line::from(Span::styled(
-            "  No workspaces yet",
+            "  No session panes yet",
             Style::default().fg(p.overlay0),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            "  A workspace is one project context.",
+            "  Start a shell, then add tabs or split panes as needed.",
             Style::default().fg(p.overlay1),
         )),
         Line::from(Span::styled(
-            "  Its root pane (top-left) sets the default repo or folder name.",
+            "  The first pane sets the default repo or folder name.",
             Style::default().fg(p.overlay1),
         )),
         Line::from(""),
