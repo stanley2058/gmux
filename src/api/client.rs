@@ -129,10 +129,12 @@ impl ApiClient {
     }
 }
 
+#[allow(dead_code)]
 pub struct EventStream {
     reader: BufReader<UnixStream>,
 }
 
+#[allow(dead_code)]
 impl EventStream {
     pub fn next_value(&mut self) -> Result<Option<serde_json::Value>, ApiClientError> {
         read_optional_json_line(&mut self.reader)

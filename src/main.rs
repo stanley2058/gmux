@@ -477,6 +477,12 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
+    if args.get(1).map(|arg| arg.as_str()) == Some("agent") {
+        eprintln!("unknown command: agent");
+        eprintln!("run 'gmux --help' for usage");
+        std::process::exit(1);
+    }
+
     // Reject unknown flags
     let known_flags = [
         "--no-session",
@@ -520,6 +526,7 @@ fn main() -> io::Result<()> {
                 "status",
                 "config",
                 "channel",
+                "agent",
                 "workspace",
                 "worktree",
                 "pane",

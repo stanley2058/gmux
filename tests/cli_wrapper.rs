@@ -2228,120 +2228,20 @@ fn top_level_tab_and_pane_aliases_work() {
 }
 
 #[test]
-fn agent_start_command_returns_removed_error() {
+fn agent_command_is_not_public_cli() {
     let base = unique_test_dir();
-    let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let socket_path = runtime_dir.join("gmux.sock");
 
-    let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
-    wait_for_socket(&socket_path, Duration::from_secs(5));
-
-    let started = run_cli(
-        &socket_path,
-        &[
-            "agent",
-            "start",
-            "main",
-            "--cwd",
-            base.to_str().unwrap(),
-            "--",
-            "/bin/sh",
-            "-c",
-            "printf cli-agent-start-ok; sleep 2",
-            "--session",
-            "child-session",
-        ],
+    let listed = run_cli(&socket_path, &["agent", "list"]);
+    assert!(!listed.status.success());
+    let stderr = String::from_utf8_lossy(&listed.stderr);
+    assert!(
+        stderr.contains("unknown command: agent"),
+        "stderr: {stderr}"
     );
-    assert!(!started.status.success());
-    let started_json: serde_json::Value = serde_json::from_slice(&started.stderr).unwrap();
-    assert_eq!(started_json["error"]["code"], "agent_api_removed");
 
-    let listed = run_cli_json(&socket_path, &["agent", "list"]);
-    assert!(listed["result"]["agents"].as_array().unwrap().is_empty());
-
-    cleanup_spawned_gmux(gmux, base);
-}
-
-#[test]
-fn agent_commands_work() {
-    let base = unique_test_dir();
-    let config_home = base.join("config");
-    let runtime_dir = base.join("runtime");
-    let socket_path = runtime_dir.join("gmux.sock");
-
-    let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
-    wait_for_socket(&socket_path, Duration::from_secs(5));
-
-    let created = run_cli(
-        &socket_path,
-        &["workspace", "create", "--cwd", base.to_str().unwrap()],
-    );
-    assert!(created.status.success());
-    let created_json: serde_json::Value = serde_json::from_slice(&created.stdout).unwrap();
-    let root_pane_id = created_json["result"]["root_pane"]["pane_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let renamed = run_cli(&socket_path, &["agent", "rename", &root_pane_id, "worker"]);
-    assert!(!renamed.status.success());
-    let renamed_json: serde_json::Value = serde_json::from_slice(&renamed.stderr).unwrap();
-    assert_eq!(renamed_json["error"]["code"], "agent_api_removed");
-
-    let listed = run_cli_json(&socket_path, &["agent", "list"]);
-    assert_eq!(listed["result"]["type"], "agent_list");
-    assert!(listed["result"]["agents"].as_array().unwrap().is_empty());
-
-    let fetched = run_cli(&socket_path, &["agent", "get", "worker"]);
-    assert!(!fetched.status.success());
-    let fetched_json: serde_json::Value = serde_json::from_slice(&fetched.stderr).unwrap();
-    assert_eq!(fetched_json["error"]["code"], "agent_api_removed");
-
-    let waited = run_cli(
-        &socket_path,
-        &[
-            "agent",
-            "wait",
-            "worker",
-            "--status",
-            "unknown",
-            "--timeout",
-            "100",
-        ],
-    );
-    assert!(!waited.status.success());
-    let waited_json: serde_json::Value = serde_json::from_slice(&waited.stderr).unwrap();
-    assert_eq!(waited_json["error"]["code"], "agent_api_removed");
-
-    let read = run_cli(
-        &socket_path,
-        &["agent", "read", &root_pane_id, "--source", "visible"],
-    );
-    assert!(!read.status.success());
-    let read_json: serde_json::Value = serde_json::from_slice(&read.stderr).unwrap();
-    assert_eq!(read_json["error"]["code"], "agent_api_removed");
-
-    let sent = run_cli(
-        &socket_path,
-        &["agent", "send", "worker", "echo cli-agent-ok\n"],
-    );
-    assert!(!sent.status.success());
-    let sent_json: serde_json::Value = serde_json::from_slice(&sent.stderr).unwrap();
-    assert_eq!(sent_json["error"]["code"], "agent_api_removed");
-
-    let agent_renamed = run_cli(&socket_path, &["agent", "rename", "worker", "reviewer"]);
-    assert!(!agent_renamed.status.success());
-    let agent_renamed_json: serde_json::Value =
-        serde_json::from_slice(&agent_renamed.stderr).unwrap();
-    assert_eq!(agent_renamed_json["error"]["code"], "agent_api_removed");
-
-    let focused = run_cli(&socket_path, &["agent", "focus", "reviewer"]);
-    assert!(!focused.status.success());
-    let focused_json: serde_json::Value = serde_json::from_slice(&focused.stderr).unwrap();
-    assert_eq!(focused_json["error"]["code"], "agent_api_removed");
-
-    cleanup_spawned_gmux(gmux, base);
+    cleanup_test_base(&base);
 }
 
 #[test]
