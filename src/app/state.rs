@@ -840,28 +840,18 @@ pub enum SettingsSection {
     Theme,
     Sound,
     Toast,
-    PaneLabels,
     Experiments,
-    Integrations,
 }
 
 impl SettingsSection {
-    pub const ALL: &[Self] = &[
-        Self::Theme,
-        Self::Sound,
-        Self::Toast,
-        Self::PaneLabels,
-        Self::Experiments,
-    ];
+    pub const ALL: &[Self] = &[Self::Theme, Self::Sound, Self::Toast, Self::Experiments];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Theme => "theme",
             Self::Sound => "sound",
             Self::Toast => "toasts",
-            Self::PaneLabels => "pane labels",
             Self::Experiments => "experiments",
-            Self::Integrations => "integrations",
         }
     }
 }
@@ -1319,10 +1309,6 @@ pub struct AppState {
     pub theme_name: String,
     /// Settings panel state.
     pub settings: SettingsState,
-    /// Cached integration recommendations for onboarding/settings UI.
-    pub integration_recommendations: Vec<crate::integration::IntegrationRecommendation>,
-    /// Result messages from the latest integration install action.
-    pub integration_install_messages: Vec<String>,
     /// Highlight state for the bottom-right global launcher menu.
     pub global_menu: MenuListState,
     /// Resolved host terminal default colors for theming embedded panes.
@@ -1349,10 +1335,6 @@ impl AppState {
 
     pub fn toast_delivery(&self) -> ToastDelivery {
         self.toast_config.delivery
-    }
-
-    pub fn agent_border_labels_enabled(&self) -> bool {
-        self.show_agent_labels_on_pane_borders
     }
 
     pub fn pane_history_persistence_enabled(&self) -> bool {
@@ -1628,8 +1610,6 @@ impl AppState {
                 original_palette: None,
                 original_theme: None,
             },
-            integration_recommendations: Vec::new(),
-            integration_install_messages: Vec::new(),
             global_menu: MenuListState::new(0),
             host_terminal_theme: TerminalTheme::default(),
             session_dirty: false,

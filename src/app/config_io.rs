@@ -73,19 +73,6 @@ impl App {
         }
     }
 
-    pub(super) fn save_agent_border_labels(&mut self, enabled: bool) {
-        if self.update_config_file("agent border labels", |content| {
-            crate::config::upsert_section_bool(
-                content,
-                "ui",
-                "show_agent_labels_on_pane_borders",
-                enabled,
-            )
-        }) {
-            self.apply_config_from_disk(false);
-        }
-    }
-
     pub(super) fn save_pane_history_persistence(&mut self, enabled: bool) {
         if self.update_config_file("pane screen history", |content| {
             crate::config::upsert_section_bool(content, "experimental", "pane_history", enabled)

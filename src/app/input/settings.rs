@@ -16,10 +16,8 @@ pub(super) enum SettingsAction {
     SaveTheme(String),
     SaveSound(bool),
     SaveToastDelivery(ToastDelivery),
-    SaveAgentBorderLabels(bool),
     SavePaneHistory(bool),
     SaveSwitchAsciiInputSourceInPrefix(bool),
-    InstallRecommendedIntegrations,
 }
 
 /// Map an Experiments row index to the toggle action that flips it.
@@ -43,17 +41,11 @@ impl App {
                 SettingsAction::SaveTheme(name) => self.save_theme(&name),
                 SettingsAction::SaveSound(enabled) => self.save_sound(enabled),
                 SettingsAction::SaveToastDelivery(delivery) => self.save_toast_delivery(delivery),
-                SettingsAction::SaveAgentBorderLabels(enabled) => {
-                    self.save_agent_border_labels(enabled)
-                }
                 SettingsAction::SavePaneHistory(enabled) => {
                     self.save_pane_history_persistence(enabled)
                 }
                 SettingsAction::SaveSwitchAsciiInputSourceInPrefix(enabled) => {
                     self.save_switch_ascii_input_source_in_prefix(enabled)
-                }
-                SettingsAction::InstallRecommendedIntegrations => {
-                    self.install_recommended_integrations()
                 }
             }
         }
@@ -110,13 +102,6 @@ fn cancel_settings(state: &mut AppState) {
     super::modal::leave_modal(state);
 }
 
-fn integrations_need_install(state: &AppState) -> bool {
-    state
-        .integration_recommendations
-        .iter()
-        .any(crate::integration::IntegrationRecommendation::needs_install)
-}
-
 fn apply_settings(state: &mut AppState) -> Option<SettingsAction> {
     match state.settings.section {
         SettingsSection::Theme => {
@@ -126,10 +111,6 @@ fn apply_settings(state: &mut AppState) -> Option<SettingsAction> {
             super::modal::leave_modal(state);
             Some(SettingsAction::SaveTheme(theme_name))
         }
-        SettingsSection::Integrations if integrations_need_install(state) => {
-            Some(SettingsAction::InstallRecommendedIntegrations)
-        }
-        SettingsSection::Integrations => None,
         _ => {
             super::modal::leave_modal(state);
             None
@@ -204,30 +185,6 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 state.settings.list.selected = usize::from(!state.sound_enabled());
             }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
-                state.settings.section = SettingsSection::PaneLabels;
-                state.settings.list.selected = usize::from(!state.agent_border_labels_enabled());
-            }
-            _ => {
-                if let Some(super::modal::ModalAction::Close) =
-                    super::modal::modal_action_from_key(&key, super::modal::SETTINGS_ACTIONS)
-                {
-                    cancel_settings(state);
-                }
-            }
-        },
-        SettingsSection::PaneLabels => match key.code {
-            KeyCode::Up | KeyCode::Char('k') | KeyCode::Down | KeyCode::Char('j') => {
-                state.settings.list.selected = 1 - state.settings.list.selected.min(1);
-            }
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                let enabled = state.settings.list.selected == 0;
-                return Some(SettingsAction::SaveAgentBorderLabels(enabled));
-            }
-            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                state.settings.section = SettingsSection::Toast;
-                state.settings.list.selected = toast_delivery_index(state.toast_delivery());
-            }
-            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                 state.settings.section = SettingsSection::Experiments;
                 state.settings.list.selected = 0;
             }
@@ -248,8 +205,8 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 return experiment_toggle_action(state, state.settings.list.selected);
             }
             KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                state.settings.section = SettingsSection::PaneLabels;
-                state.settings.list.selected = usize::from(!state.agent_border_labels_enabled());
+                state.settings.section = SettingsSection::Toast;
+                state.settings.list.selected = toast_delivery_index(state.toast_delivery());
             }
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                 state.settings.section = SettingsSection::Theme;
@@ -263,24 +220,6 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
                 }
             }
         },
-        SettingsSection::Integrations => match key.code {
-            KeyCode::Enter | KeyCode::Char(' ') if integrations_need_install(state) => {
-                return Some(SettingsAction::InstallRecommendedIntegrations);
-            }
-            KeyCode::BackTab | KeyCode::Left | KeyCode::Char('h') => {
-                state.settings.section = SettingsSection::PaneLabels;
-                state.settings.list.selected = usize::from(!state.agent_border_labels_enabled());
-            }
-            KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
-                state.settings.section = SettingsSection::Experiments;
-                state.settings.list.selected = 0;
-            }
-            _ => match super::modal::modal_action_from_key(&key, super::modal::SETTINGS_ACTIONS) {
-                Some(super::modal::ModalAction::Apply) => return apply_settings(state),
-                Some(super::modal::ModalAction::Close) => cancel_settings(state),
-                _ => {}
-            },
-        },
     }
 
     None
@@ -293,19 +232,12 @@ pub(crate) fn open_settings(state: &mut AppState) {
 pub(crate) fn open_settings_at(state: &mut AppState, section: SettingsSection) {
     state.settings.original_palette = Some(state.palette.clone());
     state.settings.original_theme = Some(state.theme_name.clone());
-    let section = if section == SettingsSection::Integrations {
-        SettingsSection::Theme
-    } else {
-        section
-    };
     state.settings.section = section;
     state.settings.list.selected = match section {
         SettingsSection::Theme => current_theme_index(&state.theme_name),
         SettingsSection::Sound => usize::from(!state.sound_enabled()),
         SettingsSection::Toast => toast_delivery_index(state.toast_delivery()),
-        SettingsSection::PaneLabels => usize::from(!state.agent_border_labels_enabled()),
         SettingsSection::Experiments => 0,
-        SettingsSection::Integrations => 0,
     };
     state.mode = Mode::Settings;
 }
@@ -386,14 +318,6 @@ impl AppState {
                     None
                 }
             }
-            SettingsSection::PaneLabels => {
-                let list_y = area.y + 3;
-                if row >= list_y && row < list_y + 2 {
-                    Some((row - list_y) as usize)
-                } else {
-                    None
-                }
-            }
             SettingsSection::Experiments => {
                 let list_y = area.y + 3;
                 if row >= list_y && row < list_y + ExperimentSetting::ALL.len() as u16 {
@@ -402,7 +326,6 @@ impl AppState {
                     None
                 }
             }
-            SettingsSection::Integrations => None,
         }
     }
 
@@ -415,11 +338,7 @@ impl AppState {
                         SettingsSection::Theme => current_theme_index(&self.theme_name),
                         SettingsSection::Sound => usize::from(!self.sound_enabled()),
                         SettingsSection::Toast => toast_delivery_index(self.toast_delivery()),
-                        SettingsSection::PaneLabels => {
-                            usize::from(!self.agent_border_labels_enabled())
-                        }
                         SettingsSection::Experiments => 0,
-                        SettingsSection::Integrations => 0,
                     });
                     return None;
                 }
@@ -438,12 +357,7 @@ impl AppState {
                             let delivery = toast_delivery_for_index(idx);
                             Some(SettingsAction::SaveToastDelivery(delivery))
                         }
-                        SettingsSection::PaneLabels => {
-                            let enabled = idx == 0;
-                            Some(SettingsAction::SaveAgentBorderLabels(enabled))
-                        }
                         SettingsSection::Experiments => experiment_toggle_action(self, idx),
-                        SettingsSection::Integrations => None,
                     };
                 }
 
@@ -571,7 +485,7 @@ mod tests {
     #[test]
     fn settings_tab_cycle_places_experiments_last() {
         let mut state = state_with_workspaces(&["test"]);
-        open_settings_at(&mut state, SettingsSection::PaneLabels);
+        open_settings_at(&mut state, SettingsSection::Toast);
 
         update_settings_state(
             &mut state,
@@ -595,15 +509,7 @@ mod tests {
             &mut state,
             KeyEvent::new(KeyCode::BackTab, KeyModifiers::empty()),
         );
-        assert_eq!(state.settings.section, SettingsSection::PaneLabels);
-    }
-
-    #[test]
-    fn opening_integrations_settings_falls_back_to_theme() {
-        let mut state = state_with_workspaces(&["test"]);
-        open_settings_at(&mut state, SettingsSection::Integrations);
-
-        assert_eq!(state.settings.section, SettingsSection::Theme);
+        assert_eq!(state.settings.section, SettingsSection::Toast);
     }
 
     #[test]
@@ -656,35 +562,16 @@ mod tests {
     }
 
     #[test]
-    fn settings_tab_hit_area_excludes_integrations_tab() {
+    fn settings_tab_hit_area_ignores_empty_space_after_visible_tabs() {
         let mut state = state_with_workspaces(&["test"]);
-        state.integration_recommendations = vec![integration_recommendation(
-            crate::integration::IntegrationStatusKind::Outdated,
-            true,
-        )];
         open_settings(&mut state);
 
         let inner = state.settings_inner_rect();
         let tab_y = inner.y + 1;
 
-        assert!(!SettingsSection::ALL.contains(&SettingsSection::Integrations));
         assert_eq!(
             state.settings_tab_at(inner.x + inner.width - 1, tab_y),
             None
         );
-    }
-
-    fn integration_recommendation(
-        state: crate::integration::IntegrationStatusKind,
-        available: bool,
-    ) -> crate::integration::IntegrationRecommendation {
-        crate::integration::IntegrationRecommendation {
-            target: crate::api::schema::IntegrationTarget::Claude,
-            label: "claude",
-            command: "claude",
-            available,
-            path: std::path::PathBuf::from("/tmp/gmux-test-integration"),
-            state,
-        }
     }
 }

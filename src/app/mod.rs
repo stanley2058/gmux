@@ -532,8 +532,6 @@ impl App {
                 original_palette: None,
                 original_theme: None,
             },
-            integration_recommendations: crate::integration::integration_recommendations(),
-            integration_install_messages: Vec::new(),
             global_menu: state::MenuListState::new(0),
             host_terminal_theme: crate::terminal_theme::TerminalTheme::default(),
             session_dirty: false,
@@ -1039,41 +1037,6 @@ impl App {
     pub(crate) fn open_settings_from_onboarding(&mut self) {
         self.mark_onboarding_complete();
         self.state.mode = state::Mode::Terminal;
-    }
-
-    pub(crate) fn install_recommended_integrations(&mut self) {
-        let targets = self
-            .state
-            .integration_recommendations
-            .iter()
-            .filter(|recommendation| recommendation.needs_install())
-            .map(|recommendation| recommendation.target)
-            .collect::<Vec<_>>();
-
-        self.state.integration_install_messages.clear();
-        if targets.is_empty() {
-            self.state
-                .integration_install_messages
-                .push("all detected integrations are current".to_string());
-            return;
-        }
-
-        for target in targets {
-            let label = crate::integration::integration_target_label(target);
-            match crate::integration::install_target(target) {
-                Ok(_) => self
-                    .state
-                    .integration_install_messages
-                    .push(format!("installed {label}")),
-                Err(err) => self
-                    .state
-                    .integration_install_messages
-                    .push(format!("{label}: {err}")),
-            }
-        }
-
-        self.state.integration_recommendations = crate::integration::integration_recommendations();
-        self.state.mark_session_dirty();
     }
 
     pub(crate) fn reload_config(&mut self) -> crate::config::ConfigReloadReport {
