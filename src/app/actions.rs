@@ -39,10 +39,6 @@ pub fn notification_toast_for_state_change(
     None
 }
 
-fn toast_agent_label(agent_label: &str) -> &str {
-    agent_label
-}
-
 pub fn notification_context(
     ws: &crate::workspace::Workspace,
     workspace_label: &str,
@@ -1832,7 +1828,7 @@ impl AppState {
         }
         let seen = pane.seen;
 
-        if self.local_sound_playback && self.sound.allows(change.known_agent) {
+        if self.local_sound_playback && self.sound.allows(None) {
             if let Some(sound) = notification_sound_for_state_change(
                 suppress_active_tab_notifications,
                 change.previous_state,
@@ -1846,13 +1842,10 @@ impl AppState {
             self.toast_config.delivery,
             crate::config::ToastDelivery::Gmux
         ) {
-            if let (Some(agent_label), Some(kind)) = (
-                change.agent_label.as_deref(),
-                notification_toast_for_state_change(
-                    is_active_tab,
-                    change.previous_state,
-                    change.state,
-                ),
+            if let Some(kind) = notification_toast_for_state_change(
+                suppress_active_tab_notifications,
+                change.previous_state,
+                change.state,
             ) {
                 let event_text = match kind {
                     ToastKind::NeedsAttention => "needs attention",
@@ -1868,7 +1861,7 @@ impl AppState {
                 );
                 self.toast = Some(ToastNotification {
                     kind,
-                    title: format!("{} {}", toast_agent_label(agent_label), event_text),
+                    title: format!("pane {event_text}"),
                     context,
                     target: Some(ToastTarget {
                         workspace_id: self.workspaces[ws_idx].id.clone(),
