@@ -495,7 +495,6 @@ mod tests {
     use super::super::{app_for_mouse_test, capture_snapshot, mouse, unique_temp_path};
     use crate::{
         app::state::{DragTarget, Mode, PanePanelScope},
-        detect::Agent,
         workspace::Workspace,
     };
 
@@ -667,27 +666,10 @@ mod tests {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         ws.tabs[0].set_custom_name("main".into());
-        let first_pane = ws.tabs[0].root_pane;
         let first_tab = ws.test_add_tab(Some("logs"));
         let second_pane = ws.tabs[first_tab].root_pane;
         app.state.workspaces = vec![ws];
         app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        let second_terminal_id = app.state.workspaces[0].tabs[first_tab].panes[&second_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Claude);
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -738,29 +720,12 @@ mod tests {
     fn clicking_all_workspaces_pane_row_switches_to_correct_workspace() {
         let mut app = app_for_mouse_test();
         let first = Workspace::test_new("one");
-        let first_pane = first.tabs[0].root_pane;
 
         let second = Workspace::test_new("two");
         let second_pane = second.tabs[0].root_pane;
 
         app.state.workspaces = vec![first, second];
         app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        let second_terminal_id = app.state.workspaces[1].tabs[0].panes[&second_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Claude);
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -789,38 +754,21 @@ mod tests {
     fn scrolling_pane_panel_with_wheel_updates_pane_panel_scroll() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
-        let first_pane = ws.tabs[0].root_pane;
 
         let mut tabs = Vec::new();
-        for (tab_name, agent) in [
-            ("logs", Agent::Claude),
-            ("review", Agent::Codex),
-            ("ops", Agent::Gemini),
-        ] {
+        for tab_name in ["logs", "review", "ops"] {
             let tab_idx = ws.test_add_tab(Some(tab_name));
             let pane_id = ws.tabs[tab_idx].root_pane;
-            tabs.push((tab_idx, pane_id, agent));
+            tabs.push((tab_idx, pane_id));
         }
 
         app.state.workspaces = vec![ws];
         app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        for (tab_idx, pane_id, agent) in tabs {
+        for (tab_idx, pane_id) in tabs {
             let terminal_id = app.state.workspaces[0].tabs[tab_idx].panes[&pane_id]
                 .attached_terminal_id
                 .clone();
-            app.state
-                .terminals
-                .get_mut(&terminal_id)
-                .unwrap()
-                .detected_agent = Some(agent);
+            assert!(app.state.terminals.contains_key(&terminal_id));
         }
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -845,43 +793,22 @@ mod tests {
     fn clicking_scrolled_pane_detail_row_switches_to_correct_tab_and_pane() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
-        let first_pane = ws.tabs[0].root_pane;
         let second_tab = ws.test_add_tab(Some("logs"));
         let second_pane = ws.tabs[second_tab].root_pane;
         let mut extra_tabs = Vec::new();
-        for (tab_name, agent) in [("review", Agent::Codex), ("ops", Agent::Gemini)] {
+        for tab_name in ["review", "ops"] {
             let tab_idx = ws.test_add_tab(Some(tab_name));
             let pane_id = ws.tabs[tab_idx].root_pane;
-            extra_tabs.push((tab_idx, pane_id, agent));
+            extra_tabs.push((tab_idx, pane_id));
         }
 
         app.state.workspaces = vec![ws];
         app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        let second_terminal_id = app.state.workspaces[0].tabs[second_tab].panes[&second_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Claude);
-        for (tab_idx, pane_id, agent) in extra_tabs {
+        for (tab_idx, pane_id) in extra_tabs {
             let terminal_id = app.state.workspaces[0].tabs[tab_idx].panes[&pane_id]
                 .attached_terminal_id
                 .clone();
-            app.state
-                .terminals
-                .get_mut(&terminal_id)
-                .unwrap()
-                .detected_agent = Some(agent);
+            assert!(app.state.terminals.contains_key(&terminal_id));
         }
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -908,27 +835,10 @@ mod tests {
     fn clicking_collapsed_pane_row_switches_to_correct_tab_and_pane() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
-        let first_pane = ws.tabs[0].root_pane;
         let second_tab = ws.test_add_tab(Some("logs"));
         let second_pane = ws.tabs[second_tab].root_pane;
         app.state.workspaces = vec![ws];
         app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        let second_terminal_id = app.state.workspaces[0].tabs[second_tab].panes[&second_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Claude);
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;

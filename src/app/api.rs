@@ -205,7 +205,7 @@ impl App {
 
         self.terminal_runtimes.insert(terminal_id.clone(), runtime);
         if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
-            terminal.clear_agent_runtime_identity_after_respawn();
+            terminal.clear_launch_metadata_after_respawn();
         }
         self.state.focus_pane_in_workspace(ws_idx, pane_id);
         self.schedule_session_save();
@@ -366,7 +366,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn pane_died_respawns_shell_and_clears_agent_identity() {
+    async fn pane_died_respawns_shell_and_clears_launch_metadata() {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &crate::config::Config::default(),
@@ -391,7 +391,7 @@ mod tests {
 
         assert!(
             app.find_pane(pane_id).is_some(),
-            "respawnable agent pane should stay attached after the agent process exits"
+            "respawnable pane should stay attached after the launch command exits"
         );
         let terminal = app
             .state

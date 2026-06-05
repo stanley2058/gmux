@@ -1328,7 +1328,6 @@ impl App {
 mod tests {
     use super::*;
     use crate::config::Config;
-    use crate::detect::AgentState;
     use crate::terminal::TerminalRuntime;
     use crate::workspace::Workspace;
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -2164,7 +2163,7 @@ mod tests {
     #[test]
     fn save_pane_panel_scope_persists_then_applies_live_config() {
         let _guard = config_env_lock().lock().unwrap();
-        let path = temp_config_path("save-agent-panel-scope");
+        let path = temp_config_path("save-pane-panel-scope");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "onboarding = false\n").unwrap();
         std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
@@ -2275,7 +2274,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn outer_focus_gained_marks_visible_done_panes_seen() {
+    async fn outer_focus_gained_marks_visible_panes_seen() {
         let mut app = test_app();
         let mut workspace = Workspace::test_new("test");
         let root_pane = workspace.tabs[0].root_pane;
@@ -2285,36 +2284,16 @@ mod tests {
 
         app.state.workspaces = vec![workspace];
         app.state.ensure_test_terminals();
-        let root_terminal_id = app.state.workspaces[0].tabs[0].panes[&root_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&root_terminal_id)
-            .unwrap()
-            .state = AgentState::Idle;
         app.state.workspaces[0].tabs[0]
             .panes
             .get_mut(&root_pane)
             .unwrap()
             .seen = false;
-        let split_terminal_id = app.state.workspaces[0].tabs[0].panes[&split_pane]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&split_terminal_id)
-            .unwrap()
-            .state = AgentState::Idle;
         app.state.workspaces[0].tabs[0]
             .panes
             .get_mut(&split_pane)
             .unwrap()
             .seen = false;
-        let bg_terminal_id = app.state.workspaces[0].tabs[background_tab].panes[&background_pane]
-            .attached_terminal_id
-            .clone();
-        app.state.terminals.get_mut(&bg_terminal_id).unwrap().state = AgentState::Idle;
         app.state.workspaces[0].tabs[background_tab]
             .panes
             .get_mut(&background_pane)

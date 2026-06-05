@@ -677,13 +677,14 @@ impl AppState {
             }
 
             MouseEventKind::ScrollUp if in_sidebar => {
-                let agent_area = self.pane_panel_rect();
-                let over_pane_panel = agent_area != Rect::default()
-                    && mouse.row >= agent_area.y
-                    && mouse.row < agent_area.y + agent_area.height;
+                let pane_panel_area = self.pane_panel_rect();
+                let over_pane_panel = pane_panel_area != Rect::default()
+                    && mouse.row >= pane_panel_area.y
+                    && mouse.row < pane_panel_area.y + pane_panel_area.height;
                 if over_pane_panel {
                     if crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
-                        self, agent_area,
+                        self,
+                        pane_panel_area,
                     )) {
                         self.scroll_pane_panel(-1);
                     }
@@ -696,13 +697,14 @@ impl AppState {
                 }
             }
             MouseEventKind::ScrollDown if in_sidebar => {
-                let agent_area = self.pane_panel_rect();
-                let over_pane_panel = agent_area != Rect::default()
-                    && mouse.row >= agent_area.y
-                    && mouse.row < agent_area.y + agent_area.height;
+                let pane_panel_area = self.pane_panel_rect();
+                let over_pane_panel = pane_panel_area != Rect::default()
+                    && mouse.row >= pane_panel_area.y
+                    && mouse.row < pane_panel_area.y + pane_panel_area.height;
                 if over_pane_panel {
                     if crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
-                        self, agent_area,
+                        self,
+                        pane_panel_area,
                     )) {
                         self.scroll_pane_panel(1);
                     }

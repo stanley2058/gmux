@@ -3,7 +3,6 @@
 
 use tracing::{info, warn};
 
-use crate::detect::AgentState;
 use crate::events::AppEvent;
 use crate::layout::{find_in_direction, NavDirection, PaneId};
 use crate::selection::Selection;
@@ -153,7 +152,6 @@ impl AppState {
                 depth: 0,
                 label: format!("{workspace_label} ({pane_count})"),
                 meta: String::new(),
-                status: AgentState::Unknown,
                 seen: true,
                 is_current: self.active == Some(ws_idx),
                 is_workspace: true,
@@ -217,7 +215,6 @@ impl AppState {
             depth: 1,
             label,
             meta,
-            status: AgentState::Unknown,
             seen: true,
             is_current: false,
             is_workspace: false,
@@ -268,7 +265,6 @@ impl AppState {
                 depth: if multi_tab { 2 } else { 1 },
                 label,
                 meta,
-                status: AgentState::Unknown,
                 seen: pane.seen,
                 is_current,
                 is_workspace: false,
@@ -806,11 +802,11 @@ impl AppState {
     }
 
     pub fn next_pane_panel_entry(&mut self) {
-        self.cycle_agent_entry(true);
+        self.cycle_pane_panel_entry(true);
     }
 
     pub fn previous_pane_panel_entry(&mut self) {
-        self.cycle_agent_entry(false);
+        self.cycle_pane_panel_entry(false);
     }
 
     pub fn focus_pane_panel_entry(&mut self, idx: usize) -> bool {
@@ -834,7 +830,7 @@ impl AppState {
         false
     }
 
-    fn cycle_agent_entry(&mut self, forward: bool) {
+    fn cycle_pane_panel_entry(&mut self, forward: bool) {
         let entries = crate::ui::pane_panel_entries(self);
         if entries.is_empty() {
             return;
@@ -1735,7 +1731,6 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::detect::{Agent, AgentState};
     use crate::workspace::Workspace;
     use ratatui::layout::Direction;
 
@@ -2038,15 +2033,11 @@ mod tests {
     }
 
     #[test]
-    fn navigator_rows_include_detected_panes_with_generic_meta() {
+    fn navigator_rows_include_plain_panes_with_generic_meta() {
         let mut state = app_with_workspaces(&["one"]);
         let shell = state.workspaces[0].tabs[0].root_pane;
-        let agent = state.workspaces[0].test_split(Direction::Horizontal);
+        let split = state.workspaces[0].test_split(Direction::Horizontal);
         state.ensure_test_terminals();
-
-        let agent_terminal_id = state.workspaces[0].terminal_id(agent).cloned().unwrap();
-        let terminal = state.terminals.get_mut(&agent_terminal_id).unwrap();
-        terminal.set_detected_state(Some(Agent::Claude), AgentState::Working);
 
         state.open_navigator();
         let rows = state.navigator_rows();
@@ -2060,23 +2051,16 @@ mod tests {
             .find(|row| {
                 matches!(
                     row.target,
-                    crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == agent
+                    crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == split
                 )
             })
-            .expect("detected pane should still appear in the navigator");
+            .expect("split pane should appear in the navigator");
         assert_eq!(pane_row.meta, "shell");
     }
 
     #[test]
-    fn opening_navigator_selects_current_pane_and_expands_attention_workspaces() {
+    fn opening_navigator_selects_current_pane_and_expands_workspaces() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let blocked = state.workspaces[1].tabs[0].root_pane;
-        let blocked_terminal_id = state.workspaces[1].terminal_id(blocked).cloned().unwrap();
-        state
-            .terminals
-            .get_mut(&blocked_terminal_id)
-            .unwrap()
-            .set_detected_state(Some(Agent::Codex), AgentState::Blocked);
 
         state.open_navigator();
         let selected = state.navigator_rows()[state.navigator.selected].clone();
@@ -2131,10 +2115,10 @@ mod tests {
     }
 
     #[test]
-    fn navigator_search_ignores_hidden_agent_state_metadata() {
+    fn navigator_search_ignores_hidden_status_metadata() {
         let mut state = app_with_workspaces(&["one"]);
         let shell = state.workspaces[0].tabs[0].root_pane;
-        let working = state.workspaces[0].test_split(Direction::Horizontal);
+        let split = state.workspaces[0].test_split(Direction::Horizontal);
         state.ensure_test_terminals();
 
         let shell_terminal_id = state.workspaces[0].terminal_id(shell).cloned().unwrap();
@@ -2143,13 +2127,6 @@ mod tests {
             .get_mut(&shell_terminal_id)
             .unwrap()
             .set_manual_label("wheel notes".into());
-        let working_terminal_id = state.workspaces[0].terminal_id(working).cloned().unwrap();
-        state
-            .terminals
-            .get_mut(&working_terminal_id)
-            .unwrap()
-            .set_detected_state(Some(Agent::Codex), AgentState::Working);
-
         state.open_navigator();
         state.navigator.query = "working".into();
         let state_rows = state.navigator_rows();
@@ -2169,7 +2146,7 @@ mod tests {
         )));
         assert!(!text_rows.iter().any(|row| matches!(
             row.target,
-            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == working
+            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == split
         )));
     }
 
@@ -2289,19 +2266,6 @@ mod tests {
         );
     }
 
-    fn mark_agent(state: &mut AppState, ws_idx: usize, tab_idx: usize, pane_id: PaneId) {
-        state.ensure_test_terminals();
-        let terminal_id = state.workspaces[ws_idx].tabs[tab_idx]
-            .panes
-            .get(&pane_id)
-            .unwrap()
-            .attached_terminal_id
-            .clone();
-        if let Some(terminal) = state.terminals.get_mut(&terminal_id) {
-            terminal.set_detected_state(Some(Agent::Pi), AgentState::Idle);
-        }
-    }
-
     #[test]
     fn next_pane_panel_entry_cycles_pane_panel_entries_in_all_scope() {
         let mut first = Workspace::test_new("one");
@@ -2318,9 +2282,6 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
-        mark_agent(&mut state, 0, 0, first_root);
-        mark_agent(&mut state, 0, 0, first_second);
-        mark_agent(&mut state, 1, 0, second_root);
 
         state.next_pane_panel_entry();
         assert_eq!(state.active, Some(0));
@@ -2339,20 +2300,18 @@ mod tests {
     fn focus_pane_panel_entry_uses_pane_panel_order() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
-        let first_second = first.test_split(Direction::Horizontal);
+        let _first_second = first.test_split(Direction::Horizontal);
         first.tabs[0].layout.focus_pane(first_root);
         let second = Workspace::test_new("two");
         let second_root = second.tabs[0].root_pane;
 
         let mut state = AppState::test_new();
         state.workspaces = vec![first, second];
+        state.ensure_test_terminals();
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
-        mark_agent(&mut state, 0, 0, first_root);
-        mark_agent(&mut state, 0, 0, first_second);
-        mark_agent(&mut state, 1, 0, second_root);
 
         assert!(state.focus_pane_panel_entry(2));
 
@@ -2365,7 +2324,6 @@ mod tests {
         let mut state = app_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
         state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
-        mark_agent(&mut state, 0, 0, root);
 
         assert!(state.focus_pane_panel_entry(0));
         assert_eq!(state.active, Some(0));
@@ -2379,7 +2337,6 @@ mod tests {
         let first_second = first.test_split(Direction::Horizontal);
         first.tabs[0].layout.focus_pane(first_second);
         let second = Workspace::test_new("two");
-        let second_root = second.tabs[0].root_pane;
 
         let mut state = AppState::test_new();
         state.workspaces = vec![first, second];
@@ -2388,9 +2345,6 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::CurrentWorkspace;
-        mark_agent(&mut state, 0, 0, first_root);
-        mark_agent(&mut state, 0, 0, first_second);
-        mark_agent(&mut state, 1, 0, second_root);
 
         state.next_pane_panel_entry();
 
@@ -2413,10 +2367,6 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::CurrentWorkspace;
-        for tab_idx in 0..state.workspaces[0].tabs.len() {
-            let pane_id = state.workspaces[0].tabs[tab_idx].root_pane;
-            mark_agent(&mut state, 0, tab_idx, pane_id);
-        }
         state.workspaces[0].tabs[0].layout.focus_pane(root);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 

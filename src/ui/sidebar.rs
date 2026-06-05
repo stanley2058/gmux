@@ -12,7 +12,7 @@ use crate::app::{AppState, Mode};
 use crate::terminal::TerminalRuntimeRegistry;
 
 const WORKSPACE_SECTION_HEADER_ROWS: u16 = 2;
-const AGENT_PANEL_HEADER_ROWS: u16 = 3;
+const PANE_PANEL_HEADER_ROWS: u16 = 3;
 
 pub(crate) struct PanePanelEntry {
     pub ws_idx: usize,
@@ -471,11 +471,11 @@ pub(crate) fn workspace_list_scrollbar_rect(app: &AppState, area: Rect) -> Optio
 }
 
 pub(crate) fn pane_panel_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
-    if area.width == 0 || area.height <= AGENT_PANEL_HEADER_ROWS {
+    if area.width == 0 || area.height <= PANE_PANEL_HEADER_ROWS {
         return Rect::default();
     }
 
-    let body_y = area.y.saturating_add(AGENT_PANEL_HEADER_ROWS);
+    let body_y = area.y.saturating_add(PANE_PANEL_HEADER_ROWS);
     let body_height = (area.y + area.height).saturating_sub(body_y);
     let body_width = area.width.saturating_sub(u16::from(has_scrollbar));
     Rect::new(area.x, body_y, body_width, body_height)
@@ -1144,7 +1144,7 @@ fn render_sidebar_toggle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{detect::Agent, workspace::Workspace};
+    use crate::workspace::Workspace;
     use ratatui::{backend::TestBackend, Terminal};
 
     #[test]
@@ -1178,27 +1178,11 @@ mod tests {
     fn all_workspaces_pane_panel_entries_use_workspace_and_optional_tab_labels() {
         let mut app = crate::app::state::AppState::test_new();
         let first = Workspace::test_new("one");
-        let first_pane = first.tabs[0].root_pane;
         let mut second = Workspace::test_new("two");
-        let second_tab = second.test_add_tab(Some("logs"));
-        let second_pane = second.tabs[second_tab].root_pane;
+        second.test_add_tab(Some("logs"));
 
         app.workspaces = vec![first, second];
         app.ensure_test_terminals();
-        let first_terminal_id = app.workspaces[0].tabs[0].panes[&first_pane]
-            .attached_terminal_id
-            .clone();
-        app.terminals
-            .get_mut(&first_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Pi);
-        let second_terminal_id = app.workspaces[1].tabs[second_tab].panes[&second_pane]
-            .attached_terminal_id
-            .clone();
-        app.terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .detected_agent = Some(Agent::Claude);
         app.active = Some(0);
         app.selected = 0;
         app.pane_panel_scope = PanePanelScope::AllWorkspaces;
@@ -1214,7 +1198,7 @@ mod tests {
     #[tokio::test]
     async fn all_workspaces_pane_panel_entries_use_live_root_runtime_cwd_for_workspace_label() {
         let unique = format!(
-            "gmux-agent-panel-runtime-cwd-{}-{}",
+            "gmux-pane-panel-runtime-cwd-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1240,7 +1224,6 @@ mod tests {
             .clone();
         let terminal = app.terminals.get_mut(&terminal_id).unwrap();
         terminal.cwd = stale_cwd;
-        terminal.detected_agent = Some(Agent::Pi);
         app.active = Some(0);
         app.selected = 0;
         app.pane_panel_scope = PanePanelScope::AllWorkspaces;

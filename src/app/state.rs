@@ -3,7 +3,6 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::{Direction, Rect};
 use ratatui::style::Color;
 
-use crate::detect::AgentState;
 use crate::layout::{PaneId, PaneInfo, SplitBorder};
 use crate::selection::Selection;
 
@@ -643,7 +642,6 @@ pub(crate) struct NavigatorRow {
     pub depth: u8,
     pub label: String,
     pub meta: String,
-    pub status: AgentState,
     pub seen: bool,
     pub is_current: bool,
     pub is_workspace: bool,

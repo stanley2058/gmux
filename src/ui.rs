@@ -181,8 +181,9 @@ fn compute_view_internal(
     if !app.sidebar_collapsed {
         app.workspace_scroll = normalized_workspace_scroll(app, sidebar_area, app.workspace_scroll);
         let (_, detail_area) = expanded_sidebar_sections(sidebar_area, app.sidebar_section_split);
-        let max_agent_scroll = pane_panel_scroll_metrics(app, detail_area).max_offset_from_bottom;
-        app.pane_panel_scroll = app.pane_panel_scroll.min(max_agent_scroll);
+        let max_pane_panel_scroll =
+            pane_panel_scroll_metrics(app, detail_area).max_offset_from_bottom;
+        app.pane_panel_scroll = app.pane_panel_scroll.min(max_pane_panel_scroll);
     } else {
         app.workspace_scroll = app
             .workspace_scroll

@@ -806,14 +806,11 @@ fn agent_methods_are_not_socket_api() {
     );
     assert_eq!(listed["error"]["code"], "invalid_request");
 
-    let fetched_by_detected_agent = send_request(
+    let fetched_removed_target = send_request(
         &socket_path,
         r#"{"id":"agent_get_detected","method":"agent.get","params":{"target":"pi"}}"#,
     );
-    assert_eq!(
-        fetched_by_detected_agent["error"]["code"],
-        "invalid_request"
-    );
+    assert_eq!(fetched_removed_target["error"]["code"], "invalid_request");
 
     let renamed_first_agent = send_request(
         &socket_path,
