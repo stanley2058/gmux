@@ -1,9 +1,9 @@
 ---
 title: Gmux documentation
-description: Terminal-native agent runtime and multiplexer.
+description: Terminal-native multiplexer.
 template: splash
 hero:
-  tagline: "One terminal for the whole herd: real panes, persistent sessions, SSH attach, state awareness, and CLI/socket orchestration."
+  tagline: "One terminal for real panes, persistent sessions, SSH attach, and CLI/socket orchestration."
   image:
     file: ../../../public/assets/logo.svg
   actions:
@@ -16,7 +16,7 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-Gmux is a terminal-native agent runtime and multiplexer. It gives the whole herd persistent terminal workspaces with panes, tabs, mouse control, state awareness, and an API that agents can use themselves.
+Gmux is a terminal-native multiplexer. It gives you persistent sessions with panes, tabs, mouse control, SSH attach, and a scriptable CLI/socket API.
 
 ```bash
 curl -fsSL https://gmux.dev/install.sh | sh
@@ -32,7 +32,7 @@ gmux
     [Install Gmux →](/docs/install/)
   </Card>
   <Card title="Quick start">
-    Create your first workspace, run an agent, split panes, and detach safely.
+    Create your first session, split panes, add tabs, and detach safely.
 
     [Start using Gmux →](/docs/quick-start/)
   </Card>
@@ -41,13 +41,8 @@ gmux
 
     [Pick a workflow →](/docs/how-to-work/)
   </Card>
-  <Card title="Agents">
-    See supported agents, detection behavior, integrations, custom labels, and direct attach.
-
-    [Understand agents →](/docs/agents/)
-  </Card>
   <Card title="Session state">
-    Understand detach, restart restore, pane history replay, native agent resume, and live handoff.
+    Understand detach, restart restore, pane history replay, and live handoff.
 
     [Compare state paths →](/docs/session-state/)
   </Card>
@@ -57,7 +52,7 @@ gmux
     [Configure Gmux →](/docs/configuration/)
   </Card>
   <Card title="API">
-    Control Gmux from scripts, tools, and agents through the CLI and local socket API.
+    Control Gmux from scripts and tools through the CLI and local socket API.
 
     [Read the API guide →](/docs/socket-api/)
   </Card>

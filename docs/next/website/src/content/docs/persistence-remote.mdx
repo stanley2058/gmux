@@ -43,7 +43,7 @@ gmux session stop work
 gmux session delete side-project
 ```
 
-A named session has its own panes, tabs, workspaces, sockets, and runtime state. It still shares the same global config file.
+A named session has its own panes, tabs, sockets, and runtime state. It still shares the same global config file.
 
 Use `--json` for scripts:
 
@@ -115,18 +115,12 @@ GMUX_REMOTE_BINARY=target/release/gmux gmux --remote workbox
 Use `--session` with `--remote` to attach to a named session on the remote host:
 
 ```bash
-gmux --remote workbox --session agents
+gmux --remote workbox --session work
 ```
 
 ## Direct terminal attach
 
-Full Gmux attach opens the whole workspace UI. Direct attach opens one server-owned terminal in your current terminal.
-
-Attach by agent target:
-
-```bash
-gmux agent attach reviewer
-```
+Full Gmux attach opens the whole TUI. Direct attach opens one server-owned terminal in your current terminal.
 
 Attach by terminal ID:
 

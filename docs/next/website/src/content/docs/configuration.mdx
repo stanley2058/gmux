@@ -27,7 +27,7 @@ gmux --default-config > ~/.config/gmux/config.toml
 
 If a config value is invalid, Gmux falls back to a safe default and shows a startup warning.
 
-Gmux shows first-run setup when `onboarding` is missing or true. Continuing from onboarding writes `onboarding = false` and opens settings on the integrations tab. Set it when you want to skip that flow after setup.
+Gmux shows first-run setup when `onboarding` is missing or true. Continuing from onboarding writes `onboarding = false`. Set it when you want to skip that flow after setup.
 
 ```toml
 onboarding = false
@@ -76,31 +76,14 @@ shell_mode = "auto"
 
 `shell_mode = "auto"` starts login shells on macOS so login-only PATH setup such as `/usr/libexec/path_helper` and Homebrew shell initialization runs in new panes. On other platforms, it keeps the existing non-login shell behavior. Use `"login"` to force login-shell startup, or `"non_login"` to opt out. Command panes, detached custom command keybindings, and explicit argv launches keep their existing command execution paths.
 
-Set the working directory policy for new panes, tabs, and workspaces:
+Set the working directory policy for new panes and tabs:
 
 ```toml
 [terminal]
 new_cwd = "follow"
 ```
 
-`new_cwd = "follow"` keeps the default behavior and inherits the source pane or workspace. When there is no source workspace, Gmux starts in `$HOME`. Use `"home"` to always start in `$HOME`, `"current"` to use Gmux's process directory, or a fixed path such as `"~/Projects"`. Explicit `--cwd` values from the CLI or socket API still take precedence.
-
-## Worktrees
-
-Set the root directory Gmux uses for Git worktree checkouts created from the sidebar:
-
-```toml
-[worktrees]
-directory = "~/.gmux/worktrees"
-```
-
-Gmux creates checkouts under `<directory>/<repo>/<branch-slug>`. For sibling-style checkouts, set this to a directory such as `~/Projects/gmux-worktrees`. Relative values are resolved to an absolute path when the app applies the config.
-
-Worktree actions are available from Git workspace rows. `New worktree` creates a branch and checkout, opens it as a new Gmux workspace, and groups it under the source workspace. `Open worktree...` lists existing Git worktree checkouts for that repo; choosing an already-open checkout focuses it, and choosing a closed checkout opens it in the same group.
-
-Grouped worktrees still behave like normal Gmux workspaces: they can be focused, renamed, closed, and contain their own tabs and panes. The parent row is the original workspace. Closing the parent row closes the whole Gmux group, but it does not delete checkout folders or branches.
-
-Deleting a worktree checkout is explicit. Use `Delete worktree checkout...` on a grouped child workspace to run `git worktree remove`. Gmux first asks Git to remove safely. If Git refuses because the checkout has modified or untracked files, Gmux asks again before running the forced remove. Branches are not deleted.
+`new_cwd = "follow"` keeps the default behavior and inherits the source pane when available. When there is no source pane, Gmux starts in `$HOME`. Use `"home"` to always start in `$HOME`, `"current"` to use Gmux's process directory, or a fixed path such as `"~/Projects"`. Explicit `--cwd` values from the CLI or socket API still take precedence.
 
 ## Remote attach
 
@@ -137,8 +120,6 @@ The default keymap is prefix-first and avoids direct shortcuts that can steal in
 [keys]
 detach = ["prefix+d", "prefix+q"]
 goto = "prefix+g"
-navigate_workspace_up = "up"
-navigate_workspace_down = "down"
 navigate_pane_left = "h"
 navigate_pane_down = "j"
 navigate_pane_up = "k"
@@ -173,9 +154,9 @@ last_pane = "prefix+tab"
 next_tab = ["prefix+n", "ctrl+alt+]"]
 ```
 
-`last_pane` switches back to the last focused pane across workspaces and tabs. It is unset by default because the tmux-style pane binding `prefix+l` is already used for pane-right focus.
+`last_pane` switches back to the last focused pane across tabs. It is unset by default because the tmux-style pane binding `prefix+l` is already used for pane-right focus.
 
-Key strings accept plain keys, modifier combinations such as `ctrl+a`, `shift+n`, `alt+1`, `cmd+k`, and special keys such as `enter`, `tab`, `esc`, `left`, `right`, `up`, and `down`. Named punctuation such as `minus`, `comma`, `ampersand`, `plus`, and `backtick` is also accepted. Plain direct printable keys such as `n` are unsafe because they intercept typing; use `prefix+n` unless you intentionally want a direct binding. The `navigate_workspace_*` and `navigate_pane_*` fields are navigate-mode-only and may use plain keys such as `j` or `k`; they must not use `prefix+`, `esc`, `enter`, `tab`, `shift+tab`, `left`, `right`, or unmodified `1` through `9`. Left and right arrows are permanent aliases for pane-left and pane-right navigation. These navigate-mode shortcuts are independent from general action bindings such as `focus_pane_down = "prefix+j"`; when both use the same key, the navigate-mode shortcut wins while navigate mode is open. Alt, Cmd/Super, and punctuation with modifiers depend on your terminal and tmux settings.
+Key strings accept plain keys, modifier combinations such as `ctrl+a`, `shift+n`, `alt+1`, `cmd+k`, and special keys such as `enter`, `tab`, `esc`, `left`, `right`, `up`, and `down`. Named punctuation such as `minus`, `comma`, `ampersand`, `plus`, and `backtick` is also accepted. Plain direct printable keys such as `n` are unsafe because they intercept typing; use `prefix+n` unless you intentionally want a direct binding. The `navigate_pane_*` fields are navigate-mode-only and may use plain keys such as `j` or `k`; they must not use `prefix+`, `esc`, `enter`, `tab`, `shift+tab`, `left`, `right`, or unmodified `1` through `9`. Left and right arrows are permanent aliases for pane-left and pane-right navigation. These navigate-mode shortcuts are independent from general action bindings such as `focus_pane_down = "prefix+j"`; when both use the same key, the navigate-mode shortcut wins while navigate mode is open. Alt, Cmd/Super, and punctuation with modifiers depend on your terminal and tmux settings.
 
 If you have old custom keybindings and want the new defaults, run `gmux config reset-keys`. Gmux backs up `config.toml`, removes `[keys]` and `[[keys.command]]`, and uses built-in v2 defaults after restart or `gmux server reload-config`.
 
@@ -186,11 +167,10 @@ Indexed keybindings use `1..9` in normal keybinding fields:
 ```toml
 [keys]
 switch_tab = "prefix+1..9"
-switch_workspace = "prefix+shift+1..9"
 focus_pane_panel_entry = "prefix+alt+1..9"
 ```
 
-Workspace indexed bindings and legacy agent indexed bindings are compatibility fields; new configs should prefer session, tab, and pane actions.
+New configs should prefer session, tab, and pane actions.
 
 ## Custom command keybindings
 
@@ -210,7 +190,7 @@ description = "run lazygit"
 
 An optional `description` can be provided. When specified, this description is displayed in the keybind help panel (opened with `prefix+?`) in place of the default `'custom command'` label.
 
-Custom commands receive `GMUX_SOCKET_PATH`, `GMUX_BIN_PATH`, `GMUX_ACTIVE_WORKSPACE_ID`, `GMUX_ACTIVE_TAB_ID`, `GMUX_ACTIVE_PANE_ID`, and `GMUX_ACTIVE_PANE_CWD` when those values are available. Shell commands run from the focused pane's working directory when Gmux can detect it.
+Custom commands receive `GMUX_SOCKET_PATH`, `GMUX_BIN_PATH`, `GMUX_ACTIVE_TAB_ID`, `GMUX_ACTIVE_PANE_ID`, and `GMUX_ACTIVE_PANE_CWD` when those values are available. Shell commands run from the focused pane's working directory when Gmux can detect it.
 
 ## Theme
 
@@ -243,7 +223,7 @@ Color values accept hex, named colors, `rgb(r,g,b)`, or reset aliases like `rese
 
 ## UI and sidebar
 
-The sidebar is the main Gmux dashboard. It shows workspaces, tabs, panes, and agent state.
+The sidebar shows tabs, panes, and session context.
 
 Common options:
 
@@ -269,7 +249,7 @@ accent = "cyan"
 
 `pane_panel_scope` can be `all` or `current`. Use `current` if you only want the pane panel to show panes in the active session.
 
-`confirm_close` controls whether closing a workspace asks for confirmation. `prompt_new_tab_name` controls whether new tabs ask for a label first.
+`confirm_close` controls whether destructive close actions ask for confirmation. `prompt_new_tab_name` controls whether new tabs ask for a label first.
 
 Set `mouse_capture = false` if you want your terminal to handle normal clicks, such as command-clicking URLs. With mouse capture enabled, Ctrl-click opens pane links when your terminal sends that modified click to Gmux; use Shift-Ctrl-click on Linux or Shift-Cmd-click on macOS for the terminal-native bypass path.
 
@@ -281,7 +261,7 @@ Set `mouse_scroll_lines` to change how many pane scrollback lines each mouse whe
 
 ## Notifications
 
-Gmux can show popup notifications when agents finish or need input.
+Gmux can show popup notifications for background attention.
 
 ```toml
 [ui.toast]
@@ -290,7 +270,7 @@ delivery = "off"
 
 `delivery = "off"` disables popup notifications. This is the default.
 
-`delivery = "gmux"` shows a top-right toast inside the Gmux UI. Click the toast, or bind `keys.open_notification_target`, to focus the target workspace, tab, and pane.
+`delivery = "gmux"` shows a top-right toast inside the Gmux UI. Click the toast, or bind `keys.open_notification_target`, to focus the target tab and pane.
 
 `delivery = "terminal"` asks the outer terminal to show a desktop notification. Gmux sends terminal notification escape sequences for Ghostty, iTerm2, Kitty, and WezTerm. This is useful over SSH because the local terminal owns the notification.
 
@@ -307,7 +287,7 @@ Sound notifications are enabled by default and are played by the local Gmux clie
 enabled = true
 ```
 
-Gmux plays a done sound when an agent finishes and an attention sound when an agent needs input. Set `enabled = false` on shared machines or remote servers unless you explicitly want audio.
+Set `enabled = false` on shared machines or remote servers unless you explicitly want audio.
 
 On macOS, Gmux uses `afplay`. On Linux, Gmux tries mp3-capable players in order: `paplay`, `pw-play`, `ffplay`, `mpg123`, then `mpv`. If no player is available, sound playback is skipped and Gmux logs a warning.
 
@@ -320,15 +300,7 @@ done_path = "sounds/done.mp3"
 request_path = "sounds/request.mp3"
 ```
 
-`path` sets one sound for all sound notifications. `done_path` and `request_path` override only the finished and needs-input sounds.
-
-Per-agent sound overrides accept `default`, `on`, or `off`. Droid is muted by default.
-
-```toml
-[ui.sound.agents]
-droid = "off"
-claude = "on"
-```
+`path` sets one sound for all sound notifications. `done_path` and `request_path` override the finished and attention sounds.
 
 ## Scrollback
 
@@ -343,7 +315,7 @@ Existing panes keep their current buffer until they are recreated.
 
 ## Pane screen history
 
-By default, full session restart restores workspaces, tabs, panes, cwd, layout, and focus without saving pane contents.
+By default, full session restart restores tabs, panes, cwd, layout, and focus without saving pane contents.
 
 Pane screen history is off by default. Pane output can include secrets, tokens, prompts, and command output, so enable it only when you want Gmux to save recent pane contents across full server restarts:
 
@@ -427,7 +399,7 @@ You can also toggle it from Settings > Experiments > switch to ascii input sourc
 
 ## Logs
 
-Logs are useful when diagnosing startup warnings, integration state, or socket API behavior.
+Logs are useful when diagnosing startup warnings, terminal behavior, or socket API behavior.
 
 Common log files:
 
