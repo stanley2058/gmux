@@ -170,10 +170,6 @@ impl App {
 
         let mut cwd = None;
         if let Some(ws_idx) = self.state.active {
-            env.push((
-                "GMUX_ACTIVE_WORKSPACE_ID".to_string(),
-                self.public_workspace_id(ws_idx),
-            ));
             if let Some(workspace) = self.state.workspaces.get(ws_idx) {
                 let tab_idx = workspace.active_tab_index();
                 if let Some(tab_id) = self.public_tab_id(ws_idx, tab_idx) {
@@ -1708,7 +1704,7 @@ last_pane = "prefix+tab"
 
         let output_path = unique_temp_path("custom-command-keybind");
         let command = format!(
-            "printf '%s\\n%s\\n%s\\n' \"$GMUX_ACTIVE_WORKSPACE_ID\" \"$GMUX_ACTIVE_TAB_ID\" \"$GMUX_ACTIVE_PANE_ID\" > '{}'",
+            "printf '%s\\n%s\\n' \"$GMUX_ACTIVE_TAB_ID\" \"$GMUX_ACTIVE_PANE_ID\" > '{}'",
             output_path.display()
         );
         app.state.keybinds.custom_commands = vec![crate::config::CustomCommandKeybind {
@@ -1731,10 +1727,9 @@ last_pane = "prefix+tab"
 
         let content = wait_for_file(&output_path);
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0], app.state.workspaces[0].id);
-        assert_eq!(lines[1], format!("{}:1", app.state.workspaces[0].id));
-        assert_eq!(lines[2], format!("{}-1", app.state.workspaces[0].id));
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], format!("{}:1", app.state.workspaces[0].id));
+        assert_eq!(lines[1], format!("{}-1", app.state.workspaces[0].id));
         assert_eq!(app.state.mode, Mode::Terminal);
 
         let _ = std::fs::remove_file(output_path);
