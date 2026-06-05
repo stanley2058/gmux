@@ -94,8 +94,6 @@ pub struct PaneSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent_name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launch_argv: Option<Vec<String>>,
 }
 
@@ -301,11 +299,6 @@ fn capture_tab(
             .get(id)
             .and_then(|pane| terminals.get(&pane.attached_terminal_id))
             .and_then(|terminal| terminal.manual_label.clone());
-        let agent_name = tab
-            .panes
-            .get(id)
-            .and_then(|pane| terminals.get(&pane.attached_terminal_id))
-            .and_then(|terminal| terminal.agent_name.clone());
         let launch_argv = tab
             .panes
             .get(id)
@@ -316,7 +309,6 @@ fn capture_tab(
             PaneSnapshot {
                 cwd,
                 label,
-                agent_name,
                 launch_argv,
             },
         );
@@ -551,7 +543,6 @@ mod tests {
             PaneSnapshot {
                 cwd: PathBuf::from("/home/can/Projects/gmux"),
                 label: None,
-                agent_name: None,
                 launch_argv: None,
             },
         );
@@ -560,7 +551,6 @@ mod tests {
             PaneSnapshot {
                 cwd: PathBuf::from("/home/can/Projects/website"),
                 label: Some("website".into()),
-                agent_name: None,
                 launch_argv: None,
             },
         );
@@ -1023,7 +1013,6 @@ mod tests {
             PaneSnapshot {
                 cwd: PathBuf::from("/tmp/this-directory-does-not-exist-for-gmux-test"),
                 label: None,
-                agent_name: None,
                 launch_argv: None,
             },
         );
@@ -1034,7 +1023,6 @@ mod tests {
                     .map(PathBuf::from)
                     .unwrap_or_else(|_| PathBuf::from("/tmp")),
                 label: None,
-                agent_name: None,
                 launch_argv: None,
             },
         );

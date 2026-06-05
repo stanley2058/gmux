@@ -372,7 +372,6 @@ fn restore_tab(
         };
 
         let saved_label = saved_pane.and_then(|p| p.label.clone());
-        let saved_agent_name = saved_pane.and_then(|p| p.agent_name.clone());
         let saved_launch_argv = saved_pane.and_then(|p| p.launch_argv.clone());
         let saved_history =
             old_id.and_then(|old_id| history.and_then(|history| history.panes.get(old_id)));
@@ -421,9 +420,6 @@ fn restore_tab(
                 }
                 if let Some(label) = saved_label {
                     terminal.set_manual_label(label);
-                }
-                if let Some(agent_name) = saved_agent_name {
-                    terminal.set_agent_name(agent_name);
                 }
                 panes.insert(*id, PaneState::new(terminal_id.clone()));
                 terminal_runtimes.insert(terminal_id, runtime);
@@ -849,7 +845,6 @@ mod tests {
             super::super::snapshot::PaneSnapshot {
                 cwd: cwd.clone(),
                 label: None,
-                agent_name: None,
                 launch_argv: None,
             },
         );
