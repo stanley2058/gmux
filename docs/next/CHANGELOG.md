@@ -24,7 +24,7 @@
 - Removed the agent allow-list from IME cursor reveal; `experimental.reveal_hidden_cursor_for_cjk_ime` now applies generically to the focused pane.
 - Removed the public `session.resume_agents_on_restore` setting; session restore now recreates panes as shells in their saved directories.
 - Stopped writing or rehydrating agent session references in session snapshots.
-- Renamed pane-panel key settings from `previous_agent`, `next_agent`, and `focus_agent` to `previous_pane_panel_entry`, `next_pane_panel_entry`, and `focus_pane_panel_entry`, while keeping the old keys as compatibility aliases.
+- Removed legacy pane-panel key aliases `previous_agent`, `next_agent`, `focus_agent`, and `[keys.indexed].agents`; use `previous_pane_panel_entry`, `next_pane_panel_entry`, and `focus_pane_panel_entry` instead.
 - Renamed the sidebar detail scope setting from `agent_panel_scope` to `pane_panel_scope`, while keeping the old key as a compatibility alias.
 - Updated the sidebar detail panel to present generic panes instead of agent status cards.
 - Updated sidebar and mobile session markers to use active-session indicators instead of agent status rollups.

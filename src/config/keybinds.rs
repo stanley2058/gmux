@@ -502,14 +502,6 @@ impl Config {
             &mut registry,
             &mut diagnostics,
         );
-        append_legacy_indexed_bindings(
-            &mut keybinds.focus_pane_panel_entry,
-            "keys.indexed.agents",
-            &self.keys.indexed.agents,
-            &mut registry,
-            &mut diagnostics,
-        );
-
         for (index, command) in self.keys.command.iter().enumerate() {
             let key_field = format!("keys.command[{index}].key");
             let command_field = format!("keys.command[{index}].command");

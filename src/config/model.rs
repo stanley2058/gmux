@@ -263,13 +263,10 @@ pub struct KeysConfig {
     /// Legacy internal container next binding. Unset by default.
     pub next_workspace: BindingConfig,
     /// Focus the previous pane shown in the pane panel. Unset by default.
-    #[serde(alias = "previous_agent")]
     pub previous_pane_panel_entry: BindingConfig,
     /// Focus the next pane shown in the pane panel. Unset by default.
-    #[serde(alias = "next_agent")]
     pub next_pane_panel_entry: BindingConfig,
     /// Focus a pane-panel entry by index 1-9. Unset by default.
-    #[serde(alias = "focus_agent")]
     pub focus_pane_panel_entry: BindingConfig,
     /// Create a new tab in the active session. Default: "prefix+c"
     pub new_tab: BindingConfig,
@@ -332,8 +329,6 @@ pub struct IndexedKeysConfig {
     pub tabs: String,
     /// Legacy internal container shortcuts 1-9. Unset by default.
     pub workspaces: String,
-    /// Legacy pane-panel shortcuts 1-9. Unset by default.
-    pub agents: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -665,34 +660,14 @@ agent_panel_scope = "current"
     }
 
     #[test]
-    fn pane_panel_entry_key_config_parses_new_and_legacy_names() {
-        let modern = r#"
+    fn pane_panel_entry_key_config_parses() {
+        let toml = r#"
 [keys]
 previous_pane_panel_entry = "prefix+shift+p"
 next_pane_panel_entry = "prefix+shift+n"
 focus_pane_panel_entry = "prefix+alt+1..9"
 "#;
-        let config: Config = toml::from_str(modern).unwrap();
-        assert_eq!(
-            config.keys.previous_pane_panel_entry,
-            BindingConfig::one("prefix+shift+p")
-        );
-        assert_eq!(
-            config.keys.next_pane_panel_entry,
-            BindingConfig::one("prefix+shift+n")
-        );
-        assert_eq!(
-            config.keys.focus_pane_panel_entry,
-            BindingConfig::one("prefix+alt+1..9")
-        );
-
-        let legacy = r#"
-[keys]
-previous_agent = "prefix+shift+p"
-next_agent = "prefix+shift+n"
-focus_agent = "prefix+alt+1..9"
-"#;
-        let config: Config = toml::from_str(legacy).unwrap();
+        let config: Config = toml::from_str(toml).unwrap();
         assert_eq!(
             config.keys.previous_pane_panel_entry,
             BindingConfig::one("prefix+shift+p")
