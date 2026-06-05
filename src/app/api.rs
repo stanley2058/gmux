@@ -512,21 +512,13 @@ mod tests {
                 pane_id: root,
             }),
         });
-        let presentation = app
-            .state
-            .terminals
-            .get(&terminal_id)
-            .unwrap()
-            .effective_presentation();
         let update = crate::app::actions::PaneStateUpdate {
             pane_id: root,
             ws_idx: 0,
             previous_state: AgentState::Working,
             previous_seen: true,
-            previous_presentation: presentation.clone(),
             state: AgentState::Working,
             seen: true,
-            presentation,
         };
         app.refresh_new_gmux_toast_context_for_update(&update, &previous_toast);
 

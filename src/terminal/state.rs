@@ -9,15 +9,12 @@ use crate::terminal::TerminalId;
 
 #[path = "metadata.rs"]
 mod metadata;
-pub use metadata::EffectivePresentation;
 
 const CLAUDE_WORKING_HOLD: Duration = Duration::from_millis(1200);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveStateChange {
     pub previous_state: AgentState,
-    pub previous_presentation: EffectivePresentation,
     pub state: AgentState,
-    pub presentation: EffectivePresentation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -105,18 +102,13 @@ impl TerminalState {
         _visible_idle: bool,
         _visible_working: bool,
         _process_exited: bool,
-        now: Instant,
+        _now: Instant,
     ) -> TerminalStateMutation {
         let previous_state = self.state;
-        let previous_presentation = self.effective_presentation_for_state_at(previous_state, now);
         self.detected_agent = agent;
         self.fallback_state = fallback_state;
         TerminalStateMutation {
-            effective_state_change: self.recompute_effective_state(
-                previous_state,
-                previous_presentation,
-                now,
-            ),
+            effective_state_change: self.recompute_effective_state(previous_state),
         }
     }
 
@@ -144,22 +136,17 @@ impl TerminalState {
     fn recompute_effective_state(
         &mut self,
         previous_state: AgentState,
-        previous_presentation: EffectivePresentation,
-        now: Instant,
     ) -> Option<EffectiveStateChange> {
         let state = self.fallback_state;
-        let presentation = self.effective_presentation_for_state_at(state, now);
 
-        if previous_state == state && previous_presentation == presentation {
+        if previous_state == state {
             return None;
         }
 
         self.state = state;
         Some(EffectiveStateChange {
             previous_state,
-            previous_presentation,
             state,
-            presentation,
         })
     }
 }

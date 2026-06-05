@@ -61,10 +61,8 @@ pub struct PaneStateUpdate {
     pub ws_idx: usize,
     pub previous_state: AgentState,
     pub previous_seen: bool,
-    pub previous_presentation: crate::terminal::EffectivePresentation,
     pub state: AgentState,
     pub seen: bool,
-    pub presentation: crate::terminal::EffectivePresentation,
 }
 
 // ---------------------------------------------------------------------------
@@ -1789,10 +1787,8 @@ impl AppState {
             ws_idx,
             previous_state: change.previous_state,
             previous_seen,
-            previous_presentation: change.previous_presentation.clone(),
             state: change.state,
             seen,
-            presentation: change.presentation.clone(),
         };
         Some(update)
     }
