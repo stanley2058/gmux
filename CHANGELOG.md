@@ -12,6 +12,7 @@
 - Updated first-run and empty-session copy to present tabs and panes instead of workspaces or agent setup.
 - Updated the mobile switcher to present sessions instead of spaces/workspaces.
 - Updated prefix and navigate overlays to use session wording for navigation prompts.
+- Updated rename and close dialogs to use session wording.
 - Aligned top-level tab and pane aliases with tmux-style target flags, including `gmux new-tab -n/-c`, `gmux rename-tab -t`, and `gmux kill-pane -t`.
 - `gmux split-pane` now defaults to the focused pane and accepts `-t`, `-c`, and optional command arguments.
 - Removed workspace and worktree actions from the default keymap and keybind help so the default UX presents sessions, tabs, and panes.
