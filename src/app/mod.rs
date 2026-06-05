@@ -3416,7 +3416,7 @@ mod tests {
     }
 
     #[test]
-    fn route_client_input_prefix_then_q_detaches_in_persistence_mode() {
+    fn route_client_input_prefix_then_d_detaches_in_persistence_mode() {
         let mut app = test_app();
         app.state.workspaces = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
@@ -3441,17 +3441,17 @@ mod tests {
             "prefix key should not set detach flag"
         );
 
-        let q_bytes = b"q".to_vec();
-        app.route_client_input(q_bytes);
+        let d_bytes = b"d".to_vec();
+        app.route_client_input(d_bytes);
 
         assert!(
             app.state.detach_requested,
-            "q should detach in persistence mode"
+            "d should detach in persistence mode"
         );
         assert_eq!(
             app.state.mode,
             Mode::Terminal,
-            "q should leave navigate mode"
+            "d should leave navigate mode"
         );
     }
 

@@ -271,7 +271,7 @@ pub struct KeysConfig {
     pub navigate_pane_up: BindingConfig,
     /// Focus the pane to the right in navigate mode. Default: "l". Right arrow is always an alias.
     pub navigate_pane_right: BindingConfig,
-    /// Detach from server/client mode, or exit --no-session mode. Default: "prefix+q".
+    /// Detach from server/client mode, or exit --no-session mode. Default: "prefix+d" with "prefix+q" as a legacy alias.
     pub detach: BindingConfig,
     /// Reload config.toml in the running app/server. Default: "prefix+shift+r".
     pub reload_config: BindingConfig,
@@ -289,7 +289,7 @@ pub struct KeysConfig {
     pub focus_agent: BindingConfig,
     /// Create a new tab in the active workspace. Default: "prefix+c"
     pub new_tab: BindingConfig,
-    /// Rename the active tab. Default: "prefix+shift+t".
+    /// Rename the active tab. Default: "prefix+comma" with "prefix+shift+t" as a legacy alias.
     pub rename_tab: BindingConfig,
     /// Select the previous tab. Default: "prefix+p".
     pub previous_tab: BindingConfig,
@@ -299,7 +299,7 @@ pub struct KeysConfig {
     pub switch_tab: BindingConfig,
     /// Switch to workspace 1-9 from prefix mode. Unset by default.
     pub switch_workspace: BindingConfig,
-    /// Close the active tab. Default: "prefix+shift+x".
+    /// Close the active tab. Default: "prefix+ampersand" with "prefix+shift+x" as a legacy alias.
     pub close_tab: BindingConfig,
     /// Rename the focused pane. Default: "prefix+shift+p".
     pub rename_pane: BindingConfig,
@@ -307,13 +307,13 @@ pub struct KeysConfig {
     pub edit_scrollback: BindingConfig,
     /// Enter keyboard copy mode for the focused pane. Default: "prefix+[".
     pub copy_mode: BindingConfig,
-    /// Focus the pane to the left. Default: "prefix+h".
+    /// Focus the pane to the left. Default: "prefix+h" and "prefix+left".
     pub focus_pane_left: BindingConfig,
-    /// Focus the pane below. Default: "prefix+j".
+    /// Focus the pane below. Default: "prefix+j" and "prefix+down".
     pub focus_pane_down: BindingConfig,
-    /// Focus the pane above. Default: "prefix+k".
+    /// Focus the pane above. Default: "prefix+k" and "prefix+up".
     pub focus_pane_up: BindingConfig,
-    /// Focus the pane to the right. Default: "prefix+l".
+    /// Focus the pane to the right. Default: "prefix+l" and "prefix+right".
     pub focus_pane_right: BindingConfig,
     /// Cycle to the next pane. Default: "prefix+tab".
     pub cycle_pane_next: BindingConfig,
@@ -321,9 +321,9 @@ pub struct KeysConfig {
     pub cycle_pane_previous: BindingConfig,
     /// Focus the last focused pane across workspaces and tabs. Unset by default.
     pub last_pane: BindingConfig,
-    /// Split pane vertically (side by side). Default: "prefix+v"
+    /// Split pane vertically (side by side). Default: "prefix+percent" with "prefix+v" as a legacy alias.
     pub split_vertical: BindingConfig,
-    /// Split pane horizontally (stacked). Default: "prefix+minus"
+    /// Split pane horizontally (stacked). Default: "prefix+double_quote" with "prefix+minus" as a legacy alias.
     pub split_horizontal: BindingConfig,
     /// Close the focused pane. Default: "prefix+x"
     pub close_pane: BindingConfig,
@@ -505,7 +505,7 @@ impl Default for KeysConfig {
             navigate_pane_down: BindingConfig::one("j"),
             navigate_pane_up: BindingConfig::one("k"),
             navigate_pane_right: BindingConfig::one("l"),
-            detach: BindingConfig::one("prefix+q"),
+            detach: BindingConfig::Many(vec!["prefix+d".into(), "prefix+q".into()]),
             reload_config: BindingConfig::one("prefix+shift+r"),
             open_notification_target: BindingConfig::one("prefix+o"),
             previous_workspace: BindingConfig::empty(),
@@ -514,24 +514,30 @@ impl Default for KeysConfig {
             next_agent: BindingConfig::empty(),
             focus_agent: BindingConfig::empty(),
             new_tab: BindingConfig::one("prefix+c"),
-            rename_tab: BindingConfig::one("prefix+shift+t"),
+            rename_tab: BindingConfig::Many(vec!["prefix+comma".into(), "prefix+shift+t".into()]),
             previous_tab: BindingConfig::one("prefix+p"),
             next_tab: BindingConfig::one("prefix+n"),
             switch_tab: BindingConfig::one("prefix+1..9"),
             switch_workspace: BindingConfig::empty(),
-            close_tab: BindingConfig::one("prefix+shift+x"),
+            close_tab: BindingConfig::Many(vec![
+                "prefix+ampersand".into(),
+                "prefix+shift+x".into(),
+            ]),
             rename_pane: BindingConfig::one("prefix+shift+p"),
             edit_scrollback: BindingConfig::one("prefix+e"),
             copy_mode: BindingConfig::one("prefix+["),
-            focus_pane_left: BindingConfig::one("prefix+h"),
-            focus_pane_down: BindingConfig::one("prefix+j"),
-            focus_pane_up: BindingConfig::one("prefix+k"),
-            focus_pane_right: BindingConfig::one("prefix+l"),
+            focus_pane_left: BindingConfig::Many(vec!["prefix+h".into(), "prefix+left".into()]),
+            focus_pane_down: BindingConfig::Many(vec!["prefix+j".into(), "prefix+down".into()]),
+            focus_pane_up: BindingConfig::Many(vec!["prefix+k".into(), "prefix+up".into()]),
+            focus_pane_right: BindingConfig::Many(vec!["prefix+l".into(), "prefix+right".into()]),
             cycle_pane_next: BindingConfig::one("prefix+tab"),
             cycle_pane_previous: BindingConfig::one("prefix+shift+tab"),
             last_pane: BindingConfig::empty(),
-            split_vertical: BindingConfig::one("prefix+v"),
-            split_horizontal: BindingConfig::one("prefix+minus"),
+            split_vertical: BindingConfig::Many(vec!["prefix+percent".into(), "prefix+v".into()]),
+            split_horizontal: BindingConfig::Many(vec![
+                "prefix+double_quote".into(),
+                "prefix+minus".into(),
+            ]),
             close_pane: BindingConfig::one("prefix+x"),
             zoom: BindingConfig::one("prefix+z"),
             resize_mode: BindingConfig::one("prefix+r"),

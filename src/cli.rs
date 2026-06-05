@@ -850,7 +850,7 @@ fn print_config_help() {
 fn print_terminal_help() {
     eprintln!("gmux terminal commands:");
     eprintln!("  gmux terminal attach <terminal_id> [--takeover]");
-    eprintln!("  detach from direct attach with ctrl+b q; send literal ctrl+b with ctrl+b ctrl+b");
+    eprintln!("  detach from direct attach with ctrl+b d; send literal ctrl+b with ctrl+b ctrl+b");
 }
 
 fn print_wait_help() {

@@ -47,9 +47,9 @@ Start Gmux in the directory where the work lives:
 gmux
 ```
 
-Gmux starts or attaches to one background session server. When a session has no workspaces, Gmux opens one automatically. Run an agent in the root pane. Press `ctrl+b`, then `shift+n` to create another workspace, `ctrl+b`, then `v` or `minus` to split panes, `ctrl+b`, then `c` to create a tab, and `ctrl+b`, then `w` to switch workspaces.
+Gmux starts or attaches to one background session server. When a session has no workspaces, Gmux opens one automatically. Use the root pane like a normal shell. Press `ctrl+b`, then `shift+n` to create another workspace, `ctrl+b`, then `%` or `"` to split panes, `ctrl+b`, then `c` to create a tab, and `ctrl+b`, then `w` to switch workspaces.
 
-Press `ctrl+b q` to detach the client. The server and pane processes keep running. Open another terminal and run `gmux` again to reattach.
+Press `ctrl+b d` to detach the client. The server and pane processes keep running. Open another terminal and run `gmux` again to reattach.
 
 ## core concepts
 
@@ -225,12 +225,12 @@ Press `ctrl+b` to enter prefix mode. Default actions are prefix-first and tmux-l
 | `prefix+shift+w` | rename workspace |
 | `prefix+shift+d` | close workspace |
 | `prefix+h/j/k/l` | focus pane |
-| `prefix+v` / `prefix+minus` | split pane |
+| `prefix+%` / `prefix+"` | split pane |
 | `prefix+x` | close pane |
 | `prefix+b` | toggle sidebar |
 | `prefix+z` | zoom pane |
 | `prefix+r` | resize mode |
-| `prefix+q` | detach |
+| `prefix+d` | detach |
 
 Mouse is supported throughout. Resize mode uses `h`/`l` for width, `j`/`k` for height, and `esc` to exit. Full syntax, optional actions, indexed bindings, and custom command bindings live in the [configuration docs](https://gmux.dev/docs/configuration/).
 

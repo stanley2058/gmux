@@ -97,7 +97,7 @@ impl AttachEscapeState {
             if self.pending_prefix {
                 self.pending_prefix = false;
                 match byte {
-                    b'q' => return AttachInputAction::Detach,
+                    b'd' | b'q' => return AttachInputAction::Detach,
                     PREFIX => output.push(PREFIX),
                     other => {
                         output.push(PREFIX);
@@ -1395,7 +1395,20 @@ mod tests {
     }
 
     #[test]
-    fn attach_escape_detaches_on_prefix_q() {
+    fn attach_escape_detaches_on_prefix_d() {
+        let mut escape = AttachEscapeState::default();
+        assert!(matches!(
+            escape.filter_input(vec![0x02], 24, 3),
+            AttachInputAction::None
+        ));
+        assert!(matches!(
+            escape.filter_input(vec![b'd'], 24, 3),
+            AttachInputAction::Detach
+        ));
+    }
+
+    #[test]
+    fn attach_escape_detaches_on_legacy_prefix_q() {
         let mut escape = AttachEscapeState::default();
         assert!(matches!(
             escape.filter_input(vec![0x02], 24, 3),

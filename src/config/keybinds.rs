@@ -1260,6 +1260,14 @@ prefix = "ö"
             parse_key_combo("ampersand"),
             Some((KeyCode::Char('&'), KeyModifiers::empty()))
         );
+        assert_eq!(
+            parse_key_combo("percent"),
+            Some((KeyCode::Char('%'), KeyModifiers::empty()))
+        );
+        assert_eq!(
+            parse_key_combo("double_quote"),
+            Some((KeyCode::Char('"'), KeyModifiers::empty()))
+        );
     }
 
     #[test]
@@ -1711,6 +1719,13 @@ switch_workspace = "prefix+shift+1..9"
     fn default_keymap_is_prefix_first_and_tab_centered() {
         let kb = Config::default().keybinds();
         assert_eq!(
+            binding_triggers(&kb.detach),
+            vec![
+                BindingTrigger::Prefix((KeyCode::Char('d'), KeyModifiers::empty())),
+                BindingTrigger::Prefix((KeyCode::Char('q'), KeyModifiers::empty())),
+            ]
+        );
+        assert_eq!(
             binding_triggers(&kb.next_tab),
             vec![BindingTrigger::Prefix((
                 KeyCode::Char('n'),
@@ -1724,6 +1739,20 @@ switch_workspace = "prefix+shift+1..9"
                 KeyModifiers::empty()
             ))]
         );
+        assert_eq!(
+            binding_triggers(&kb.rename_tab),
+            vec![
+                BindingTrigger::Prefix((KeyCode::Char(','), KeyModifiers::empty())),
+                BindingTrigger::Prefix((KeyCode::Char('t'), KeyModifiers::SHIFT)),
+            ]
+        );
+        assert_eq!(
+            binding_triggers(&kb.close_tab),
+            vec![
+                BindingTrigger::Prefix((KeyCode::Char('&'), KeyModifiers::empty())),
+                BindingTrigger::Prefix((KeyCode::Char('x'), KeyModifiers::SHIFT)),
+            ]
+        );
         assert_eq!(kb.switch_tab.len(), 9);
         assert!(kb
             .switch_tab
@@ -1734,6 +1763,27 @@ switch_workspace = "prefix+shift+1..9"
             .bindings
             .iter()
             .all(|binding| binding.trigger.is_prefix()));
+        assert_eq!(
+            binding_triggers(&kb.split_vertical),
+            vec![
+                BindingTrigger::Prefix((KeyCode::Char('%'), KeyModifiers::empty())),
+                BindingTrigger::Prefix((KeyCode::Char('v'), KeyModifiers::empty())),
+            ]
+        );
+        assert_eq!(
+            binding_triggers(&kb.split_horizontal),
+            vec![
+                BindingTrigger::Prefix((KeyCode::Char('"'), KeyModifiers::empty())),
+                BindingTrigger::Prefix((KeyCode::Char('-'), KeyModifiers::empty())),
+            ]
+        );
+        assert_eq!(
+            binding_triggers(&kb.focus_pane_left),
+            vec![
+                BindingTrigger::Prefix((KeyCode::Char('h'), KeyModifiers::empty())),
+                BindingTrigger::Prefix((KeyCode::Left, KeyModifiers::empty())),
+            ]
+        );
     }
 
     #[test]
