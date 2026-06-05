@@ -1352,8 +1352,6 @@ impl HeadlessServer {
                                 .map(|toast| format!("{}: {}", toast.title, toast.context))
                         } else {
                             toast_message_from_state_change(
-                                &self.app.state,
-                                &self.app.terminal_runtimes,
                                 pane_id_val,
                                 suppress_active_tab_notifications,
                                 prev_state,
@@ -1437,8 +1435,6 @@ impl HeadlessServer {
                                 .map(|toast| format!("{}: {}", toast.title, toast.context))
                         } else {
                             toast_message_from_state_change(
-                                &self.app.state,
-                                &self.app.terminal_runtimes,
                                 pane_id_val,
                                 suppress_active_tab_notifications,
                                 prev_state,

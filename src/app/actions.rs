@@ -16,11 +16,6 @@ use super::state::{
     ToastNotification, ToastTarget, ViewLayout,
 };
 
-fn is_background_completion_transition(prev_state: AgentState, new_state: AgentState) -> bool {
-    matches!(new_state, AgentState::Idle)
-        && matches!(prev_state, AgentState::Working | AgentState::Blocked)
-}
-
 fn is_reserved_native_state_source(source: &str, agent: &str) -> bool {
     matches!(
         (source, agent),
@@ -39,42 +34,19 @@ pub fn active_tab_suppresses_notifications(
 }
 
 pub fn notification_sound_for_state_change(
-    suppress_active_tab_notifications: bool,
-    prev_state: AgentState,
-    new_state: AgentState,
+    _suppress_active_tab_notifications: bool,
+    _prev_state: AgentState,
+    _new_state: AgentState,
 ) -> Option<crate::sound::Sound> {
-    if new_state == prev_state {
-        return None;
-    }
-
-    match new_state {
-        AgentState::Blocked => Some(crate::sound::Sound::Request),
-        AgentState::Idle
-            if is_background_completion_transition(prev_state, new_state)
-                && !suppress_active_tab_notifications =>
-        {
-            Some(crate::sound::Sound::Done)
-        }
-        _ => None,
-    }
+    None
 }
 
 pub fn notification_toast_for_state_change(
-    suppress_active_tab_notifications: bool,
-    prev_state: AgentState,
-    new_state: AgentState,
+    _suppress_active_tab_notifications: bool,
+    _prev_state: AgentState,
+    _new_state: AgentState,
 ) -> Option<ToastKind> {
-    if suppress_active_tab_notifications || new_state == prev_state {
-        return None;
-    }
-
-    match new_state {
-        AgentState::Blocked => Some(ToastKind::NeedsAttention),
-        AgentState::Idle if is_background_completion_transition(prev_state, new_state) => {
-            Some(ToastKind::Finished)
-        }
-        _ => None,
-    }
+    None
 }
 
 fn toast_agent_label(agent_label: &str) -> &str {
@@ -2040,8 +2012,6 @@ impl AppState {
 
         if change.state != AgentState::Idle {
             pane.seen = true;
-        } else if is_background_completion_transition(change.previous_state, change.state) {
-            pane.seen = suppress_active_tab_notifications;
         }
         let seen = pane.seen;
 
@@ -3312,7 +3282,7 @@ mod tests {
         });
 
         let pane = state.workspaces[1].panes.get(&bg_pane_id).unwrap();
-        assert!(!pane.seen);
+        assert!(pane.seen);
     }
 
     #[test]
@@ -3344,7 +3314,7 @@ mod tests {
         let terminal = state.terminals.get(&terminal_id).unwrap();
         assert_eq!(terminal.state, AgentState::Idle);
         let pane = state.workspaces[0].panes.get(&pane_id).unwrap();
-        assert!(pane.seen);
+        assert!(!pane.seen);
     }
 
     #[test]
@@ -3372,7 +3342,7 @@ mod tests {
     fn waiting_sound_plays_even_in_active_workspace() {
         assert_eq!(
             notification_sound_for_state_change(true, AgentState::Working, AgentState::Blocked),
-            Some(crate::sound::Sound::Request)
+            None
         );
     }
 
@@ -3380,7 +3350,7 @@ mod tests {
     fn done_sound_only_plays_in_background() {
         assert_eq!(
             notification_sound_for_state_change(false, AgentState::Working, AgentState::Idle),
-            Some(crate::sound::Sound::Done)
+            None
         );
         assert_eq!(
             notification_sound_for_state_change(true, AgentState::Working, AgentState::Idle),
@@ -3410,10 +3380,7 @@ mod tests {
             observed_at: std::time::Instant::now(),
         });
 
-        let toast = state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, ToastKind::NeedsAttention);
-        assert_eq!(toast.title, "pi needs attention");
-        assert_eq!(toast.context, "background · 2");
+        assert!(state.toast.is_none());
     }
 
     #[test]
@@ -3433,10 +3400,7 @@ mod tests {
             seq: None,
         });
 
-        let toast = state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, ToastKind::NeedsAttention);
-        assert_eq!(toast.title, "hermes needs attention");
-        assert_eq!(toast.context, "background · 2");
+        assert!(state.toast.is_none());
     }
 
     #[test]
@@ -3484,9 +3448,7 @@ mod tests {
 
         let terminal = state.terminals.get(&bg_terminal_id).unwrap();
         assert_eq!(terminal.state, AgentState::Blocked);
-        let toast = state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, ToastKind::NeedsAttention);
-        assert_eq!(toast.title, "codex needs attention");
+        assert!(state.toast.is_none());
     }
 
     #[test]
@@ -3600,13 +3562,7 @@ mod tests {
             observed_at: std::time::Instant::now(),
         });
 
-        let toast = state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, ToastKind::Finished);
-        assert_eq!(toast.title, "droid finished");
-        assert_eq!(toast.context, "background · 2");
-        let target = toast.target.as_ref().expect("toast target");
-        assert_eq!(&target.workspace_id, &state.workspaces[1].id);
-        assert_eq!(target.pane_id, bg_pane_id);
+        assert!(state.toast.is_none());
     }
 
     #[test]
@@ -3630,10 +3586,7 @@ mod tests {
             observed_at: std::time::Instant::now(),
         });
 
-        let toast = state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, ToastKind::NeedsAttention);
-        assert_eq!(toast.title, "pi needs attention");
-        assert_eq!(toast.context, "background · 2 · logs");
+        assert!(state.toast.is_none());
     }
 
     #[test]
@@ -3657,10 +3610,7 @@ mod tests {
             observed_at: std::time::Instant::now(),
         });
 
-        let toast = state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, ToastKind::NeedsAttention);
-        assert_eq!(toast.title, "pi needs attention");
-        assert_eq!(toast.context, "active · 1 · logs");
+        assert!(state.toast.is_none());
     }
 
     #[test]
