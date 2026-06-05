@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,44 +16,9 @@ use crate::pane::PaneState;
 use crate::terminal::{TerminalId, TerminalRuntime, TerminalRuntimeRegistry, TerminalState};
 
 mod aggregate;
-mod git;
 mod tab;
 
-#[cfg(test)]
-use self::git::git_ahead_behind;
-pub use self::{
-    git::{derive_label_from_cwd, git_branch, git_status_cache_key, GitStatusCacheEntry},
-    tab::Tab,
-};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceGitStatus {
-    pub workspace_id: String,
-    pub resolved_identity_cwd: PathBuf,
-    pub branch: Option<String>,
-    pub ahead_behind: Option<(usize, usize)>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceGitStatusSnapshot {
-    pub branch: Option<String>,
-    pub ahead_behind: Option<(usize, usize)>,
-}
-
-impl WorkspaceGitStatusSnapshot {
-    pub fn into_workspace_status(
-        self,
-        workspace_id: String,
-        resolved_identity_cwd: PathBuf,
-    ) -> WorkspaceGitStatus {
-        WorkspaceGitStatus {
-            workspace_id,
-            resolved_identity_cwd,
-            branch: self.branch,
-            ahead_behind: self.ahead_behind,
-        }
-    }
-}
+pub use self::tab::Tab;
 
 static NEXT_WORKSPACE_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -66,6 +31,21 @@ pub(crate) fn generate_workspace_id() -> String {
     format!("w{micros:x}{counter:x}")
 }
 
+pub fn derive_label_from_cwd(cwd: &Path) -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        let home = Path::new(&home);
+        if cwd == home {
+            return "~".to_string();
+        }
+    }
+
+    cwd.file_name()
+        .and_then(|n| n.to_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| cwd.display().to_string())
+}
+
 /// A named workspace containing tabs.
 pub struct Workspace {
     /// Stable public workspace identity, independent of display order.
@@ -74,10 +54,6 @@ pub struct Workspace {
     pub custom_name: Option<String>,
     /// Fallback workspace identity source for tests, old snapshots, or missing runtimes.
     pub identity_cwd: PathBuf,
-    /// Cached current git branch for the workspace repo.
-    pub(crate) cached_git_branch: Option<String>,
-    /// Cached ahead/behind counts for the workspace repo's current branch upstream.
-    pub(crate) cached_git_ahead_behind: Option<(usize, usize)>,
     /// Stable-ish public pane numbers within this workspace.
     /// New panes append at the end; closing a pane compacts higher numbers down.
     pub public_pane_numbers: HashMap<PaneId, usize>,
@@ -160,8 +136,6 @@ impl Workspace {
                 id: generate_workspace_id(),
                 custom_name: None,
                 identity_cwd: initial_cwd.clone(),
-                cached_git_branch: git_branch(&initial_cwd),
-                cached_git_ahead_behind: None,
                 public_pane_numbers,
                 next_public_pane_number: 2,
                 tabs: vec![tab],
@@ -505,28 +479,6 @@ impl Workspace {
             .unwrap_or_else(|| "workspace".into())
     }
 
-    pub fn branch(&self) -> Option<String> {
-        self.cached_git_branch.clone()
-    }
-
-    pub fn git_ahead_behind(&self) -> Option<(usize, usize)> {
-        self.cached_git_ahead_behind
-    }
-
-    #[cfg(test)]
-    pub fn refresh_git_ahead_behind(&mut self) {
-        let cwd = self.resolved_identity_cwd();
-        self.cached_git_branch = cwd.as_deref().and_then(git_branch);
-        self.cached_git_ahead_behind = cwd.as_deref().and_then(git_ahead_behind);
-    }
-
-    pub fn git_status_snapshot_for_cwd_with_cache(
-        resolved_identity_cwd: &std::path::Path,
-        cached: Option<&GitStatusCacheEntry>,
-    ) -> (WorkspaceGitStatusSnapshot, Option<GitStatusCacheEntry>) {
-        self::git::git_status_snapshot_for_cwd(resolved_identity_cwd, cached)
-    }
-
     pub fn find_tab_index_for_pane(&self, pane_id: PaneId) -> Option<usize> {
         self.tabs
             .iter()
@@ -634,8 +586,6 @@ impl Workspace {
             id: generate_workspace_id(),
             custom_name: Some(name.to_string()),
             identity_cwd: identity_cwd.clone(),
-            cached_git_branch: git_branch(&identity_cwd),
-            cached_git_ahead_behind: None,
             public_pane_numbers,
             next_public_pane_number: 2,
             tabs: vec![tab],

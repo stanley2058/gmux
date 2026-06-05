@@ -634,17 +634,16 @@ mod tests {
     fn expanded_sidebar_workspace_rows_show_session_marker_before_name_without_numbers() {
         let mut app = crate::app::state::AppState::test_new();
         let mut ws = Workspace::test_new("one");
-        let repo = temp_git_repo("main");
-        ws.identity_cwd = repo.clone();
+        let dir = temp_workspace_dir();
+        ws.identity_cwd = dir.clone();
         let root_pane = ws.tabs[0].root_pane;
-        ws.refresh_git_ahead_behind();
 
         app.workspaces = vec![ws];
         app.ensure_test_terminals();
         let root_terminal_id = app.workspaces[0].tabs[0].panes[&root_pane]
             .attached_terminal_id
             .clone();
-        app.terminals.get_mut(&root_terminal_id).unwrap().cwd = repo.clone();
+        app.terminals.get_mut(&root_terminal_id).unwrap().cwd = dir.clone();
         app.selected = 0;
         app.mode = Mode::Navigate;
 
@@ -657,13 +656,12 @@ mod tests {
 
         let card = app.view.workspace_card_areas[0].rect;
         let line1 = buffer_row_text(buffer, card, card.y);
-        let line2 = buffer_row_text(buffer, card, card.y + 1);
 
         assert!(line1.starts_with(" ● one"));
         assert!(!line1.contains("1 one"));
-        assert_eq!(line2, "   main");
+        assert_eq!(card.height, 1);
 
-        std::fs::remove_dir_all(repo).ok();
+        std::fs::remove_dir_all(dir).ok();
     }
 
     #[test]
@@ -943,18 +941,13 @@ mod tests {
             .to_string()
     }
 
-    fn temp_git_repo(branch: &str) -> std::path::PathBuf {
+    fn temp_workspace_dir() -> std::path::PathBuf {
         let unique = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("unix time")
             .as_nanos();
         let root = std::env::temp_dir().join(format!("gmux-ui-test-{unique}"));
-        std::fs::create_dir_all(root.join(".git")).expect("create .git dir");
-        std::fs::write(
-            root.join(".git/HEAD"),
-            format!("ref: refs/heads/{branch}\n"),
-        )
-        .expect("write HEAD");
+        std::fs::create_dir_all(&root).expect("create workspace dir");
         root
     }
 

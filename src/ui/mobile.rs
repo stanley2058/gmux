@@ -438,12 +438,7 @@ fn render_mobile_switcher_content(
                     .add_modifier(Modifier::BOLD),
             ),
         ]);
-        let detail = format!(
-            "  {} · tab {}/{}",
-            ws.branch().unwrap_or_else(|| "shell".into()),
-            ws.active_tab + 1,
-            ws.tabs.len()
-        );
+        let detail = format!("  shell · tab {}/{}", ws.active_tab + 1, ws.tabs.len());
         render_two_line_item(
             frame,
             viewport,

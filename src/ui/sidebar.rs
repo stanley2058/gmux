@@ -226,12 +226,8 @@ fn format_pane_panel_primary_label(entry: &PanePanelEntry, max_width: usize) -> 
     )
 }
 
-fn workspace_row_height(ws: &crate::workspace::Workspace) -> u16 {
-    if ws.branch().is_some() {
-        2
-    } else {
-        1
-    }
+fn workspace_row_height(_ws: &crate::workspace::Workspace) -> u16 {
+    1
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -736,55 +732,6 @@ fn render_workspace_list(
             Paragraph::new(Line::from(line1)),
             Rect::new(card.rect.x, row_y, card.rect.width, 1),
         );
-
-        if row_height > 1 && row_y + 1 < list_bottom {
-            if let Some(branch) = ws.branch() {
-                let upstream_label = ws.git_ahead_behind().and_then(|(ahead, behind)| {
-                    let mut parts = Vec::new();
-                    if ahead > 0 {
-                        parts.push((format!("↑{}", ahead), p.green));
-                    }
-                    if behind > 0 {
-                        parts.push((format!("↓{}", behind), p.red));
-                    }
-                    (!parts.is_empty()).then_some(parts)
-                });
-                let reserved = upstream_label
-                    .as_ref()
-                    .map(|parts| {
-                        parts.iter().map(|(label, _)| label.len()).sum::<usize>() + parts.len()
-                    })
-                    .unwrap_or(0);
-                let max_branch_len = (card.rect.width as usize).saturating_sub(5 + reserved);
-                let branch_display = if branch.len() > max_branch_len {
-                    format!("{}…", &branch[..max_branch_len.saturating_sub(1)])
-                } else {
-                    branch
-                };
-                let branch_color = if selected || is_active {
-                    p.mauve
-                } else {
-                    p.overlay0
-                };
-                let mut spans = vec![
-                    Span::styled("   ", Style::default()),
-                    Span::styled(branch_display, Style::default().fg(branch_color)),
-                ];
-                if let Some(parts) = upstream_label {
-                    spans.push(Span::styled(" ", Style::default()));
-                    for (idx, (label, color)) in parts.into_iter().enumerate() {
-                        if idx > 0 {
-                            spans.push(Span::styled(" ", Style::default()));
-                        }
-                        spans.push(Span::styled(label, Style::default().fg(color)));
-                    }
-                }
-                frame.render_widget(
-                    Paragraph::new(Line::from(spans)),
-                    Rect::new(card.rect.x, row_y + 1, card.rect.width, 1),
-                );
-            }
-        }
     }
 
     if let Some(y) = insertion_row.filter(|y| *y < list_bottom) {

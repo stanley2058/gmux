@@ -25,31 +25,6 @@ impl App {
             return;
         }
 
-        if let AppEvent::GitStatusRefreshed {
-            results,
-            cache_updates,
-        } = ev
-        {
-            self.git_refresh_in_flight = false;
-            for (key, entry) in cache_updates {
-                self.git_status_cache.insert(key, entry);
-            }
-            if self.git_refresh_due_after_in_flight {
-                self.mark_git_status_refresh_due(Instant::now());
-                self.git_refresh_due_after_in_flight = false;
-            } else {
-                self.last_git_remote_status_refresh = Instant::now();
-            }
-            if self
-                .state
-                .apply_workspace_git_statuses(&self.terminal_runtimes, results)
-            {
-                self.render_dirty.store(true, Ordering::Release);
-                self.render_notify.notify_one();
-            }
-            return;
-        }
-
         if let AppEvent::PaneDied { pane_id } = &ev {
             if self.runtime_exit_action(*pane_id) == RuntimeExitAction::RespawnShell
                 && self.respawn_shell_for_launch_pane(*pane_id)

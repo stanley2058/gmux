@@ -6,7 +6,6 @@ use tracing::{info, warn};
 use crate::events::AppEvent;
 use crate::layout::{find_in_direction, NavDirection, PaneId};
 use crate::selection::Selection;
-use crate::workspace::WorkspaceGitStatus;
 use unicode_width::UnicodeWidthChar;
 
 use super::state::{
@@ -1592,42 +1591,6 @@ fn is_trailing_token_wrapper(ch: char) -> bool {
 // ---------------------------------------------------------------------------
 
 impl AppState {
-    pub fn apply_workspace_git_statuses(
-        &mut self,
-        terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,
-        results: Vec<WorkspaceGitStatus>,
-    ) -> bool {
-        let mut changed = false;
-        for result in results {
-            let Some(ws_idx) = self
-                .workspaces
-                .iter()
-                .position(|ws| ws.id == result.workspace_id)
-            else {
-                continue;
-            };
-
-            if self.workspaces[ws_idx]
-                .resolved_identity_cwd_from(&self.terminals, terminal_runtimes)
-                .as_ref()
-                != Some(&result.resolved_identity_cwd)
-            {
-                continue;
-            }
-
-            let ws = &mut self.workspaces[ws_idx];
-            if ws.cached_git_branch != result.branch {
-                ws.cached_git_branch = result.branch;
-                changed = true;
-            }
-            if ws.cached_git_ahead_behind != result.ahead_behind {
-                ws.cached_git_ahead_behind = result.ahead_behind;
-                changed = true;
-            }
-        }
-        changed
-    }
-
     pub fn handle_app_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::PaneDied { pane_id } => {
@@ -1656,13 +1619,6 @@ impl AppState {
             // Intercepted in App::handle_internal_event before reaching this
             // dispatch; never touches AppState.
             AppEvent::ClipboardWrite { .. } => {}
-            AppEvent::GitStatusRefreshed {
-                results,
-                cache_updates,
-            } => {
-                let _ = results;
-                let _ = cache_updates;
-            }
         }
     }
 
@@ -2165,78 +2121,6 @@ mod tests {
         assert!(rows
             .iter()
             .any(|row| !row.is_workspace && row.label.contains("weekly")));
-    }
-
-    #[test]
-    fn apply_workspace_git_statuses_updates_matching_workspace() {
-        let mut state = app_with_workspaces(&["one", "two"]);
-        let first_id = state.workspaces[0].id.clone();
-        let first_cwd = state.workspaces[0].resolved_identity_cwd().unwrap();
-        let second_id = state.workspaces[1].id.clone();
-
-        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let changed = state.apply_workspace_git_statuses(
-            &terminal_runtimes,
-            vec![WorkspaceGitStatus {
-                workspace_id: first_id,
-                resolved_identity_cwd: first_cwd,
-                branch: Some("main".into()),
-                ahead_behind: Some((2, 1)),
-            }],
-        );
-
-        assert!(changed);
-        assert_eq!(state.workspaces[0].branch().as_deref(), Some("main"));
-        assert_eq!(state.workspaces[0].git_ahead_behind(), Some((2, 1)));
-        assert_eq!(state.workspaces[1].id, second_id);
-        assert_eq!(state.workspaces[1].git_ahead_behind(), None);
-    }
-
-    #[test]
-    fn apply_workspace_git_statuses_ignores_stale_cwd() {
-        let mut state = app_with_workspaces(&["one"]);
-        let workspace_id = state.workspaces[0].id.clone();
-        state.workspaces[0].cached_git_branch = Some("old".into());
-        state.workspaces[0].cached_git_ahead_behind = Some((1, 0));
-
-        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let changed = state.apply_workspace_git_statuses(
-            &terminal_runtimes,
-            vec![WorkspaceGitStatus {
-                workspace_id,
-                resolved_identity_cwd: std::path::PathBuf::from("/definitely/not/current"),
-                branch: Some("main".into()),
-                ahead_behind: Some((0, 1)),
-            }],
-        );
-
-        assert!(!changed);
-        assert_eq!(state.workspaces[0].branch().as_deref(), Some("old"));
-        assert_eq!(state.workspaces[0].git_ahead_behind(), Some((1, 0)));
-    }
-
-    #[test]
-    fn apply_workspace_git_statuses_clears_missing_git_status() {
-        let mut state = app_with_workspaces(&["one"]);
-        let workspace_id = state.workspaces[0].id.clone();
-        let cwd = state.workspaces[0].resolved_identity_cwd().unwrap();
-        state.workspaces[0].cached_git_branch = Some("main".into());
-        state.workspaces[0].cached_git_ahead_behind = Some((1, 2));
-
-        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let changed = state.apply_workspace_git_statuses(
-            &terminal_runtimes,
-            vec![WorkspaceGitStatus {
-                workspace_id,
-                resolved_identity_cwd: cwd,
-                branch: None,
-                ahead_behind: None,
-            }],
-        );
-
-        assert!(changed);
-        assert_eq!(state.workspaces[0].branch(), None);
-        assert_eq!(state.workspaces[0].git_ahead_behind(), None);
     }
 
     #[test]

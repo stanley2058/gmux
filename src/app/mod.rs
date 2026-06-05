@@ -29,7 +29,6 @@ pub(crate) const HEADLESS_ANIMATION_INTERVAL: Duration = Duration::from_millis(1
 pub(crate) const HEADLESS_ANIMATION_TICK_STEP: u32 = 8;
 pub(crate) const SELECTION_AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(30);
 const RESIZE_POLL_INTERVAL: Duration = Duration::from_millis(100);
-const GIT_REMOTE_STATUS_REFRESH_INTERVAL: Duration = Duration::from_millis(1500);
 const AUTO_UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
 const SESSION_SAVE_DEBOUNCE: Duration = Duration::from_secs(5);
 const SIDEBAR_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(350);
@@ -92,10 +91,6 @@ pub struct App {
     pub(crate) config_diagnostic_deadline: Option<Instant>,
     pub(crate) toast_deadline: Option<Instant>,
     pub(crate) copy_feedback_deadline: Option<Instant>,
-    pub(crate) last_git_remote_status_refresh: Instant,
-    pub(crate) git_refresh_in_flight: bool,
-    pub(crate) git_refresh_due_after_in_flight: bool,
-    pub(crate) git_status_cache: HashMap<std::path::PathBuf, crate::workspace::GitStatusCacheEntry>,
     pub(crate) last_sidebar_divider_click: Option<Instant>,
     pub(crate) last_pane_click: Option<PaneClickState>,
     pub(crate) next_resize_poll: Instant,
@@ -499,13 +494,6 @@ impl App {
 
         state.terminals = restored_terminals;
 
-        for ws_idx in 0..state.workspaces.len() {
-            let cwd = state.workspaces[ws_idx]
-                .resolved_identity_cwd_from(&state.terminals, &restored_terminal_runtimes);
-            state.workspaces[ws_idx].cached_git_branch =
-                cwd.as_deref().and_then(crate::workspace::git_branch);
-        }
-
         // Background auto-update is disabled in monolithic no-session mode
         // and in debug/test builds so local development never mutates the
         // running binary out from under spawned test processes.
@@ -529,10 +517,6 @@ impl App {
             terminal_runtimes: restored_terminal_runtimes,
             event_tx,
             event_rx,
-            last_git_remote_status_refresh: Instant::now() - GIT_REMOTE_STATUS_REFRESH_INTERVAL,
-            git_refresh_in_flight: false,
-            git_refresh_due_after_in_flight: false,
-            git_status_cache: HashMap::new(),
             last_sidebar_divider_click: None,
             last_pane_click: None,
             next_resize_poll: Instant::now() + RESIZE_POLL_INTERVAL,
@@ -1517,52 +1501,6 @@ mod tests {
         } else {
             std::env::remove_var("XDG_STATE_HOME");
         }
-    }
-
-    #[test]
-    fn git_refresh_deadline_is_suppressed_while_in_flight() {
-        let mut app = test_app();
-        app.state.workspaces.push(Workspace::test_new("one"));
-        app.git_refresh_in_flight = true;
-
-        assert_eq!(app.git_refresh_deadline(), None);
-    }
-
-    #[test]
-    fn git_status_event_clears_in_flight_refresh() {
-        let mut app = test_app();
-        app.git_refresh_in_flight = true;
-        let previous_refresh = Instant::now() - Duration::from_secs(10);
-        app.last_git_remote_status_refresh = previous_refresh;
-
-        app.handle_internal_event(AppEvent::GitStatusRefreshed {
-            results: Vec::new(),
-            cache_updates: Vec::new(),
-        });
-
-        assert!(!app.git_refresh_in_flight);
-        assert!(app.last_git_remote_status_refresh > previous_refresh);
-    }
-
-    #[test]
-    fn git_status_event_marks_render_dirty_when_status_changes() {
-        let mut app = test_app();
-        app.state.workspaces.push(Workspace::test_new("one"));
-        app.render_dirty.store(false, Ordering::Release);
-        let workspace_id = app.state.workspaces[0].id.clone();
-        let resolved_identity_cwd = app.state.workspaces[0].resolved_identity_cwd().unwrap();
-
-        app.handle_internal_event(AppEvent::GitStatusRefreshed {
-            results: vec![crate::workspace::WorkspaceGitStatus {
-                workspace_id,
-                resolved_identity_cwd,
-                branch: Some("render-dirty-test".into()),
-                ahead_behind: Some((1, 0)),
-            }],
-            cache_updates: Vec::new(),
-        });
-
-        assert!(app.render_dirty.load(Ordering::Acquire));
     }
 
     #[test]
@@ -2785,7 +2723,7 @@ mod tests {
         app.next_auto_update_check = Some(now + Duration::from_secs(6));
 
         assert_eq!(
-            app.next_headless_loop_deadline_with_git_refresh(now, false, true),
+            app.next_headless_loop_deadline(now, false),
             app.session_save_deadline
         );
     }
@@ -2802,10 +2740,7 @@ mod tests {
         app.session_save_deadline = None;
         app.state.workspaces.clear();
 
-        assert_eq!(
-            app.next_headless_loop_deadline_with_git_refresh(now, false, true),
-            None
-        );
+        assert_eq!(app.next_headless_loop_deadline(now, false), None);
     }
 
     #[test]

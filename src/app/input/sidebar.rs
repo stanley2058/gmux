@@ -1114,39 +1114,32 @@ mod tests {
         assert_eq!(app.state.workspaces[0].active_tab, 2);
     }
 
-    fn temp_git_repo(branch: &str) -> std::path::PathBuf {
-        let repo = unique_temp_path("sidebar-drop-slot-repo");
-        fs::create_dir_all(repo.join(".git")).unwrap();
-        fs::write(
-            repo.join(".git/HEAD"),
-            format!("ref: refs/heads/{branch}\n"),
-        )
-        .unwrap();
-        repo
+    fn temp_workspace_dir() -> std::path::PathBuf {
+        let dir = unique_temp_path("sidebar-drop-slot-workspace");
+        fs::create_dir_all(&dir).unwrap();
+        dir
     }
 
     #[test]
     fn top_drop_slot_is_distinct_from_gap_below_first_workspace() {
         let mut app = app_for_mouse_test();
-        let first_repo = temp_git_repo("main");
-        let second_repo = temp_git_repo("main");
+        let first_dir = temp_workspace_dir();
+        let second_dir = temp_workspace_dir();
 
         let mut first = Workspace::test_new("a");
         let first_root = first.tabs[0].root_pane;
-        first.identity_cwd = first_repo.clone();
-        first.refresh_git_ahead_behind();
+        first.identity_cwd = first_dir.clone();
 
         let mut second = Workspace::test_new("b");
         let second_root = second.tabs[0].root_pane;
-        second.identity_cwd = second_repo.clone();
-        second.refresh_git_ahead_behind();
+        second.identity_cwd = second_dir.clone();
 
         app.state.workspaces = vec![first, second];
         app.state.ensure_test_terminals();
         let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_root]
             .attached_terminal_id
             .clone();
-        app.state.terminals.get_mut(&first_terminal_id).unwrap().cwd = first_repo.clone();
+        app.state.terminals.get_mut(&first_terminal_id).unwrap().cwd = first_dir.clone();
         let second_terminal_id = app.state.workspaces[1].tabs[0].panes[&second_root]
             .attached_terminal_id
             .clone();
@@ -1154,16 +1147,16 @@ mod tests {
             .terminals
             .get_mut(&second_terminal_id)
             .unwrap()
-            .cwd = second_repo.clone();
+            .cwd = second_dir.clone();
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         assert_eq!(app.state.workspace_drop_index_at_row(0), Some(0));
         assert_eq!(app.state.workspace_drop_index_at_row(1), Some(0));
-        assert_eq!(app.state.workspace_drop_index_at_row(2), Some(0));
+        assert_eq!(app.state.workspace_drop_index_at_row(2), Some(1));
         assert_eq!(app.state.workspace_drop_index_at_row(3), Some(1));
 
-        let _ = fs::remove_dir_all(first_repo);
-        let _ = fs::remove_dir_all(second_repo);
+        let _ = fs::remove_dir_all(first_dir);
+        let _ = fs::remove_dir_all(second_dir);
     }
 
     #[test]
