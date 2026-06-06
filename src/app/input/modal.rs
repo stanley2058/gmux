@@ -581,6 +581,26 @@ pub(crate) fn handle_confirm_close_key(state: &mut AppState, key: KeyEvent) {
     }
 }
 
+fn focus_context_pane(state: &mut AppState, pane_id: crate::layout::PaneId) -> bool {
+    let Some(ws_idx) = state
+        .workspaces
+        .iter()
+        .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
+    else {
+        return false;
+    };
+
+    if state.focus_pane_in_session_container(ws_idx, pane_id) {
+        return true;
+    }
+
+    state.collapse_to_single_session_workspace();
+    state
+        .session_container()
+        .and_then(|ws| ws.pane_state(pane_id))
+        .is_some()
+}
+
 pub(super) fn apply_context_menu_action(
     state: &mut AppState,
     terminal_runtimes: &mut crate::terminal::TerminalRuntimeRegistry,
@@ -607,10 +627,12 @@ pub(super) fn apply_context_menu_action(
             open_rename_pane(state, pane_id);
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Clear pane name")) => {
-            if let Some(ws_idx) = state.session_container_index() {
-                if let Some(ws) = state.workspaces.get(ws_idx) {
-                    if let Some(pane) = ws.pane_state(pane_id) {
-                        let terminal_id = pane.attached_terminal_id.clone();
+            if focus_context_pane(state, pane_id) {
+                if let Some(ws) = state.session_container() {
+                    if let Some(terminal_id) = ws
+                        .pane_state(pane_id)
+                        .map(|pane| pane.attached_terminal_id.clone())
+                    {
                         if let Some(terminal) = state.terminals.get_mut(&terminal_id) {
                             terminal.clear_manual_label();
                             state.mark_session_dirty();
@@ -620,19 +642,23 @@ pub(super) fn apply_context_menu_action(
             }
             state.mode = Mode::Terminal;
         }
-        (ContextMenuKind::Pane { .. }, Some("Split vertical")) => {
+        (ContextMenuKind::Pane { pane_id, .. }, Some("Split vertical")) => {
+            focus_context_pane(state, pane_id);
             state.split_pane(terminal_runtimes, Direction::Horizontal);
             state.mode = Mode::Terminal;
         }
-        (ContextMenuKind::Pane { .. }, Some("Split horizontal")) => {
+        (ContextMenuKind::Pane { pane_id, .. }, Some("Split horizontal")) => {
+            focus_context_pane(state, pane_id);
             state.split_pane(terminal_runtimes, Direction::Vertical);
             state.mode = Mode::Terminal;
         }
-        (ContextMenuKind::Pane { .. }, Some("Zoom")) => {
+        (ContextMenuKind::Pane { pane_id, .. }, Some("Zoom")) => {
+            focus_context_pane(state, pane_id);
             state.toggle_zoom();
             state.mode = Mode::Terminal;
         }
-        (ContextMenuKind::Pane { .. }, Some("Close pane")) => {
+        (ContextMenuKind::Pane { pane_id, .. }, Some("Close pane")) => {
+            focus_context_pane(state, pane_id);
             if !state.close_pane() {
                 leave_modal(state);
             }
@@ -906,6 +932,50 @@ mod tests {
                 .as_deref(),
             Some("database")
         );
+    }
+
+    #[test]
+    fn context_menu_clear_pane_name_collapses_legacy_workspace_target() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        let target_pane = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(target_pane)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.ensure_test_terminals();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_manual_label("database".into());
+        state.active = Some(0);
+        state.selected = 0;
+        state.mode = Mode::ContextMenu;
+        state.context_menu = Some(ContextMenuState {
+            kind: ContextMenuKind::Pane {
+                pane_id: target_pane,
+                has_manual_label: true,
+            },
+            x: 2,
+            y: 2,
+            list: MenuListState::new(1),
+        });
+
+        handle_context_menu_key(
+            &mut state,
+            &mut crate::terminal::TerminalRuntimeRegistry::new(),
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.workspaces.len(), 1);
+        assert!(state.workspaces[0].pane_state(target_pane).is_some());
+        assert!(state
+            .terminals
+            .get(&terminal_id)
+            .unwrap()
+            .manual_label
+            .is_none());
     }
 
     #[test]
