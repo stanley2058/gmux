@@ -141,7 +141,9 @@ fn pane_panel_entries_with_runtimes(
                     ws.tabs.iter().enumerate().flat_map({
                         let session_label = session_label.clone();
                         move |(tab_idx, tab)| {
-                            let tab_label = session_tab_label(ws_idx, ws, tab_idx, tab);
+                            let tab_label = crate::workspace::session_tab_display_name(
+                                ws_idx, ws, tab_idx, tab,
+                            );
                             tab.pane_details(&app.terminals).into_iter().map({
                                 let session_label = session_label.clone();
                                 move |detail| PanePanelEntry {
@@ -158,21 +160,6 @@ fn pane_panel_entries_with_runtimes(
                 .collect()
         }
     }
-}
-
-fn session_tab_label(
-    ws_idx: usize,
-    ws: &crate::workspace::Workspace,
-    tab_idx: usize,
-    tab: &crate::workspace::Tab,
-) -> String {
-    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
-        if let Some(name) = &ws.custom_name {
-            return name.clone();
-        }
-    }
-
-    tab.display_name()
 }
 
 fn truncate_text(text: &str, max_width: usize) -> String {

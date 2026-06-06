@@ -374,38 +374,14 @@ fn mobile_switcher_tabs(app: &AppState) -> Vec<MobileSwitcherTabEntry> {
                 ws_idx,
                 tab_idx,
                 flat_idx,
-                label: mobile_session_tab_label(ws_idx, ws, tab_idx, tab),
-                auto_named: mobile_session_tab_is_auto_named(ws_idx, ws, tab_idx, tab),
+                label: crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab),
+                auto_named: crate::workspace::session_tab_is_auto_named(ws_idx, ws, tab_idx, tab),
                 active: app.active == Some(ws_idx) && ws.active_tab == tab_idx,
             });
             flat_idx += 1;
         }
     }
     entries
-}
-
-fn mobile_session_tab_label(
-    ws_idx: usize,
-    ws: &crate::workspace::Workspace,
-    tab_idx: usize,
-    tab: &crate::workspace::Tab,
-) -> String {
-    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
-        if let Some(name) = &ws.custom_name {
-            return name.clone();
-        }
-    }
-
-    tab.display_name()
-}
-
-fn mobile_session_tab_is_auto_named(
-    ws_idx: usize,
-    ws: &crate::workspace::Workspace,
-    tab_idx: usize,
-    tab: &crate::workspace::Tab,
-) -> bool {
-    tab.is_auto_named() && !(ws_idx > 0 && tab_idx == 0 && ws.custom_name.is_some())
 }
 
 fn render_mobile_switcher_content(

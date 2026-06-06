@@ -53,6 +53,30 @@ pub fn derive_label_from_cwd(cwd: &Path) -> String {
     }
 }
 
+pub(crate) fn session_tab_display_name(
+    ws_idx: usize,
+    ws: &Workspace,
+    tab_idx: usize,
+    tab: &Tab,
+) -> String {
+    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
+        if let Some(name) = &ws.custom_name {
+            return name.clone();
+        }
+    }
+
+    tab.display_name()
+}
+
+pub(crate) fn session_tab_is_auto_named(
+    ws_idx: usize,
+    ws: &Workspace,
+    tab_idx: usize,
+    tab: &Tab,
+) -> bool {
+    tab.is_auto_named() && !(ws_idx > 0 && tab_idx == 0 && ws.custom_name.is_some())
+}
+
 /// A named workspace containing tabs.
 pub struct Workspace {
     /// Stable public workspace identity, independent of display order.

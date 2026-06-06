@@ -249,7 +249,7 @@ impl AppState {
     fn navigator_tab_row(&self, ws_idx: usize, tab_idx: usize) -> NavigatorRow {
         let ws = &self.workspaces[ws_idx];
         let tab = &ws.tabs[tab_idx];
-        let label = navigator_session_tab_label(ws_idx, ws, tab_idx, tab);
+        let label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
         let pane_count = tab.panes.len();
         let meta = format!("{pane_count} panes");
         let search_text = format!("{label} {meta}").to_lowercase();
@@ -445,21 +445,6 @@ impl AppState {
             }
         }
     }
-}
-
-fn navigator_session_tab_label(
-    ws_idx: usize,
-    ws: &crate::workspace::Workspace,
-    tab_idx: usize,
-    tab: &crate::workspace::Tab,
-) -> String {
-    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
-        if let Some(name) = &ws.custom_name {
-            return name.clone();
-        }
-    }
-
-    tab.display_name()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
