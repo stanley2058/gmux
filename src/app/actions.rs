@@ -1542,7 +1542,7 @@ impl AppState {
     fn handle_pane_died(&mut self, pane_id: PaneId) {
         self.collapse_to_single_session_workspace();
         let ws_idx = self
-            .workspaces
+            .session_containers()
             .iter()
             .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some());
 
@@ -1564,13 +1564,13 @@ impl AppState {
         let workspace_terminal_ids = self.terminal_ids_for_session_container(ws_idx);
         self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
         let should_close_workspace = {
-            let ws = &mut self.workspaces[ws_idx];
+            let ws = &mut self.session_containers_mut()[ws_idx];
             ws.remove_pane(pane_id)
         };
         self.mark_session_dirty();
 
         if should_close_workspace {
-            self.workspaces.remove(ws_idx);
+            self.session_containers_mut().remove(ws_idx);
             self.remove_unattached_terminal_ids(workspace_terminal_ids);
             self.active = None;
             self.selected = 0;
