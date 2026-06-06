@@ -28,19 +28,21 @@ impl AppState {
     }
 
     fn pane_focus_target_indices(&self, target: &PaneFocusTarget) -> Option<(usize, usize)> {
-        if let Some(ws_idx) = self
-            .sessions()
-            .iter()
-            .position(|ws| ws.id == target.session_id)
+        if let Some(entry) = self
+            .session_entries()
+            .find(|entry| entry.session.id == target.session_id)
         {
-            if let Some(tab_idx) = self.sessions()[ws_idx].find_tab_index_for_pane(target.pane_id) {
-                return Some((ws_idx, tab_idx));
+            if let Some(tab_idx) = entry.session.find_tab_index_for_pane(target.pane_id) {
+                return Some((entry.session_idx, tab_idx));
             }
         }
 
-        self.sessions().iter().enumerate().find_map(|(ws_idx, ws)| {
-            ws.find_tab_index_for_pane(target.pane_id)
-                .map(|tab_idx| (ws_idx, tab_idx))
+        self.session_tab_entries().find_map(|entry| {
+            entry
+                .tab
+                .panes
+                .contains_key(&target.pane_id)
+                .then_some((entry.session_idx, entry.tab_idx))
         })
     }
 
@@ -55,11 +57,15 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) {
-        let Some(ws) = self.sessions().get(ws_idx) else {
+        let Some(session_id) = self
+            .session_entries()
+            .find(|entry| entry.session_idx == ws_idx)
+            .map(|entry| entry.session.id.clone())
+        else {
             return;
         };
         let target = PaneFocusTarget {
-            session_id: ws.id.clone(),
+            session_id,
             pane_id,
         };
         if previous.as_ref() != Some(&target) {
@@ -75,18 +81,20 @@ impl AppState {
     }
 
     pub(crate) fn focus_pane_in_session_at(&mut self, ws_idx: usize, pane_id: PaneId) -> bool {
-        let Some(ws) = self.sessions().get(ws_idx) else {
-            return false;
-        };
-        let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) else {
+        let Some((tab_idx, session_id)) = self
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab.panes.contains_key(&pane_id))
+            .map(|entry| (entry.tab_idx, entry.session.id.clone()))
+        else {
             return false;
         };
         let previous = self.current_pane_focus_target();
         let target = PaneFocusTarget {
-            session_id: ws.id.clone(),
+            session_id,
             pane_id,
         };
-        if self.sessions().len() == 1
+        let has_one_session = self.session_entries().nth(1).is_none();
+        if has_one_session
             && self.active_session == Some(ws_idx)
             && previous.as_ref() == Some(&target)
         {
@@ -110,9 +118,9 @@ impl AppState {
 
     pub(crate) fn focus_session_pane(&mut self, pane_id: PaneId) -> bool {
         let Some(ws_idx) = self
-            .sessions()
-            .iter()
-            .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
+            .session_tab_entries()
+            .find(|entry| entry.tab.panes.contains_key(&pane_id))
+            .map(|entry| entry.session_idx)
         else {
             return false;
         };
