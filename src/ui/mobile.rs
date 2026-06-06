@@ -26,8 +26,18 @@ pub(crate) struct MobileSwitcherAreas {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MobileSwitcherTarget {
     NewTab,
-    Tab(usize),
+    Tab { ws_idx: usize, tab_idx: usize },
     Menu(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MobileSwitcherTabEntry {
+    ws_idx: usize,
+    tab_idx: usize,
+    flat_idx: usize,
+    label: String,
+    auto_named: bool,
+    active: bool,
 }
 
 pub(crate) fn is_mobile_width(area: Rect, threshold: u16) -> bool {
@@ -98,15 +108,20 @@ pub(crate) fn mobile_switcher_target_at(
         .saturating_add(row.saturating_sub(areas.viewport.y) as usize);
     let mut cursor = 0usize;
 
-    if let Some(ws) = app.session_container() {
+    let tabs = mobile_switcher_tabs(app);
+    if !tabs.is_empty() {
         cursor += 1; // tabs title
         if doc_row == cursor {
             return Some(MobileSwitcherTarget::NewTab);
         }
         cursor += 1;
-        let tabs_end = cursor + ws.tabs.len();
+        let tabs_end = cursor + tabs.len();
         if doc_row >= cursor && doc_row < tabs_end {
-            return Some(MobileSwitcherTarget::Tab(doc_row - cursor));
+            let tab = &tabs[doc_row - cursor];
+            return Some(MobileSwitcherTarget::Tab {
+                ws_idx: tab.ws_idx,
+                tab_idx: tab.tab_idx,
+            });
         }
         cursor = tabs_end;
     }
@@ -344,12 +359,53 @@ fn render_close_button(app: &AppState, frame: &mut Frame, area: Rect) {
 }
 
 fn mobile_switcher_content_height(app: &AppState) -> usize {
-    let tabs_h = app
-        .session_container()
-        .map(|ws| 2 + ws.tabs.len())
-        .unwrap_or(0);
+    let tabs = mobile_switcher_tabs(app);
+    let tabs_h = if tabs.is_empty() { 0 } else { 2 + tabs.len() };
     let menu_h = 1 + app.global_menu_labels().len();
     tabs_h + menu_h
+}
+
+fn mobile_switcher_tabs(app: &AppState) -> Vec<MobileSwitcherTabEntry> {
+    let mut entries = Vec::new();
+    let mut flat_idx = 0usize;
+    for (ws_idx, ws) in app.workspaces.iter().enumerate() {
+        for (tab_idx, tab) in ws.tabs.iter().enumerate() {
+            entries.push(MobileSwitcherTabEntry {
+                ws_idx,
+                tab_idx,
+                flat_idx,
+                label: mobile_session_tab_label(ws_idx, ws, tab_idx, tab),
+                auto_named: mobile_session_tab_is_auto_named(ws_idx, ws, tab_idx, tab),
+                active: app.active == Some(ws_idx) && ws.active_tab == tab_idx,
+            });
+            flat_idx += 1;
+        }
+    }
+    entries
+}
+
+fn mobile_session_tab_label(
+    ws_idx: usize,
+    ws: &crate::workspace::Workspace,
+    tab_idx: usize,
+    tab: &crate::workspace::Tab,
+) -> String {
+    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
+        if let Some(name) = &ws.custom_name {
+            return name.clone();
+        }
+    }
+
+    tab.display_name()
+}
+
+fn mobile_session_tab_is_auto_named(
+    ws_idx: usize,
+    ws: &crate::workspace::Workspace,
+    tab_idx: usize,
+    tab: &crate::workspace::Tab,
+) -> bool {
+    tab.is_auto_named() && !(ws_idx > 0 && tab_idx == 0 && ws.custom_name.is_some())
 }
 
 fn render_mobile_switcher_content(
@@ -378,7 +434,8 @@ fn render_mobile_switcher_content(
     }
 
     let mut doc_y = 0usize;
-    if let Some(ws) = app.session_container() {
+    let tabs = mobile_switcher_tabs(app);
+    if !tabs.is_empty() {
         render_section_title_at(
             frame,
             viewport,
@@ -399,13 +456,12 @@ fn render_mobile_switcher_content(
             p,
         );
         doc_y += 1;
-        for (idx, tab) in ws.tabs.iter().enumerate() {
-            let active = idx == ws.active_tab;
-            let bg = mobile_item_bg(false, active, p);
-            let label = if tab.is_auto_named() {
-                format!("tab {}", idx + 1)
+        for tab in tabs {
+            let bg = mobile_item_bg(false, tab.active, p);
+            let label = if tab.auto_named {
+                format!("tab {}", tab.flat_idx + 1)
             } else {
-                format!("{} · {}", idx + 1, tab.display_name())
+                format!("{} · {}", tab.flat_idx + 1, tab.label)
             };
             let title = Line::from(vec![
                 Span::styled("  ", Style::default().bg(bg)),

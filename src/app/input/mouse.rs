@@ -695,8 +695,8 @@ impl AppState {
             Some(crate::ui::MobileSwitcherTarget::NewTab) => {
                 open_new_tab_dialog(self);
             }
-            Some(crate::ui::MobileSwitcherTarget::Tab(tab_idx)) => {
-                self.switch_tab(tab_idx);
+            Some(crate::ui::MobileSwitcherTarget::Tab { ws_idx, tab_idx }) => {
+                self.focus_session_tab(ws_idx, tab_idx);
                 self.mode = Mode::Terminal;
             }
             Some(crate::ui::MobileSwitcherTarget::Menu(action_idx)) => {
@@ -2295,11 +2295,9 @@ mod tests {
     }
 
     #[test]
-    fn mobile_switcher_ignores_inactive_workspace_rows() {
+    fn mobile_switcher_flattens_legacy_workspaces_into_session_tabs() {
         let mut app = app_for_mouse_test();
-        app.state.workspaces = (0..12)
-            .map(|idx| Workspace::test_new(&format!("ws-{idx}")))
-            .collect();
+        app.state.workspaces = vec![Workspace::test_new("one"), Workspace::test_new("two")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2315,20 +2313,19 @@ mod tests {
 
         let viewport = crate::ui::mobile_switcher_areas(&app.state).viewport;
         app.handle_mouse(mouse(
-            MouseEventKind::ScrollDown,
-            viewport.x + 2,
-            viewport.y,
-        ));
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));
-        assert_eq!(app.state.mobile_switcher_scroll, 0);
-
-        app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             viewport.x + 2,
-            viewport.y + 2,
+            viewport.y + 3,
         ));
 
         assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
+        assert_eq!(
+            app.state.workspaces[0].tabs[1].custom_name.as_deref(),
+            Some("two")
+        );
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
