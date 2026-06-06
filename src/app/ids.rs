@@ -6,7 +6,7 @@ impl App {
         pane_id: crate::layout::PaneId,
     ) -> Option<(usize, &crate::pane::PaneState)> {
         self.state
-            .workspaces
+            .session_containers()
             .iter()
             .enumerate()
             .find_map(|(ws_idx, ws)| ws.pane_state(pane_id).map(|pane| (ws_idx, pane)))
@@ -42,10 +42,10 @@ impl App {
     }
 
     fn public_pane_number(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> Option<usize> {
-        let ws = self.state.workspaces.get(ws_idx)?;
+        let ws = self.state.session_containers().get(ws_idx)?;
         let preceding = self
             .state
-            .workspaces
+            .session_containers()
             .iter()
             .take(ws_idx)
             .map(|ws| ws.public_pane_numbers.len())
@@ -55,7 +55,7 @@ impl App {
 
     fn pane_by_public_number(&self, number: usize) -> Option<(usize, crate::layout::PaneId)> {
         let mut remaining = number.checked_sub(1)?;
-        for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
+        for (ws_idx, ws) in self.state.session_containers().iter().enumerate() {
             if remaining < ws.public_pane_numbers.len() {
                 let local_number = remaining + 1;
                 let pane_id = ws
@@ -71,7 +71,7 @@ impl App {
 
     pub(super) fn parse_session_container_id(&self, id: &str) -> Option<usize> {
         self.state
-            .workspaces
+            .session_containers()
             .iter()
             .position(|workspace| workspace.id == id)
             .or_else(|| id.strip_prefix("w_")?.parse::<usize>().ok()?.checked_sub(1))
@@ -87,14 +87,22 @@ impl App {
             let (container_raw, tab_raw) = rest.rsplit_once('_')?;
             let ws_idx = self.parse_session_container_id(container_raw)?;
             let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
-            self.state.workspaces.get(ws_idx)?.tabs.get(tab_idx)?;
+            self.state
+                .session_containers()
+                .get(ws_idx)?
+                .tabs
+                .get(tab_idx)?;
             return Some((ws_idx, tab_idx));
         }
 
         let (container_raw, tab_raw) = id.rsplit_once(':')?;
         let ws_idx = self.parse_session_container_id(container_raw)?;
         let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
-        self.state.workspaces.get(ws_idx)?.tabs.get(tab_idx)?;
+        self.state
+            .session_containers()
+            .get(ws_idx)?
+            .tabs
+            .get(tab_idx)?;
         Some((ws_idx, tab_idx))
     }
 
@@ -114,7 +122,10 @@ impl App {
             if let Some((container_raw, pane_raw)) = rest.rsplit_once('_') {
                 let ws_idx = self.parse_session_container_id(container_raw)?;
                 let pane_id = self.resolve_raw_pane_id(pane_raw.parse::<u32>().ok()?)?;
-                self.state.workspaces.get(ws_idx)?.pane_state(pane_id)?;
+                self.state
+                    .session_containers()
+                    .get(ws_idx)?
+                    .pane_state(pane_id)?;
                 return Some((ws_idx, pane_id));
             }
 
@@ -129,7 +140,7 @@ impl App {
         let (container_raw, pane_number_raw) = id.rsplit_once('-')?;
         let ws_idx = self.parse_session_container_id(container_raw)?;
         let pane_number = pane_number_raw.parse::<usize>().ok()?;
-        let ws = self.state.workspaces.get(ws_idx)?;
+        let ws = self.state.session_containers().get(ws_idx)?;
         let pane_id = ws
             .public_pane_numbers
             .iter()
