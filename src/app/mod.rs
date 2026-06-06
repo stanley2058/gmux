@@ -293,12 +293,10 @@ impl App {
                 )
             } else {
                 crate::logging::session_restored(ws.len(), "ok");
-                let active = snap.active.filter(|&i| i < ws.len());
-                let selected = snap.selected.min(ws.len().saturating_sub(1));
                 (
                     ws,
-                    active,
-                    selected,
+                    Some(0),
+                    0,
                     snap.pane_panel_scope,
                     snap.sidebar_width.unwrap_or(config.ui.sidebar_width),
                     if snap.sidebar_width.is_some() {
