@@ -140,8 +140,8 @@ impl App {
         )?;
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
-        self.state.sessions_mut().push(ws);
-        let idx = self.state.sessions().len() - 1;
+        self.state.set_session(ws);
+        let idx = 0;
         let root_pane = self.state.sessions()[idx].tabs[0].root_pane;
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
         let session_id = self.state.sessions()[idx].id.clone();

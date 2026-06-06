@@ -31,7 +31,7 @@ struct RestoreRuntimeContext<'a> {
 }
 
 type RestoredSession = (
-    Vec<SessionUiState>,
+    Option<SessionUiState>,
     HashMap<TerminalId, TerminalState>,
     HashMap<TerminalId, TerminalRuntime>,
 );
@@ -103,10 +103,10 @@ pub fn restore_handoff(
 #[cfg(unix)]
 pub fn handoff_pane_aliases(
     snapshot: &SessionSnapshot,
-    sessions: &[SessionUiState],
+    session: Option<&SessionUiState>,
 ) -> HashMap<u32, PaneId> {
     let mut aliases = HashMap::new();
-    if let Some(session_state) = sessions.first() {
+    if let Some(session_state) = session {
         for (tab_snap, tab) in snapshot.tabs.iter().zip(&session_state.tabs) {
             let old_ids = collect_snapshot_pane_ids(&tab_snap.layout);
             let new_ids = tab.layout.pane_ids();
@@ -216,7 +216,7 @@ fn restore_with_imports_and_failures(
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
 ) -> RestoreFailures<RestoredSession> {
-    let mut sessions = Vec::new();
+    let mut session = None;
     let mut terminals = HashMap::new();
     let mut terminal_runtimes = HashMap::new();
     let mut failed_imports = 0;
@@ -243,10 +243,10 @@ fn restore_with_imports_and_failures(
                 terminals.insert(terminal.id.clone(), terminal);
             }
             terminal_runtimes.extend(restored_runtimes);
-            sessions.push(session_state);
+            session = Some(session_state);
         }
     }
-    ((sessions, terminals, terminal_runtimes), failed_imports)
+    ((session, terminals, terminal_runtimes), failed_imports)
 }
 
 fn restore_session_state(

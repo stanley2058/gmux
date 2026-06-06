@@ -1159,6 +1159,19 @@ impl AppState {
         &mut self.sessions
     }
 
+    pub(crate) fn clear_session(&mut self) {
+        self.sessions.clear();
+        self.active_session = None;
+        self.selected_session = 0;
+    }
+
+    pub(crate) fn set_session(&mut self, session: SessionUiState) {
+        self.sessions.clear();
+        self.sessions.push(session);
+        self.active_session = Some(0);
+        self.selected_session = 0;
+    }
+
     pub(crate) fn session_tab_entries(&self) -> impl Iterator<Item = SessionTabEntry<'_>> {
         self.sessions()
             .iter()

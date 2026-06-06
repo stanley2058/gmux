@@ -859,22 +859,10 @@ impl AppState {
         if let Some(session_id) = self.sessions().get(close_idx).map(|ws| ws.id.clone()) {
             crate::logging::session_closed(&session_id);
         }
-        self.sessions_mut().remove(close_idx);
+        self.clear_session();
         self.remove_unattached_terminal_ids(terminal_ids);
-        if self.sessions().is_empty() {
-            self.active_session = None;
-            self.selected_session = 0;
-            self.tab_scroll = 0;
-            self.tab_scroll_follow_active = true;
-        } else {
-            if self.selected_session >= self.sessions().len() {
-                self.selected_session = self.sessions().len() - 1;
-            }
-            self.active_session = Some(self.selected_session);
-            self.ensure_session_visible(self.selected_session);
-            self.tab_scroll_follow_active = true;
-            self.refresh_tab_bar_view();
-        }
+        self.tab_scroll = 0;
+        self.tab_scroll_follow_active = true;
     }
 
     fn refresh_tab_bar_view(&mut self) {

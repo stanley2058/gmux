@@ -243,7 +243,7 @@ impl App {
                 .pane_history
                 .then(crate::persist::load_history)
                 .flatten();
-            let (restored_sessions, terminals, terminal_runtimes) = crate::persist::restore(
+            let (restored_session, terminals, terminal_runtimes) = crate::persist::restore(
                 &snap,
                 history.as_ref(),
                 24,
@@ -257,16 +257,13 @@ impl App {
             );
             restored_terminals = terminals;
             restored_terminal_runtimes = terminal_runtimes.into();
-            if restored_sessions.is_empty() {
+            if let Some(restored_session) = restored_session {
+                let restored_tabs = restored_session.tabs.len();
+                crate::logging::session_restored(restored_tabs, "ok");
+                (vec![restored_session], Some(0), 0)
+            } else {
                 crate::logging::session_restored(0, "empty");
                 (Vec::new(), None, 0)
-            } else {
-                let restored_tabs = restored_sessions
-                    .first()
-                    .map(|session| session.tabs.len())
-                    .unwrap_or(0);
-                crate::logging::session_restored(restored_tabs, "ok");
-                (restored_sessions, Some(0), 0)
             }
         } else {
             (Vec::new(), None, 0)
@@ -501,7 +498,7 @@ impl App {
         >,
     ) -> io::Result<Self> {
         let mut app = Self::new(config, true, config_diagnostic, api_rx, event_hub);
-        let (sessions, terminals, runtimes) = crate::persist::restore_handoff(
+        let (session, terminals, runtimes) = crate::persist::restore_handoff(
             snapshot,
             config.advanced.scrollback_limit_bytes,
             &config.terminal.default_shell,
@@ -511,15 +508,17 @@ impl App {
             app.render_notify.clone(),
             app.render_dirty.clone(),
         )?;
-        let pane_id_aliases = crate::persist::handoff_pane_aliases(snapshot, &sessions);
+        let pane_id_aliases = crate::persist::handoff_pane_aliases(snapshot, session.as_ref());
 
         app.no_session = false;
         app.state.detach_exits = false;
         app.state.pane_id_aliases = pane_id_aliases;
-        *app.state.sessions_mut() = sessions;
+        app.state.clear_session();
+        if let Some(session) = session {
+            app.state.set_session(session);
+        }
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
-        app.state.selected_session = 0;
         app.state.collapse_to_single_session();
         app.state.mode = app.state.terminal_or_navigate_mode();
         app.last_focus = app.state.session_index().and_then(|idx| {
