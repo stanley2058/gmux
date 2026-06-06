@@ -323,9 +323,7 @@ impl App {
             should_quit: false,
             detach_exits: no_session,
             detach_requested: false,
-            request_new_workspace: false,
             request_new_tab: false,
-            request_new_workspace_cwd: None,
             request_reload_config: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
@@ -613,23 +611,9 @@ impl App {
                 needs_render = true;
             }
 
-            if self.state.request_new_workspace {
-                self.state.request_new_workspace = false;
-                self.create_workspace();
-                needs_render = true;
-            }
-
             if self.state.request_new_tab {
                 self.state.request_new_tab = false;
                 self.create_tab();
-                needs_render = true;
-            }
-
-            if let Some(cwd) = self.state.request_new_workspace_cwd.take() {
-                if let Err(err) = self.create_workspace_with_options(cwd, true) {
-                    tracing::error!(err = %err, "failed to create workspace at requested cwd");
-                    self.state.mode = Mode::Navigate;
-                }
                 needs_render = true;
             }
 
@@ -2294,26 +2278,6 @@ mod tests {
 
         assert_eq!(root_pane.tab_id, tab.tab_id);
         assert_eq!(tab.pane_count, 1);
-    }
-
-    #[test]
-    fn workspace_creation_in_navigate_mode_uses_selected_workspace_seed_cwd() {
-        let mut app = test_app();
-        let mut first = Workspace::test_new("gmux");
-        first.identity_cwd = std::path::PathBuf::from("/tmp/gmux");
-        let mut second = Workspace::test_new("pion");
-        second.identity_cwd = std::path::PathBuf::from("/tmp/pion");
-
-        app.state.workspaces = vec![first, second];
-        app.state.active = Some(0);
-        app.state.selected = 1;
-        app.state.mode = Mode::Navigate;
-
-        let ws_idx = app.workspace_creation_source().unwrap();
-        let seed_cwd = app.seed_cwd_from_workspace(ws_idx).unwrap();
-
-        assert_eq!(ws_idx, 1);
-        assert_eq!(seed_cwd, std::path::PathBuf::from("/tmp/pion"));
     }
 
     #[test]

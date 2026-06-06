@@ -971,9 +971,7 @@ pub struct AppState {
     /// Set when the current client should detach from the persistent session.
     /// The server's event loop checks this and handles client detach.
     pub detach_requested: bool,
-    pub request_new_workspace: bool,
     pub request_new_tab: bool,
-    pub request_new_workspace_cwd: Option<std::path::PathBuf>,
     pub request_reload_config: bool,
     /// Set when the headless server should ask attached clients to reload
     /// client-local runtime config from disk.
@@ -1249,9 +1247,7 @@ impl AppState {
             should_quit: false,
             detach_exits: false,
             detach_requested: false,
-            request_new_workspace: false,
             request_new_tab: false,
-            request_new_workspace_cwd: None,
             request_reload_config: false,
             request_client_config_reload: false,
             request_clipboard_write: None,

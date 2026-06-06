@@ -2415,7 +2415,6 @@ mod tests {
         ));
         assert_eq!(app.state.mode, Mode::RenameTab);
         assert!(app.state.creating_new_tab);
-        assert!(!app.state.request_new_workspace);
     }
 
     #[test]

@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use crossterm::event::{KeyModifiers, MouseEventKind};
 use ratatui::layout::Rect;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use base64::Engine;
 use bytes::Bytes;
@@ -418,30 +418,12 @@ impl HeadlessServer {
                 crate::render_prof::event("full_render_cause.deferred_onboarding");
             }
 
-            if self.app.state.request_new_workspace {
-                self.app.state.request_new_workspace = false;
-                self.app.create_workspace();
-                needs_render = true;
-                needs_full_render = true;
-                crate::render_prof::event("full_render_cause.deferred_new_workspace");
-            }
-
             if self.app.state.request_new_tab {
                 self.app.state.request_new_tab = false;
                 self.app.create_tab();
                 needs_render = true;
                 needs_full_render = true;
                 crate::render_prof::event("full_render_cause.deferred_new_tab");
-            }
-
-            if let Some(cwd) = self.app.state.request_new_workspace_cwd.take() {
-                if let Err(err) = self.app.create_workspace_with_options(cwd, true) {
-                    error!(err = %err, "failed to create workspace at requested cwd");
-                    self.app.state.mode = app::Mode::Navigate;
-                }
-                needs_render = true;
-                needs_full_render = true;
-                crate::render_prof::event("full_render_cause.deferred_workspace_cwd");
             }
 
             if self.app.state.request_reload_config {
