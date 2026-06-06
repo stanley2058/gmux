@@ -245,10 +245,12 @@ fn send_json_request(socket_path: &Path, request: &str) -> Value {
     serde_json::from_str(&response).expect("response should be valid JSON")
 }
 
-fn create_workspace_and_root_pane(socket_path: &Path, label: &str) -> (String, String) {
+fn create_tab_and_root_pane(socket_path: &Path, label: &str) -> String {
     let response = send_json_request(
         socket_path,
-        &format!("{{\"id\":\"ws_create\",\"method\":\"tab.create\",\"params\":{{\"label\":\"{label}\",\"focus\":true}}}}"),
+        &format!(
+            "{{\"id\":\"tab_create\",\"method\":\"tab.create\",\"params\":{{\"label\":\"{label}\",\"focus\":true}}}}"
+        ),
     );
 
     if response.get("error").is_some() {
@@ -258,20 +260,17 @@ fn create_workspace_and_root_pane(socket_path: &Path, label: &str) -> (String, S
     let tab_id = response
         .pointer("/result/tab/tab_id")
         .and_then(Value::as_str)
-        .expect("tab.create should return tab id")
-        .to_string();
-    let workspace_id = tab_id
-        .rsplit_once(':')
-        .map(|(workspace_id, _)| workspace_id.to_string())
-        .unwrap_or_else(|| "1".to_string());
+        .expect("tab.create should return tab id");
+    assert!(
+        !tab_id.is_empty(),
+        "tab.create should return a nonempty tab id"
+    );
 
-    let pane_id = response
+    response
         .pointer("/result/root_pane/pane_id")
         .and_then(Value::as_str)
         .expect("tab.create should return root pane id")
-        .to_string();
-
-    (workspace_id, pane_id)
+        .to_string()
 }
 
 fn pane_send_input(socket_path: &Path, pane_id: &str, text: &str) {
@@ -795,7 +794,7 @@ fn multi_client_effective_size_shrinks_when_smaller_client_joins() {
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_file(&client_socket, Duration::from_secs(10));
 
-    let (_workspace_id, pane_id) = create_workspace_and_root_pane(&api_socket, "size-shrink");
+    let pane_id = create_tab_and_root_pane(&api_socket, "size-shrink");
 
     let mut large = connect_raw_client(&client_socket, 120, 40);
     assert!(wait_for_frame(&mut large, Duration::from_secs(2)));
@@ -832,8 +831,7 @@ fn multi_client_broadcasts_frame_updates_to_all_clients() {
     let mut client_b = connect_raw_client(&client_socket, 100, 30);
 
     // Ensure we have an active pane that can reflect input changes.
-    let (_workspace_id, pane_id) =
-        create_workspace_and_root_pane(&api_socket, "broadcast-client-a-to-b");
+    let pane_id = create_tab_and_root_pane(&api_socket, "broadcast-client-a-to-b");
 
     // Drain initial frames so we measure the frame caused by new input.
     drain_server_messages(&mut client_a, Duration::from_millis(300));
@@ -885,8 +883,7 @@ fn multi_client_disconnect_recalculates_to_next_smallest() {
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_file(&client_socket, Duration::from_secs(10));
 
-    let (_workspace_id, pane_id) =
-        create_workspace_and_root_pane(&api_socket, "size-next-smallest");
+    let pane_id = create_tab_and_root_pane(&api_socket, "size-next-smallest");
 
     let mut c120 = connect_raw_client(&client_socket, 120, 40);
     let mut c100 = connect_raw_client(&client_socket, 100, 30);
@@ -938,7 +935,7 @@ fn multi_client_smallest_leaving_resizes_up_for_remaining_clients() {
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_file(&client_socket, Duration::from_secs(10));
 
-    let (_workspace_id, pane_id) = create_workspace_and_root_pane(&api_socket, "size-resize-up");
+    let pane_id = create_tab_and_root_pane(&api_socket, "size-resize-up");
 
     let mut large = connect_raw_client(&client_socket, 120, 40);
     let mut small = connect_raw_client(&client_socket, 80, 24);
