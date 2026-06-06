@@ -254,26 +254,26 @@ fn first_pane_id_in_layout(layout: &LayoutSnapshot) -> Option<u32> {
 
 /// Capture the current app state into a serializable snapshot.
 pub fn capture(
-    sessions: &[SessionUiState],
+    session: Option<&SessionUiState>,
     terminals: &std::collections::HashMap<
         crate::terminal::TerminalId,
         crate::terminal::TerminalState,
     >,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionSnapshot {
-    let session_states: Vec<_> = sessions
-        .iter()
+    let Some(session_state) = session
         .map(|session_state| capture_session_state(session_state, terminals, terminal_runtimes))
-        .collect();
-    let active_tab = session_states
-        .first()
-        .map(|session_state| {
-            session_state
-                .active_tab
-                .min(session_state.tabs.len().saturating_sub(1))
-        })
-        .unwrap_or(0);
-    let tabs = flatten_session_state_tabs(&session_states);
+    else {
+        return SessionSnapshot {
+            version: SNAPSHOT_VERSION,
+            tabs: Vec::new(),
+            active_tab: 0,
+        };
+    };
+    let active_tab = session_state
+        .active_tab
+        .min(session_state.tabs.len().saturating_sub(1));
+    let tabs = flatten_session_state_tabs(std::slice::from_ref(&session_state));
     SessionSnapshot {
         version: SNAPSHOT_VERSION,
         tabs,
@@ -348,12 +348,12 @@ fn capture_tab(
 
 /// Capture pane screen history separately from the structural session snapshot.
 pub fn capture_history(
-    sessions: &[SessionUiState],
+    session: Option<&SessionUiState>,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionHistorySnapshot {
-    let tabs = sessions
-        .iter()
-        .flat_map(|session_state| &session_state.tabs)
+    let tabs = session
+        .into_iter()
+        .flat_map(|session_state| session_state.tabs.iter())
         .map(|tab| TabHistorySnapshot {
             panes: capture_tab_history(tab, terminal_runtimes),
         })
@@ -506,14 +506,14 @@ mod tests {
         state: &AppState,
         terminal_runtimes: &TerminalRuntimeRegistry,
     ) -> SessionSnapshot {
-        capture(&state.sessions, &state.terminals, terminal_runtimes)
+        capture(state.session(), &state.terminals, terminal_runtimes)
     }
 
     fn capture_history_from_state_with_runtimes(
         state: &AppState,
         terminal_runtimes: &TerminalRuntimeRegistry,
     ) -> SessionHistorySnapshot {
-        capture_history(&state.sessions, terminal_runtimes)
+        capture_history(state.session(), terminal_runtimes)
     }
 
     fn root_split_ratio(tab: &TabSnapshot) -> Option<f32> {
@@ -707,11 +707,12 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_uses_first_session_state_as_active_tab_source() {
+    fn capture_contract_tracks_collapsed_session_tabs() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
         state.sessions.swap(0, 1);
         state.active_session = Some(0);
         state.selected_session = 2;
+        state.collapse_to_single_session();
 
         let snapshot = capture_from_state(&state);
         let names: Vec<_> = snapshot

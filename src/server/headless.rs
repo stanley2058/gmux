@@ -681,7 +681,7 @@ impl HeadlessServer {
 
         self.app.state.collapse_to_single_session();
         let snapshot = crate::persist::capture(
-            self.app.state.sessions(),
+            self.app.state.session(),
             &self.app.state.terminals,
             &self.app.terminal_runtimes,
         );

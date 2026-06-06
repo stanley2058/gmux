@@ -477,7 +477,7 @@ fn numbered_lines_bytes(count: usize) -> Vec<u8> {
 #[cfg(test)]
 fn capture_snapshot(state: &AppState) -> crate::persist::SessionSnapshot {
     let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-    crate::persist::capture(&state.sessions, &state.terminals, &terminal_runtimes)
+    crate::persist::capture(state.session(), &state.terminals, &terminal_runtimes)
 }
 
 #[cfg(test)]
