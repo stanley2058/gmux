@@ -21,6 +21,7 @@ mod tab;
 pub use self::tab::Tab;
 
 static NEXT_WORKSPACE_ID: AtomicU64 = AtomicU64::new(1);
+const DEFAULT_SESSION_LABEL: &str = "session";
 
 pub(crate) fn generate_workspace_id() -> String {
     let micros = SystemTime::now()
@@ -39,11 +40,17 @@ pub fn derive_label_from_cwd(cwd: &Path) -> String {
         }
     }
 
-    cwd.file_name()
+    let label = cwd
+        .file_name()
         .and_then(|n| n.to_str())
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
-        .unwrap_or_else(|| cwd.display().to_string())
+        .unwrap_or_else(|| cwd.display().to_string());
+    if label.is_empty() {
+        DEFAULT_SESSION_LABEL.to_string()
+    } else {
+        label
+    }
 }
 
 /// A named workspace containing tabs.
@@ -458,7 +465,7 @@ impl Workspace {
 
         self.resolved_identity_cwd()
             .map(|cwd| derive_label_from_cwd(&cwd))
-            .unwrap_or_else(|| "workspace".into())
+            .unwrap_or_else(|| DEFAULT_SESSION_LABEL.into())
     }
 
     pub fn display_name_from(
@@ -472,7 +479,7 @@ impl Workspace {
 
         self.resolved_identity_cwd_from(terminals, terminal_runtimes)
             .map(|cwd| derive_label_from_cwd(&cwd))
-            .unwrap_or_else(|| "workspace".into())
+            .unwrap_or_else(|| DEFAULT_SESSION_LABEL.into())
     }
 
     pub fn find_tab_index_for_pane(&self, pane_id: PaneId) -> Option<usize> {
@@ -649,6 +656,20 @@ mod tests {
         assert_eq!(
             ws.resolved_identity_cwd_from(&terminals, &terminal_runtimes),
             Some(PathBuf::from("/gmux-test/pion"))
+        );
+    }
+
+    #[test]
+    fn unnamed_workspace_identity_uses_session_label() {
+        let mut ws = Workspace::test_new("ignored");
+        ws.custom_name = None;
+        ws.identity_cwd = PathBuf::new();
+        ws.tabs.clear();
+
+        assert_eq!(ws.display_name(), "session");
+        assert_eq!(
+            ws.display_name_from(&HashMap::new(), &TerminalRuntimeRegistry::new()),
+            "session"
         );
     }
 
