@@ -178,21 +178,29 @@ impl AppState {
         let query = self.navigator.query.trim().to_lowercase();
         let query_kind = navigator_query_kind(&query);
         let mut rows = Vec::new();
-        for (ws_idx, ws) in self.workspaces.iter().enumerate() {
-            let workspace_label = ws.display_name_from(&self.terminals, terminal_runtimes);
-            let workspace_search_text = workspace_label.to_lowercase();
-            let workspace_matches = match query_kind {
+        let session_matches = self.session_container().is_some_and(|ws| {
+            let session_label = ws.display_name_from(&self.terminals, terminal_runtimes);
+            let session_search_text = session_label.to_lowercase();
+            match query_kind {
                 NavigatorQueryKind::Empty => true,
-                NavigatorQueryKind::Text => navigator_matches(&query, &workspace_search_text),
-            };
+                NavigatorQueryKind::Text => navigator_matches(&query, &session_search_text),
+            }
+        });
+        let total_tabs = self
+            .workspaces
+            .iter()
+            .map(|ws| ws.tabs.len())
+            .sum::<usize>();
+        let multi_tab = total_tabs > 1;
 
-            let child_query_kind = if workspace_matches {
+        for ws_idx in 0..self.workspaces.len() {
+            let child_query_kind = if session_matches {
                 NavigatorQueryKind::Empty
             } else {
                 query_kind
             };
-            let child_rows = self.navigator_child_rows(ws_idx, child_query_kind, &query);
-            if !workspace_matches && child_rows.is_empty() {
+            let child_rows = self.navigator_child_rows(ws_idx, child_query_kind, &query, multi_tab);
+            if !session_matches && child_rows.is_empty() {
                 continue;
             }
 
@@ -206,11 +214,11 @@ impl AppState {
         ws_idx: usize,
         query_kind: NavigatorQueryKind,
         query: &str,
+        multi_tab: bool,
     ) -> Vec<NavigatorRow> {
         let Some(ws) = self.workspaces.get(ws_idx) else {
             return Vec::new();
         };
-        let multi_tab = ws.tabs.len() > 1;
         let mut rows = Vec::new();
         for tab_idx in 0..ws.tabs.len() {
             let tab_row = multi_tab.then(|| self.navigator_tab_row(ws_idx, tab_idx));
@@ -241,7 +249,7 @@ impl AppState {
     fn navigator_tab_row(&self, ws_idx: usize, tab_idx: usize) -> NavigatorRow {
         let ws = &self.workspaces[ws_idx];
         let tab = &ws.tabs[tab_idx];
-        let label = tab.display_name();
+        let label = navigator_session_tab_label(ws_idx, ws, tab_idx, tab);
         let pane_count = tab.panes.len();
         let meta = format!("{pane_count} panes");
         let search_text = format!("{label} {meta}").to_lowercase();
@@ -437,6 +445,21 @@ impl AppState {
             }
         }
     }
+}
+
+fn navigator_session_tab_label(
+    ws_idx: usize,
+    ws: &crate::workspace::Workspace,
+    tab_idx: usize,
+    tab: &crate::workspace::Tab,
+) -> String {
+    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
+        if let Some(name) = &ws.custom_name {
+            return name.clone();
+        }
+    }
+
+    tab.display_name()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1797,7 +1820,7 @@ mod tests {
     }
 
     #[test]
-    fn navigator_rows_show_tab_nodes_only_for_multi_tab_workspaces() {
+    fn navigator_rows_show_tab_nodes_for_flattened_session_tabs() {
         let mut state = app_with_workspaces(&["single", "multi"]);
         state.workspaces[1].test_add_tab(Some("tests"));
         state.ensure_test_terminals();
@@ -1805,9 +1828,12 @@ mod tests {
         state.open_navigator();
         let rows = state.navigator_rows();
 
-        assert!(!rows.iter().any(|row| matches!(
+        assert!(rows.iter().any(|row| matches!(
             row.target,
-            crate::app::state::NavigatorTarget::Tab { ws_idx: 0, .. }
+            crate::app::state::NavigatorTarget::Tab {
+                ws_idx: 0,
+                tab_idx: 0
+            }
         )));
         assert!(rows.iter().any(|row| matches!(
             row.target,
@@ -1823,6 +1849,15 @@ mod tests {
                 tab_idx: 1
             }
         )));
+        assert!(rows.iter().any(|row| {
+            matches!(
+                row.target,
+                crate::app::state::NavigatorTarget::Tab {
+                    ws_idx: 1,
+                    tab_idx: 0
+                }
+            ) && row.label == "multi"
+        }));
     }
 
     #[tokio::test]
@@ -1965,6 +2000,30 @@ mod tests {
         assert!(state.navigator_rows().iter().any(|row| matches!(
             row.target,
             crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
+        )));
+    }
+
+    #[test]
+    fn navigator_search_by_inherited_tab_label_shows_child_rows() {
+        let mut state = app_with_workspaces(&["one", "two"]);
+        let target = state.workspaces[1].tabs[0].root_pane;
+
+        state.open_navigator();
+        state.navigator.query = "two".into();
+        let rows = state.navigator_rows();
+
+        assert!(rows.iter().any(|row| {
+            matches!(
+                row.target,
+                crate::app::state::NavigatorTarget::Tab {
+                    ws_idx: 1,
+                    tab_idx: 0
+                }
+            ) && row.label == "two"
+        }));
+        assert!(rows.iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == target
         )));
     }
 
