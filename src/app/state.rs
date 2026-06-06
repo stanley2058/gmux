@@ -1154,14 +1154,7 @@ impl AppState {
 
     pub(crate) fn session_tab_entries(
         &self,
-    ) -> impl Iterator<
-        Item = (
-            usize,
-            usize,
-            &crate::workspace::Workspace,
-            &crate::workspace::Tab,
-        ),
-    > {
+    ) -> impl Iterator<Item = (usize, usize, &SessionUiState, &crate::workspace::Tab)> {
         self.session_containers()
             .iter()
             .enumerate()

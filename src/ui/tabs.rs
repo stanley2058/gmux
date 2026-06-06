@@ -7,6 +7,7 @@ use ratatui::{
 
 use super::widgets::panel_contrast_fg;
 use crate::app::AppState;
+use crate::workspace::{SessionUiState, Tab};
 
 const MIN_TAB_WIDTH: u16 = 8;
 const NEW_TAB_WIDTH: u16 = 3;
@@ -21,12 +22,12 @@ pub(crate) struct TabBarView {
     pub new_tab_hit_area: Rect,
 }
 
-fn tab_width(tab: &crate::workspace::Tab) -> u16 {
+fn tab_width(tab: &Tab) -> u16 {
     (tab.display_name().chars().count() as u16 + 4).max(MIN_TAB_WIDTH)
 }
 
-fn layout_tab_hit_areas(ws: &crate::workspace::Workspace, area: Rect, scroll: usize) -> Vec<Rect> {
-    let mut rects = vec![Rect::default(); ws.tabs.len()];
+fn layout_tab_hit_areas(session: &SessionUiState, area: Rect, scroll: usize) -> Vec<Rect> {
+    let mut rects = vec![Rect::default(); session.tabs.len()];
     if area.width == 0 || area.height == 0 {
         return rects;
     }
@@ -37,7 +38,7 @@ fn layout_tab_hit_areas(ws: &crate::workspace::Workspace, area: Rect, scroll: us
         if x >= right {
             break;
         }
-        let desired = tab_width(&ws.tabs[idx]);
+        let desired = tab_width(&session.tabs[idx]);
         let remaining = right.saturating_sub(x);
         let width = desired.min(remaining).max(1);
         *rect = Rect::new(x, area.y, width, 1);
@@ -46,14 +47,14 @@ fn layout_tab_hit_areas(ws: &crate::workspace::Workspace, area: Rect, scroll: us
     rects
 }
 
-fn centered_tab_scroll(ws: &crate::workspace::Workspace, area: Rect) -> usize {
-    let mut best_scroll = ws.active_tab;
+fn centered_tab_scroll(session: &SessionUiState, area: Rect) -> usize {
+    let mut best_scroll = session.active_tab;
     let mut best_distance = u16::MAX;
     let viewport_center = area.x.saturating_mul(2).saturating_add(area.width);
 
-    for scroll in 0..=ws.active_tab {
-        let rects = layout_tab_hit_areas(ws, area, scroll);
-        let Some(active_rect) = rects.get(ws.active_tab).copied() else {
+    for scroll in 0..=session.active_tab {
+        let rects = layout_tab_hit_areas(session, area, scroll);
+        let Some(active_rect) = rects.get(session.active_tab).copied() else {
             continue;
         };
         if active_rect.width == 0 {
@@ -83,10 +84,10 @@ fn trailing_tab_controls_x(tab_hit_areas: &[Rect], fallback_x: u16) -> u16 {
         .unwrap_or(fallback_x)
 }
 
-fn max_tab_scroll(ws: &crate::workspace::Workspace, area: Rect) -> usize {
-    (0..ws.tabs.len())
+fn max_tab_scroll(session: &SessionUiState, area: Rect) -> usize {
+    (0..session.tabs.len())
         .find(|&scroll| {
-            layout_tab_hit_areas(ws, area, scroll)
+            layout_tab_hit_areas(session, area, scroll)
                 .last()
                 .is_some_and(|rect| rect.width > 0)
         })
@@ -94,7 +95,7 @@ fn max_tab_scroll(ws: &crate::workspace::Workspace, area: Rect) -> usize {
 }
 
 pub(crate) fn compute_tab_bar_view(
-    ws: &crate::workspace::Workspace,
+    session: &SessionUiState,
     area: Rect,
     current_scroll: usize,
     follow_active: bool,
@@ -105,15 +106,15 @@ pub(crate) fn compute_tab_bar_view(
     }
 
     if !mouse_chrome {
-        let max_scroll = max_tab_scroll(ws, area);
+        let max_scroll = max_tab_scroll(session, area);
         let scroll = if follow_active {
-            centered_tab_scroll(ws, area).min(max_scroll)
+            centered_tab_scroll(session, area).min(max_scroll)
         } else {
             current_scroll.min(max_scroll)
         };
         return TabBarView {
             scroll,
-            tab_hit_areas: layout_tab_hit_areas(ws, area, scroll),
+            tab_hit_areas: layout_tab_hit_areas(session, area, scroll),
             scroll_left_hit_area: Rect::default(),
             scroll_right_hit_area: Rect::default(),
             new_tab_hit_area: Rect::default(),
@@ -127,7 +128,7 @@ pub(crate) fn compute_tab_bar_view(
         area.width.saturating_sub(NEW_TAB_WIDTH),
         area.height,
     );
-    let all_tabs = layout_tab_hit_areas(ws, all_tabs_area, 0);
+    let all_tabs = layout_tab_hit_areas(session, all_tabs_area, 0);
     let overflow = all_tabs.iter().any(|rect| rect.width == 0);
     if !overflow {
         let new_tab_x = trailing_tab_controls_x(&all_tabs, area.x);
@@ -157,13 +158,13 @@ pub(crate) fn compute_tab_bar_view(
         area.height,
     );
 
-    let max_scroll = max_tab_scroll(ws, tab_area);
+    let max_scroll = max_tab_scroll(session, tab_area);
     let scroll = if follow_active {
-        centered_tab_scroll(ws, tab_area).min(max_scroll)
+        centered_tab_scroll(session, tab_area).min(max_scroll)
     } else {
         current_scroll.min(max_scroll)
     };
-    let tab_hit_areas = layout_tab_hit_areas(ws, tab_area, scroll);
+    let tab_hit_areas = layout_tab_hit_areas(session, tab_area, scroll);
     let trailing_x = trailing_tab_controls_x(&tab_hit_areas, tab_area_x).min(tab_area_right);
     let right_hit_area = Rect::new(
         trailing_x,
@@ -192,7 +193,7 @@ pub(crate) fn compute_tab_bar_view(
 
 fn tab_drop_indicator_x(
     app: &AppState,
-    ws: &crate::workspace::Workspace,
+    session: &SessionUiState,
     insert_idx: usize,
 ) -> Option<u16> {
     let mut visible_tabs = app
@@ -222,8 +223,8 @@ fn tab_drop_indicator_x(
         return Some(rect.x.saturating_sub(1));
     }
 
-    if insert_idx >= ws.tabs.len() {
-        return Some(if last_visible.0 + 1 >= ws.tabs.len() {
+    if insert_idx >= session.tabs.len() {
+        return Some(if last_visible.0 + 1 >= session.tabs.len() {
             last_visible.1.x + last_visible.1.width
         } else {
             app.view.tab_scroll_right_hit_area.x.saturating_sub(1)
