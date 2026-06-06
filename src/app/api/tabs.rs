@@ -11,6 +11,7 @@ use super::responses::{encode_error, encode_success};
 impl App {
     pub(super) fn handle_tab_list(&mut self, id: String, params: TabListParams) -> String {
         let TabListParams {} = params;
+        self.state.collapse_to_single_session_workspace();
         let mut tabs = Vec::new();
         for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
             for tab_idx in 0..ws.tabs.len() {
@@ -27,7 +28,11 @@ impl App {
         let Some((ws_idx, tab_idx)) = self.parse_tab_id(&target.tab_id) else {
             return tab_not_found(id, &target.tab_id);
         };
-        let Some(tab) = self.tab_info(ws_idx, tab_idx) else {
+        let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, tab_idx) else {
+            return tab_not_found(id, &target.tab_id);
+        };
+        self.state.collapse_to_single_session_workspace();
+        let Some(tab) = self.tab_info(0, flat_tab_idx) else {
             return tab_not_found(id, &target.tab_id);
         };
 

@@ -93,6 +93,7 @@ impl App {
 
     pub(super) fn handle_pane_list(&mut self, id: String, params: PaneListParams) -> String {
         let PaneListParams {} = params;
+        self.state.collapse_to_single_session_workspace();
         encode_success(
             id,
             ResponseResult::PaneList {

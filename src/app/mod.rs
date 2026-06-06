@@ -2296,6 +2296,59 @@ mod tests {
     }
 
     #[test]
+    fn tab_get_request_collapses_legacy_workspace_target() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+
+        let target_tab_id = app.public_tab_id(1, 0).unwrap();
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_tab_get_legacy".into(),
+            method: crate::api::schema::Method::TabGet(crate::api::schema::TabTarget {
+                tab_id: target_tab_id.clone(),
+            }),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "tab_info");
+        assert_eq!(response["result"]["tab"]["tab_id"], target_tab_id);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 0);
+    }
+
+    #[test]
+    fn tab_list_request_collapses_legacy_workspaces() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(1);
+        app.state.selected = 1;
+
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_tab_list_legacy".into(),
+            method: crate::api::schema::Method::TabList(
+                crate::api::schema::TabListParams::default(),
+            ),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "tab_list");
+        assert_eq!(response["result"]["tabs"].as_array().unwrap().len(), 2);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
+    }
+
+    #[test]
     fn tab_close_request_closes_legacy_workspace_tab_after_collapse() {
         let mut app = test_app();
         let first = Workspace::test_new("one");
@@ -2515,6 +2568,32 @@ mod tests {
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
         assert_eq!(app.state.workspaces[0].active_tab, 0);
+    }
+
+    #[test]
+    fn pane_list_request_collapses_legacy_workspaces() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(1);
+        app.state.selected = 1;
+
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_pane_list_legacy".into(),
+            method: crate::api::schema::Method::PaneList(
+                crate::api::schema::PaneListParams::default(),
+            ),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "pane_list");
+        assert_eq!(response["result"]["panes"].as_array().unwrap().len(), 2);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
     }
 
     #[tokio::test]
