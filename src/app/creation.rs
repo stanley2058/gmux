@@ -76,36 +76,41 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if !self.state.workspaces.is_empty() {
+        if !self.state.session_containers().is_empty() {
             self.state.collapse_to_single_session_workspace();
         }
-        let Some(ws_idx) = self.state.session_container_index() else {
+        let Some(container_idx) = self.state.session_container_index() else {
             return self.create_session_container_with_options(initial_cwd, focus);
         };
         let (rows, cols) = self.state.estimate_pane_size();
-        let ws = &mut self.state.workspaces[ws_idx];
-        let (idx, terminal, runtime) = ws.create_tab(
-            rows,
-            cols,
-            initial_cwd,
-            self.state.pane_scrollback_limit_bytes,
-            self.state.host_terminal_theme,
-            crate::pane::PaneShellConfig::new(&self.state.default_shell, self.state.shell_mode),
-        )?;
-        let root_pane = ws.tabs[idx].root_pane;
+        let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
+        let host_terminal_theme = self.state.host_terminal_theme;
+        let default_shell = self.state.default_shell.clone();
+        let shell_mode = self.state.shell_mode;
+        let (idx, terminal, runtime, container_id, root_pane) = {
+            let container = &mut self.state.session_containers_mut()[container_idx];
+            let (idx, terminal, runtime) = container.create_tab(
+                rows,
+                cols,
+                initial_cwd,
+                scrollback_limit_bytes,
+                host_terminal_theme,
+                crate::pane::PaneShellConfig::new(&default_shell, shell_mode),
+            )?;
+            let root_pane = container.tabs[idx].root_pane;
+            (idx, terminal, runtime, container.id.clone(), root_pane)
+        };
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
         if focus {
-            self.state.focus_session_tab(ws_idx, idx);
+            self.state.focus_session_tab(container_idx, idx);
             self.state.mode = Mode::Terminal;
         }
-        let workspace_id = self.state.workspaces[ws_idx].id.clone();
         let tab_id = self
-            .public_tab_id(ws_idx, idx)
-            .unwrap_or_else(|| format!("{}:{}", workspace_id, idx + 1));
-        let root_pane = self.state.workspaces[ws_idx].tabs[idx].root_pane.raw();
-        crate::logging::tab_created(&workspace_id, &tab_id, root_pane);
+            .public_tab_id(container_idx, idx)
+            .unwrap_or_else(|| format!("{}:{}", container_id, idx + 1));
+        crate::logging::tab_created(&container_id, &tab_id, root_pane.raw());
         self.schedule_session_save();
         Ok(idx)
     }
@@ -115,7 +120,7 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if !self.state.workspaces.is_empty() {
+        if !self.state.session_containers().is_empty() {
             self.state.collapse_to_single_session_workspace();
             return Ok(self.state.session_container_index().unwrap_or(0));
         }
@@ -135,13 +140,12 @@ impl App {
         )?;
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
-        self.state.workspaces.push(ws);
-        let idx = self.state.workspaces.len() - 1;
-        self.state
-            .remove_alias_shadowed_by_new_pane(self.state.workspaces[idx].tabs[0].root_pane);
-        let workspace_id = self.state.workspaces[idx].id.clone();
-        let root_pane = self.state.workspaces[idx].tabs[0].root_pane.raw();
-        crate::logging::session_created(&workspace_id, root_pane);
+        self.state.session_containers_mut().push(ws);
+        let idx = self.state.session_containers().len() - 1;
+        let root_pane = self.state.session_containers()[idx].tabs[0].root_pane;
+        self.state.remove_alias_shadowed_by_new_pane(root_pane);
+        let container_id = self.state.session_containers()[idx].id.clone();
+        crate::logging::session_created(&container_id, root_pane.raw());
         if should_focus {
             self.state.focus_session_container(idx);
             self.state.mode = Mode::Terminal;
@@ -152,14 +156,15 @@ impl App {
 
     pub(super) fn collect_panes(&self) -> Vec<crate::api::schema::PaneInfo> {
         self.state
-            .workspaces
+            .session_containers()
             .iter()
             .enumerate()
-            .flat_map(|(ws_idx, ws)| {
-                ws.tabs
+            .flat_map(|(container_idx, container)| {
+                container
+                    .tabs
                     .iter()
                     .flat_map(|tab| tab.layout.pane_ids().into_iter())
-                    .filter_map(move |pane_id| self.pane_info(ws_idx, pane_id))
+                    .filter_map(move |pane_id| self.pane_info(container_idx, pane_id))
             })
             .collect()
     }
@@ -169,14 +174,14 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::TabInfo> {
-        let ws = self.state.workspaces.get(ws_idx)?;
-        let tab = ws.tabs.get(tab_idx)?;
+        let container = self.state.session_containers().get(ws_idx)?;
+        let tab = container.tabs.get(tab_idx)?;
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             number: tab_idx + 1,
             label: tab.display_name(),
             focused: self.state.session_container_index() == Some(ws_idx)
-                && ws.active_tab == tab_idx,
+                && container.active_tab == tab_idx,
             pane_count: tab.panes.len(),
         })
     }
@@ -197,8 +202,8 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let ws = self.state.workspaces.get(ws_idx)?;
-        let tab = ws.tabs.get(tab_idx)?;
+        let container = self.state.session_containers().get(ws_idx)?;
+        let tab = container.tabs.get(tab_idx)?;
         self.pane_info(ws_idx, tab.root_pane)
     }
 
@@ -207,20 +212,20 @@ impl App {
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let ws = self.state.workspaces.get(ws_idx)?;
-        let pane = ws.pane_state(pane_id)?;
+        let container = self.state.session_containers().get(ws_idx)?;
+        let pane = container.pane_state(pane_id)?;
         let terminal = self.state.terminals.get(&pane.attached_terminal_id)?;
-        let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
+        let tab_idx = container.find_tab_index_for_pane(pane_id)?;
         let focused = self.state.is_active_pane(ws_idx, tab_idx, pane_id);
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             focused,
-            cwd: ws.tabs[tab_idx]
+            cwd: container.tabs[tab_idx]
                 .cwd_for_pane(pane_id, &self.state.terminals, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
-            foreground_cwd: ws.tabs[tab_idx]
+            foreground_cwd: container.tabs[tab_idx]
                 .foreground_cwd_for_pane(pane_id, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
             label: terminal.manual_label.clone(),

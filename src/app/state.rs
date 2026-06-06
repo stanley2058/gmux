@@ -1144,6 +1144,14 @@ impl AppState {
         }
     }
 
+    pub(crate) fn session_containers(&self) -> &[crate::workspace::Workspace] {
+        &self.workspaces
+    }
+
+    pub(crate) fn session_containers_mut(&mut self) -> &mut Vec<crate::workspace::Workspace> {
+        &mut self.workspaces
+    }
+
     pub(crate) fn session_tab_entries(
         &self,
     ) -> impl Iterator<
