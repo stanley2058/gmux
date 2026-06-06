@@ -2257,6 +2257,20 @@ mod tests {
     }
 
     #[test]
+    fn remote_install_defaults_use_gmux_manifests_and_paths() {
+        let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
+            os: "linux",
+            arch: "x86_64",
+        });
+
+        assert_eq!(STABLE_UPDATE_MANIFEST_URL, "https://gmux.dev/latest.json");
+        assert_eq!(PREVIEW_UPDATE_MANIFEST_URL, "https://gmux.dev/preview.json");
+        assert_eq!(REMOTE_BINARY_ENV_VAR, "GMUX_REMOTE_BINARY");
+        assert_eq!(remote_gmux.install_suffix, ".local/bin/gmux");
+        assert_eq!(remote_gmux.shell_path, "\"$HOME/.local/bin/gmux\"");
+    }
+
+    #[test]
     fn remote_preview_manifest_falls_back_to_archived_exact_build_assets() {
         let manifest: RemotePreviewManifest = serde_json::from_str(
             r#"{
