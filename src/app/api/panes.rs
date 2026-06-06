@@ -46,7 +46,7 @@ impl App {
         let previous_focus = self.state.current_pane_focus_target();
         self.state.collapse_to_single_session();
         let ws_idx = 0;
-        let Some(ws) = self.state.sessions_mut().get_mut(ws_idx) else {
+        let Some(ws) = self.state.session_mut() else {
             return pane_not_found(id, &params.target_pane_id);
         };
         let direction = match params.direction {
