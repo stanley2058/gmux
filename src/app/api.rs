@@ -118,7 +118,7 @@ impl App {
         }
         tab.zoomed = overlay.previous_zoomed;
 
-        if self.state.session_container_index() == Some(overlay.ws_idx) {
+        if self.state.session_index() == Some(overlay.ws_idx) {
             self.state.mode = Mode::Terminal;
         }
     }
@@ -207,7 +207,7 @@ impl App {
     }
 
     pub(crate) fn sync_focus_events(&mut self) {
-        let current_focus = self.state.session_container_index().and_then(|idx| {
+        let current_focus = self.state.session_index().and_then(|idx| {
             self.state
                 .session_containers()
                 .get(idx)

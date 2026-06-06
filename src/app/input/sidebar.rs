@@ -190,7 +190,7 @@ impl AppState {
     }
 
     fn collapsed_detail_session_container_idx(&self) -> Option<usize> {
-        self.session_container_index()
+        self.session_index()
     }
 
     pub(super) fn collapsed_pane_detail_target_at(

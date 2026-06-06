@@ -166,7 +166,7 @@ impl App {
         }
 
         let mut cwd = None;
-        if let Some(ws_idx) = self.state.session_container_index() {
+        if let Some(ws_idx) = self.state.session_index() {
             if let Some(workspace) = self.state.session_containers().get(ws_idx) {
                 let tab_idx = workspace.active_tab_index();
                 if let Some(tab_id) = self.public_tab_id(ws_idx, tab_idx) {
@@ -275,8 +275,8 @@ impl App {
         command: &str,
         temp_files: Vec<std::path::PathBuf>,
     ) -> std::io::Result<()> {
-        self.state.collapse_to_single_session_container();
-        let Some(ws_idx) = self.state.session_container_index() else {
+        self.state.collapse_to_single_session();
+        let Some(ws_idx) = self.state.session_index() else {
             return Err(std::io::Error::other("no active session"));
         };
         let previous_focus_target = self.state.current_pane_focus_target();
@@ -1003,7 +1003,7 @@ mod tests {
                 pane_id: target_pane,
             }),
         });
-        state.collapse_to_single_session_container();
+        state.collapse_to_single_session();
         state.session_containers[0].switch_tab(0);
 
         handle_navigate_key(

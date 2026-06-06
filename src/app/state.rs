@@ -1237,7 +1237,7 @@ impl AppState {
         &'a self,
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
-        let ws_idx = self.session_container_index()?;
+        let ws_idx = self.session_index()?;
         self.focused_runtime_in_session_container_at(terminal_runtimes, ws_idx)
     }
 
@@ -1247,7 +1247,7 @@ impl AppState {
         tab_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> bool {
-        let Some(active_ws_idx) = self.session_container_index() else {
+        let Some(active_ws_idx) = self.session_index() else {
             return false;
         };
         if ws_idx != active_ws_idx {

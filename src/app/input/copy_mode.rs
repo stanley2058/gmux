@@ -33,7 +33,7 @@ impl App {
 
 impl AppState {
     pub(crate) fn enter_copy_mode(&mut self, terminal_runtimes: &TerminalRuntimeRegistry) {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return;
         };
         let Some(pane_id) = self.session().and_then(|ws| ws.focused_pane_id()) else {
@@ -470,7 +470,7 @@ impl AppState {
         viewport_row: u16,
     ) -> Option<String> {
         let copy_mode = self.copy_mode?;
-        let ws_idx = self.session_container_index()?;
+        let ws_idx = self.session_index()?;
         let info = self.pane_info_by_id(copy_mode.pane_id)?;
         if viewport_row >= info.inner_rect.height || info.inner_rect.width == 0 {
             return None;

@@ -435,7 +435,7 @@ impl App {
         };
 
         state.terminals = restored_terminals;
-        state.collapse_to_single_session_container();
+        state.collapse_to_single_session();
 
         // Background auto-update is disabled in monolithic no-session mode
         // and in debug/test builds so local development never mutates the
@@ -445,7 +445,7 @@ impl App {
             std::thread::spawn(move || crate::update::auto_update(update_tx));
         }
 
-        let last_focus = state.session_container_index().and_then(|idx| {
+        let last_focus = state.session_index().and_then(|idx| {
             state
                 .session_containers()
                 .get(idx)
@@ -520,9 +520,9 @@ impl App {
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
         app.state.selected = 0;
-        app.state.collapse_to_single_session_container();
+        app.state.collapse_to_single_session();
         app.state.mode = app.state.terminal_or_navigate_mode();
-        app.last_focus = app.state.session_container_index().and_then(|idx| {
+        app.last_focus = app.state.session_index().and_then(|idx| {
             app.state
                 .session_containers()
                 .get(idx)

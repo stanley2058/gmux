@@ -388,8 +388,8 @@ impl AppState {
         ));
 
         let previous_focus = self.current_pane_focus_target();
-        self.collapse_to_single_session_container();
-        if let Some(ws_idx) = self.session_container_index() {
+        self.collapse_to_single_session();
+        if let Some(ws_idx) = self.session_index() {
             let pane_scrollback_limit_bytes = self.pane_scrollback_limit_bytes;
             let host_terminal_theme = self.host_terminal_theme;
             let default_shell = self.default_shell.clone();

@@ -11,7 +11,7 @@ use super::responses::{encode_error, encode_success};
 impl App {
     pub(super) fn handle_tab_list(&mut self, id: String, params: TabListParams) -> String {
         let TabListParams {} = params;
-        self.state.collapse_to_single_session_container();
+        self.state.collapse_to_single_session();
         let tabs = self
             .state
             .session_tab_entries()
@@ -28,7 +28,7 @@ impl App {
         let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, tab_idx) else {
             return tab_not_found(id, &target.tab_id);
         };
-        self.state.collapse_to_single_session_container();
+        self.state.collapse_to_single_session();
         let Some(tab) = self.tab_info(0, flat_tab_idx) else {
             return tab_not_found(id, &target.tab_id);
         };
@@ -38,8 +38,8 @@ impl App {
 
     pub(super) fn handle_tab_create(&mut self, id: String, params: TabCreateParams) -> String {
         let TabCreateParams { cwd, focus, label } = params;
-        self.state.collapse_to_single_session_container();
-        let ws_idx = if let Some(ws_idx) = self.state.session_container_index() {
+        self.state.collapse_to_single_session();
+        let ws_idx = if let Some(ws_idx) = self.state.session_index() {
             ws_idx
         } else {
             let cwd = cwd
@@ -172,7 +172,7 @@ impl App {
         if !self.state.focus_session_tab(ws_idx, tab_idx) {
             return tab_not_found(id, &target.tab_id);
         }
-        let Some(focused_ws_idx) = self.state.session_container_index() else {
+        let Some(focused_ws_idx) = self.state.session_index() else {
             return tab_not_found(id, &target.tab_id);
         };
         let focused_tab_idx = self.state.session_containers()[focused_ws_idx].active_tab;
@@ -188,7 +188,7 @@ impl App {
         let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, tab_idx) else {
             return tab_not_found(id, &params.tab_id);
         };
-        self.state.collapse_to_single_session_container();
+        self.state.collapse_to_single_session();
         let session_id = self.state.session_containers()[0].id.clone();
         let tab_id = self
             .public_tab_id(0, flat_tab_idx)

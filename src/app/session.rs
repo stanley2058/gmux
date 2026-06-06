@@ -25,7 +25,7 @@ impl App {
         if self.state.session_containers().is_empty() {
             crate::persist::clear();
         } else {
-            self.state.collapse_to_single_session_container();
+            self.state.collapse_to_single_session();
             let snap = crate::persist::capture(
                 self.state.session_containers(),
                 &self.state.terminals,

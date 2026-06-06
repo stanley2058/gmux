@@ -59,7 +59,7 @@ pub(crate) fn expanded_pane_panel_rect(area: Rect) -> Rect {
 }
 
 fn pane_panel_current_context_idx(app: &AppState) -> Option<usize> {
-    app.session_container_index()
+    app.session_index()
 }
 
 fn pane_panel_toggle_label(scope: PanePanelScope) -> &'static str {
@@ -315,7 +315,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         return;
     }
 
-    if let Some(visible_idx) = app.session_container_index() {
+    if let Some(visible_idx) = app.session_index() {
         let y = ws_area.y;
         let is_selected = is_navigating;
         let is_active = true;
@@ -360,7 +360,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         }
     }
 
-    let detail_ws_idx = app.session_container_index();
+    let detail_ws_idx = app.session_index();
     let detail_content_area = Rect::new(
         detail_area.x,
         detail_area.y,

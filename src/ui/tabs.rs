@@ -238,7 +238,7 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let Some(session_container_idx) = app.session_container_index() else {
+    let Some(session_container_idx) = app.session_index() else {
         return;
     };
     let Some(ws) = app.session() else {

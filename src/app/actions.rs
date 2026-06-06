@@ -136,7 +136,7 @@ impl AppState {
             return true;
         }
 
-        self.collapse_to_single_session_container();
+        self.collapse_to_single_session();
         self.session()
             .and_then(|ws| ws.pane_state(pane_id))
             .is_some()
@@ -473,23 +473,23 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 impl AppState {
-    pub(crate) fn session_container_index(&self) -> Option<usize> {
+    pub(crate) fn session_index(&self) -> Option<usize> {
         self.active
             .filter(|idx| self.session_containers().get(*idx).is_some())
             .or_else(|| (!self.session_containers().is_empty()).then_some(0))
     }
 
     pub(crate) fn session(&self) -> Option<&SessionUiState> {
-        self.session_container_index()
+        self.session_index()
             .and_then(|idx| self.session_containers().get(idx))
     }
 
     pub(crate) fn session_mut(&mut self) -> Option<&mut SessionUiState> {
-        let idx = self.session_container_index()?;
+        let idx = self.session_index()?;
         self.session_containers_mut().get_mut(idx)
     }
 
-    pub(crate) fn collapse_to_single_session_container(&mut self) -> bool {
+    pub(crate) fn collapse_to_single_session(&mut self) -> bool {
         match self.session_containers().len() {
             0 => {
                 let changed = self.active.take().is_some() || self.selected != 0;
@@ -573,7 +573,7 @@ impl AppState {
         }
     }
 
-    pub fn focus_session_container(&mut self, idx: usize) {
+    pub fn focus_session(&mut self, idx: usize) {
         let Some(active_tab) = self.session_containers().get(idx).and_then(|ws| {
             (!ws.tabs.is_empty()).then_some(ws.active_tab.min(ws.tabs.len().saturating_sub(1)))
         }) else {
@@ -593,7 +593,7 @@ impl AppState {
         self.selection = None;
         self.selection_autoscroll = None;
 
-        self.collapse_to_single_session_container();
+        self.collapse_to_single_session();
         self.active = Some(0);
         self.selected = 0;
         let session_id = self.session_containers()[0].id.clone();
@@ -609,7 +609,7 @@ impl AppState {
         {
             self.pane_panel_scroll = 0;
         }
-        self.ensure_session_container_visible(0);
+        self.ensure_session_visible(0);
         if let Some(ws) = self.session_containers_mut().get_mut(0) {
             ws.switch_tab(flat_tab_idx);
             let tab_id = format!("{}:{}", session_id, flat_tab_idx + 1);
@@ -621,7 +621,7 @@ impl AppState {
         true
     }
 
-    pub(crate) fn ensure_session_container_visible(&mut self, idx: usize) {
+    pub(crate) fn ensure_session_visible(&mut self, idx: usize) {
         if idx >= self.session_containers().len() {
             return;
         }
@@ -733,7 +733,7 @@ impl AppState {
         let ws_idx = target.ws_idx;
         let pane_id = target.pane_id;
 
-        if self.session_container_index() == Some(ws_idx)
+        if self.session_index() == Some(ws_idx)
             && self
                 .session_containers()
                 .get(ws_idx)
@@ -857,8 +857,8 @@ impl AppState {
         if self.session_containers().is_empty() {
             return;
         }
-        self.collapse_to_single_session_container();
-        let Some(close_idx) = self.session_container_index() else {
+        self.collapse_to_single_session();
+        let Some(close_idx) = self.session_index() else {
             return;
         };
         self.selection = None;
@@ -886,7 +886,7 @@ impl AppState {
                 self.selected = self.session_containers().len() - 1;
             }
             self.active = Some(self.selected);
-            self.ensure_session_container_visible(self.selected);
+            self.ensure_session_visible(self.selected);
             self.tab_scroll_follow_active = true;
             self.refresh_tab_bar_view();
         }
@@ -924,7 +924,7 @@ impl AppState {
 
 impl AppState {
     pub fn navigate_pane(&mut self, direction: NavDirection) -> bool {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return false;
         };
         let Some(tab) = self.session().and_then(|ws| ws.active_tab()) else {
@@ -961,7 +961,7 @@ impl AppState {
     }
 
     pub fn cycle_pane(&mut self, reverse: bool) {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return;
         };
         let Some(tab) = self.session().and_then(|ws| ws.active_tab()) else {
@@ -1022,8 +1022,8 @@ impl AppState {
 
     /// Close the focused pane. Returns true when the close was deferred to confirmation.
     pub fn close_pane(&mut self) -> bool {
-        self.collapse_to_single_session_container();
-        let active = self.session_container_index();
+        self.collapse_to_single_session();
+        let active = self.session_index();
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
@@ -1049,7 +1049,7 @@ impl AppState {
 
     /// Close the active tab. Returns true when the close was deferred to confirmation.
     pub fn close_tab(&mut self) -> bool {
-        self.collapse_to_single_session_container();
+        self.collapse_to_single_session();
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
@@ -1058,7 +1058,7 @@ impl AppState {
             self.close_session();
             return false;
         }
-        if let Some(ws_idx) = self.session_container_index() {
+        if let Some(ws_idx) = self.session_index() {
             let terminal_ids = self
                 .session_containers()
                 .get(ws_idx)
@@ -1101,7 +1101,7 @@ impl AppState {
         col: u16,
     ) -> bool {
         // Resolve the active pane cell the double-click landed on.
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return false;
         };
 
@@ -1168,7 +1168,7 @@ impl AppState {
         viewport_row: u16,
         col: u16,
     ) -> Option<String> {
-        let ws_idx = self.session_container_index()?;
+        let ws_idx = self.session_index()?;
         let info = self.pane_info_by_id(pane_id)?;
         if viewport_row >= info.inner_rect.height || col >= info.inner_rect.width {
             return None;
@@ -1206,7 +1206,7 @@ impl AppState {
             return;
         }
 
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return;
         };
 
@@ -1525,7 +1525,7 @@ impl AppState {
     }
 
     fn handle_pane_died(&mut self, pane_id: PaneId) {
-        self.collapse_to_single_session_container();
+        self.collapse_to_single_session();
         let ws_idx = self
             .session_containers()
             .iter()
@@ -2214,9 +2214,9 @@ mod tests {
     }
 
     #[test]
-    fn focus_session_container_flattens_to_session_tab() {
+    fn focus_session_flattens_to_session_tab() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
-        state.focus_session_container(2);
+        state.focus_session(2);
         assert_eq!(state.session_containers.len(), 1);
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
@@ -2237,7 +2237,7 @@ mod tests {
     }
 
     #[test]
-    fn collapse_to_single_session_container_merges_tabs_and_focus() {
+    fn collapse_to_single_session_merges_tabs_and_focus() {
         let mut state = app_with_workspaces(&["one", "two"]);
         let second_first_root = state.session_containers[1].tabs[0].root_pane;
         let second_tab = state.session_containers[1].test_add_tab(Some("logs"));
@@ -2246,7 +2246,7 @@ mod tests {
         state.active = Some(1);
         state.selected = 1;
 
-        assert!(state.collapse_to_single_session_container());
+        assert!(state.collapse_to_single_session());
 
         assert_eq!(state.session_containers.len(), 1);
         assert_eq!(state.active, Some(0));
@@ -2414,11 +2414,11 @@ mod tests {
     }
 
     #[test]
-    fn focus_session_container_updates_active_after_sidebar_trim() {
+    fn focus_session_updates_active_after_sidebar_trim() {
         let mut state = app_with_workspaces(&["a", "b", "c", "d", "e", "f", "g", "h"]);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
-        state.focus_session_container(7);
+        state.focus_session(7);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
         assert_eq!(state.session_containers.len(), 1);
@@ -2428,13 +2428,13 @@ mod tests {
     }
 
     #[test]
-    fn focus_session_container_marks_panes_seen() {
+    fn focus_session_marks_panes_seen() {
         let mut state = app_with_workspaces(&["a", "b"]);
         // Mark a pane in workspace 1 as unseen
         let id = *state.session_containers[1].panes.keys().next().unwrap();
         state.session_containers[1].panes.get_mut(&id).unwrap().seen = false;
 
-        state.focus_session_container(1);
+        state.focus_session(1);
         assert!(
             state.session_containers[0].tabs[1]
                 .panes
@@ -2445,9 +2445,9 @@ mod tests {
     }
 
     #[test]
-    fn focus_session_container_out_of_bounds_is_noop() {
+    fn focus_session_out_of_bounds_is_noop() {
         let mut state = app_with_workspaces(&["a"]);
-        state.focus_session_container(5);
+        state.focus_session(5);
         assert_eq!(state.active, Some(0));
     }
 

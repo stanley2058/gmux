@@ -153,7 +153,7 @@ pub(super) fn compute_pane_infos(
     resize_panes: bool,
     cell_size: crate::kitty_graphics::HostCellSize,
 ) -> Vec<PaneInfo> {
-    let Some(ws_idx) = app.session_container_index() else {
+    let Some(ws_idx) = app.session_index() else {
         return Vec::new();
     };
     let Some(ws) = app.session() else {
@@ -244,7 +244,7 @@ pub(super) fn render_panes(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let Some(ws_idx) = app.session_container_index() else {
+    let Some(ws_idx) = app.session_index() else {
         render_empty(app, frame, area);
         return;
     };

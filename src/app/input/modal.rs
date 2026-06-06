@@ -259,7 +259,7 @@ pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {
 }
 
 pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool) {
-    state.collapse_to_single_session_container();
+    state.collapse_to_single_session();
     state.creating_new_tab = false;
     state.requested_new_tab_name = None;
     state.rename_pane_target = None;
@@ -273,7 +273,7 @@ pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool
 }
 
 pub(super) fn open_rename_pane(state: &mut AppState, pane_id: crate::layout::PaneId) {
-    state.collapse_to_single_session_container();
+    state.collapse_to_single_session();
     let Some(ws) = state.session() else {
         return;
     };
@@ -382,7 +382,7 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                         };
                 }
                 Mode::RenameTab => {
-                    state.collapse_to_single_session_container();
+                    state.collapse_to_single_session();
                     if let Some(ws) = state.session_mut() {
                         let session_id = ws.id.clone();
                         let active_tab = ws.active_tab;
@@ -399,7 +399,7 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                     }
                 }
                 Mode::RenamePane => {
-                    state.collapse_to_single_session_container();
+                    state.collapse_to_single_session();
                     if let Some(pane_id) = state.rename_pane_target {
                         if let Some(ws) = state.session() {
                             if let Some(terminal_id) = ws

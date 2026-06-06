@@ -86,7 +86,7 @@ impl App {
             return None;
         }
 
-        let ws_idx = self.state.session_container_index()?;
+        let ws_idx = self.state.session_index()?;
         let ws = self.state.session()?;
         let pane_id = ws.focused_pane_id()?;
         let rt = self.state.runtime_for_pane_in_session_container(

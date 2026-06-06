@@ -134,7 +134,7 @@ fn resize_background_tab_panes_to_terminal_area(
     terminal_area: Rect,
     cell_size: crate::kitty_graphics::HostCellSize,
 ) {
-    let active_session_idx = app.session_container_index();
+    let active_session_idx = app.session_index();
     for (ws_idx, ws) in app.session_containers().iter().enumerate() {
         for (tab_idx, tab) in ws.tabs.iter().enumerate() {
             if active_session_idx == Some(ws_idx) && tab_idx == ws.active_tab_index() {

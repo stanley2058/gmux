@@ -77,9 +77,9 @@ impl App {
         focus: bool,
     ) -> std::io::Result<usize> {
         if !self.state.session_containers().is_empty() {
-            self.state.collapse_to_single_session_container();
+            self.state.collapse_to_single_session();
         }
-        let Some(session_idx) = self.state.session_container_index() else {
+        let Some(session_idx) = self.state.session_index() else {
             return self.create_session_with_options(initial_cwd, focus);
         };
         let (rows, cols) = self.state.estimate_pane_size();
@@ -121,11 +121,11 @@ impl App {
         focus: bool,
     ) -> std::io::Result<usize> {
         if !self.state.session_containers().is_empty() {
-            self.state.collapse_to_single_session_container();
-            return Ok(self.state.session_container_index().unwrap_or(0));
+            self.state.collapse_to_single_session();
+            return Ok(self.state.session_index().unwrap_or(0));
         }
 
-        let should_focus = focus || self.state.session_container_index().is_none();
+        let should_focus = focus || self.state.session_index().is_none();
         let (rows, cols) = self.state.estimate_pane_size();
         let (ws, terminal, runtime) = SessionUiState::new(
             initial_cwd,
@@ -147,7 +147,7 @@ impl App {
         let session_id = self.state.session_containers()[idx].id.clone();
         crate::logging::session_created(&session_id, root_pane.raw());
         if should_focus {
-            self.state.focus_session_container(idx);
+            self.state.focus_session(idx);
             self.state.mode = Mode::Terminal;
         }
         self.schedule_session_save();
@@ -180,8 +180,7 @@ impl App {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             number: tab_idx + 1,
             label: tab.display_name(),
-            focused: self.state.session_container_index() == Some(ws_idx)
-                && container.active_tab == tab_idx,
+            focused: self.state.session_index() == Some(ws_idx) && container.active_tab == tab_idx,
             pane_count: tab.panes.len(),
         })
     }

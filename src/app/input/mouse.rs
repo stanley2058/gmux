@@ -271,10 +271,9 @@ impl AppState {
                     self.scroll_tabs_right();
                     return None;
                 }
-                if let (Some(ws_idx), Some(tab_idx)) = (
-                    self.session_container_index(),
-                    self.tab_at(mouse.column, mouse.row),
-                ) {
+                if let (Some(ws_idx), Some(tab_idx)) =
+                    (self.session_index(), self.tab_at(mouse.column, mouse.row))
+                {
                     self.tab_press = Some(TabPressState {
                         session_container_idx: ws_idx,
                         tab_idx,
@@ -410,7 +409,7 @@ impl AppState {
                     }
                 }
 
-                let current_ws_idx = self.session_container_index();
+                let current_ws_idx = self.session_index();
                 if let Some(DragState {
                     target:
                         DragTarget::TabReorder {
@@ -522,7 +521,7 @@ impl AppState {
                                 insert_idx: Some(insert_idx),
                             },
                     }) => {
-                        if self.session_container_index() == Some(session_container_idx) {
+                        if self.session_index() == Some(session_container_idx) {
                             self.move_tab(source_tab_idx, insert_idx);
                             self.mode = Mode::Terminal;
                         }
@@ -530,7 +529,7 @@ impl AppState {
                     Some(_) => {}
                     None => {
                         if let Some(press) = tab_press {
-                            if self.session_container_index() == Some(press.session_container_idx) {
+                            if self.session_index() == Some(press.session_container_idx) {
                                 self.switch_tab(press.tab_idx);
                                 self.mode = Mode::Terminal;
                                 return None;
@@ -614,10 +613,9 @@ impl AppState {
             MouseEventKind::Down(MouseButton::Right)
                 if self.tab_at(mouse.column, mouse.row).is_some() =>
             {
-                if let (Some(ws_idx), Some(tab_idx)) = (
-                    self.session_container_index(),
-                    self.tab_at(mouse.column, mouse.row),
-                ) {
+                if let (Some(ws_idx), Some(tab_idx)) =
+                    (self.session_index(), self.tab_at(mouse.column, mouse.row))
+                {
                     self.switch_tab(tab_idx);
                     self.context_menu = Some(ContextMenuState {
                         kind: ContextMenuKind::Tab {
@@ -963,7 +961,7 @@ impl AppState {
         pane_id: crate::layout::PaneId,
         lines: usize,
     ) {
-        if let Some(ws_idx) = self.session_container_index() {
+        if let Some(ws_idx) = self.session_index() {
             if let Some(rt) =
                 self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
@@ -978,7 +976,7 @@ impl AppState {
         pane_id: crate::layout::PaneId,
         lines: usize,
     ) {
-        if let Some(ws_idx) = self.session_container_index() {
+        if let Some(ws_idx) = self.session_index() {
             if let Some(rt) =
                 self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
@@ -992,7 +990,7 @@ impl AppState {
         terminal_runtimes: &TerminalRuntimeRegistry,
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::pane::ScrollMetrics> {
-        self.session_container_index()
+        self.session_index()
             .and_then(|i| self.runtime_for_pane_in_session_container(terminal_runtimes, i, pane_id))
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
     }
@@ -1125,7 +1123,7 @@ impl AppState {
         info: &PaneInfo,
         mouse: MouseEvent,
     ) -> bool {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return false;
         };
         let Some(rt) =
@@ -1151,7 +1149,7 @@ impl AppState {
         info: &PaneInfo,
         mouse: MouseEvent,
     ) -> bool {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return false;
         };
         let Some(rt) =
@@ -1176,7 +1174,7 @@ impl AppState {
         info: &PaneInfo,
         mouse: MouseEvent,
     ) -> bool {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return false;
         };
         let Some(rt) =
@@ -1209,7 +1207,7 @@ impl AppState {
         info: &PaneInfo,
         mouse: MouseEvent,
     ) -> bool {
-        let Some(ws_idx) = self.session_container_index() else {
+        let Some(ws_idx) = self.session_index() else {
             return false;
         };
         let Some(rt) =
@@ -1252,7 +1250,7 @@ impl AppState {
         pane_id: crate::layout::PaneId,
         offset_from_bottom: usize,
     ) {
-        if let Some(ws_idx) = self.session_container_index() {
+        if let Some(ws_idx) = self.session_index() {
             if let Some(rt) =
                 self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
@@ -1267,7 +1265,7 @@ impl AppState {
         col: u16,
         row: u16,
     ) -> Option<(crate::layout::PaneId, ScrollbarClickTarget)> {
-        let ws_idx = self.session_container_index()?;
+        let ws_idx = self.session_index()?;
         let info = self.view.pane_infos.iter().find(|info| {
             crate::ui::pane_scrollbar_rect(info).is_some_and(|track| {
                 col >= track.x
@@ -1301,7 +1299,7 @@ impl AppState {
         row: u16,
         grab_row_offset: u16,
     ) -> Option<usize> {
-        let ws_idx = self.session_container_index()?;
+        let ws_idx = self.session_index()?;
         let info = self
             .view
             .pane_infos

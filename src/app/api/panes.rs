@@ -48,7 +48,7 @@ impl App {
         let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
         let host_terminal_theme = self.state.host_terminal_theme;
         let previous_focus = self.state.current_pane_focus_target();
-        self.state.collapse_to_single_session_container();
+        self.state.collapse_to_single_session();
         let ws_idx = 0;
         let Some(ws) = self.state.session_containers_mut().get_mut(ws_idx) else {
             return pane_not_found(id, &params.target_pane_id);
@@ -98,7 +98,7 @@ impl App {
 
     pub(super) fn handle_pane_list(&mut self, id: String, params: PaneListParams) -> String {
         let PaneListParams {} = params;
-        self.state.collapse_to_single_session_container();
+        self.state.collapse_to_single_session();
         encode_success(
             id,
             ResponseResult::PaneList {
@@ -355,7 +355,7 @@ fn nav_direction_from_api(direction: PaneDirection) -> NavDirection {
 impl App {
     fn canonicalize_pane_target(&mut self, public_pane_id: &str) -> Option<(usize, usize, PaneId)> {
         let (_, pane_id) = self.parse_pane_id(public_pane_id)?;
-        self.state.collapse_to_single_session_container();
+        self.state.collapse_to_single_session();
         self.state
             .session_containers()
             .iter()
@@ -367,7 +367,7 @@ impl App {
     }
 
     fn focused_pane_info(&self) -> Option<PaneInfo> {
-        let ws_idx = self.state.session_container_index()?;
+        let ws_idx = self.state.session_index()?;
         let pane_id = self.state.session()?.focused_pane_id()?;
         self.pane_info(ws_idx, pane_id)
     }

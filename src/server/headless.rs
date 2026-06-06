@@ -679,7 +679,7 @@ impl HeadlessServer {
             }
         }
 
-        self.app.state.collapse_to_single_session_container();
+        self.app.state.collapse_to_single_session();
         let snapshot = crate::persist::capture(
             self.app.state.session_containers(),
             &self.app.state.terminals,
@@ -2012,7 +2012,7 @@ impl HeadlessServer {
         }
         frame.graphics.clear();
 
-        let Some(ws_idx) = self.app.state.session_container_index() else {
+        let Some(ws_idx) = self.app.state.session_index() else {
             retained_fallback!("no_session_container");
         };
         let pane_infos = self.app.state.view.pane_infos.clone();
