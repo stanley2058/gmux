@@ -25,12 +25,11 @@ impl App {
         if self.state.workspaces.is_empty() {
             crate::persist::clear();
         } else {
+            self.state.collapse_to_single_session_workspace();
             let snap = crate::persist::capture(
                 &self.state.workspaces,
                 &self.state.terminals,
                 &self.terminal_runtimes,
-                self.state.active,
-                self.state.selected,
             );
             let history = self.persist_pane_history.then(|| {
                 crate::persist::capture_history(&self.state.workspaces, &self.terminal_runtimes)

@@ -260,15 +260,20 @@ pub fn capture(
         crate::terminal::TerminalState,
     >,
     terminal_runtimes: &TerminalRuntimeRegistry,
-    active: Option<usize>,
-    _selected: usize,
 ) -> SessionSnapshot {
     let workspaces: Vec<_> = workspaces
         .iter()
         .map(|workspace| capture_workspace(workspace, terminals, terminal_runtimes))
         .collect();
+    let active_tab = workspaces
+        .first()
+        .map(|workspace| {
+            workspace
+                .active_tab
+                .min(workspace.tabs.len().saturating_sub(1))
+        })
+        .unwrap_or(0);
     let tabs = flatten_workspace_tabs(&workspaces);
-    let active_tab = active_tab_from_workspaces(&workspaces, active);
     SessionSnapshot {
         version: SNAPSHOT_VERSION,
         tabs,
@@ -510,13 +515,7 @@ mod tests {
         state: &AppState,
         terminal_runtimes: &TerminalRuntimeRegistry,
     ) -> SessionSnapshot {
-        capture(
-            &state.workspaces,
-            &state.terminals,
-            terminal_runtimes,
-            state.active,
-            state.selected,
-        )
+        capture(&state.workspaces, &state.terminals, terminal_runtimes)
     }
 
     fn capture_history_from_state_with_runtimes(
@@ -717,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_tracks_flattened_workspace_tab_order() {
+    fn capture_contract_uses_first_session_container_as_active_tab_source() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
         state.workspaces.swap(0, 1);
         state.active = Some(0);

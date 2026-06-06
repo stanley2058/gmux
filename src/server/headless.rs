@@ -681,12 +681,11 @@ impl HeadlessServer {
             }
         }
 
+        self.app.state.collapse_to_single_session_workspace();
         let snapshot = crate::persist::capture(
             &self.app.state.workspaces,
             &self.app.state.terminals,
             &self.app.terminal_runtimes,
-            self.app.state.active,
-            self.app.state.selected,
         );
 
         let mut handoff_entries = Vec::new();
