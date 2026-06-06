@@ -180,8 +180,12 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::TabInfo> {
-        let session = self.state.sessions().get(ws_idx)?;
-        let tab = session.tabs.get(tab_idx)?;
+        let entry = self
+            .state
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)?;
+        let session = entry.session;
+        let tab = entry.tab;
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             number: tab_idx + 1,
@@ -207,9 +211,13 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let session = self.state.sessions().get(ws_idx)?;
-        let tab = session.tabs.get(tab_idx)?;
-        self.pane_info(ws_idx, tab.root_pane)
+        let root_pane = self
+            .state
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)?
+            .tab
+            .root_pane;
+        self.pane_info(ws_idx, root_pane)
     }
 
     pub(super) fn pane_info(
