@@ -794,11 +794,9 @@ impl AppState {
         &self,
         ws_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
-        self.sessions()
-            .get(ws_idx)
-            .into_iter()
-            .flat_map(|ws| &ws.tabs)
-            .flat_map(|tab| tab.panes.values())
+        self.session_tab_entries()
+            .filter(|entry| entry.session_idx == ws_idx)
+            .flat_map(|entry| entry.tab.panes.values())
             .map(|pane| pane.attached_terminal_id.clone())
             .collect()
     }
@@ -808,9 +806,9 @@ impl AppState {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
-        self.sessions()
-            .get(ws_idx)
-            .and_then(|ws| ws.tabs.get(tab_idx))
+        self.session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
+            .map(|entry| entry.tab)
             .into_iter()
             .flat_map(|tab| tab.panes.values())
             .map(|pane| pane.attached_terminal_id.clone())
@@ -822,9 +820,11 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) -> Option<crate::terminal::TerminalId> {
-        self.sessions()
-            .get(ws_idx)?
-            .pane_state(pane_id)
+        self.session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab.panes.contains_key(&pane_id))?
+            .tab
+            .panes
+            .get(&pane_id)
             .map(|pane| pane.attached_terminal_id.clone())
     }
 
@@ -833,12 +833,12 @@ impl AppState {
         terminal_ids: impl IntoIterator<Item = crate::terminal::TerminalId>,
     ) {
         for terminal_id in terminal_ids {
-            let still_attached = self.sessions().iter().any(|ws| {
-                ws.tabs.iter().any(|tab| {
-                    tab.panes
-                        .values()
-                        .any(|pane| pane.attached_terminal_id == terminal_id)
-                })
+            let still_attached = self.session_tab_entries().any(|entry| {
+                entry
+                    .tab
+                    .panes
+                    .values()
+                    .any(|pane| pane.attached_terminal_id == terminal_id)
             });
             if !still_attached
                 && self.terminals.remove(&terminal_id).is_some()
@@ -863,7 +863,11 @@ impl AppState {
 
         let mut terminal_ids = Vec::new();
         terminal_ids.extend(self.terminal_ids_for_session_at(close_idx));
-        if let Some(session_id) = self.sessions().get(close_idx).map(|ws| ws.id.clone()) {
+        if let Some(session_id) = self
+            .session_entries()
+            .find(|entry| entry.session_idx == close_idx)
+            .map(|entry| entry.session.id.clone())
+        {
             crate::logging::session_closed(&session_id);
         }
         self.clear_session();
