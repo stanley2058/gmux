@@ -434,29 +434,7 @@ fn send_json_request(socket_path: &Path, request: serde_json::Value) -> serde_js
     send_request(socket_path, &request.to_string())
 }
 
-fn workspace_id_from_tab_id(tab_id: &str) -> Option<&str> {
-    tab_id
-        .rsplit_once(':')
-        .map(|(workspace_id, _)| workspace_id)
-}
-
-fn synthetic_workspace_id_from_tab_id(tab_id: &str) -> String {
-    workspace_id_from_tab_id(tab_id).unwrap_or("1").to_string()
-}
-
-fn workspace_id_from_pane_id(pane_id: &str) -> Option<&str> {
-    pane_id
-        .rsplit_once('-')
-        .map(|(workspace_id, _)| workspace_id)
-}
-
-fn synthetic_workspace_id_from_pane_id(pane_id: &str) -> String {
-    workspace_id_from_pane_id(pane_id)
-        .unwrap_or("1")
-        .to_string()
-}
-
-fn create_workspace_api(
+fn create_tab_api(
     socket_path: &Path,
     cwd: Option<&Path>,
     label: Option<&str>,
@@ -470,164 +448,61 @@ fn create_workspace_api(
         params.insert("label".to_string(), label.to_string().into());
     }
     params.insert("focus".to_string(), focus.into());
-    let mut response = send_json_request(
+    send_json_request(
         socket_path,
         serde_json::json!({
-            "id": "test_workspace_create",
+            "id": "test_tab_create",
             "method": "tab.create",
             "params": params,
         }),
-    );
-    if let Some(result) = response
-        .get_mut("result")
-        .and_then(|value| value.as_object_mut())
-    {
-        if let Some(tab_id) = result
-            .get("tab")
-            .and_then(|tab| tab.get("tab_id"))
-            .and_then(|tab_id| tab_id.as_str())
-            .map(str::to_string)
-        {
-            let workspace_id = synthetic_workspace_id_from_tab_id(&tab_id);
-            let label = result
-                .get("tab")
-                .and_then(|tab| tab.get("label"))
-                .cloned()
-                .unwrap_or_else(|| serde_json::Value::String("1".to_string()));
-            result.insert(
-                "workspace".to_string(),
-                serde_json::json!({
-                    "workspace_id": workspace_id,
-                    "active_tab_id": tab_id,
-                    "label": label,
-                }),
-            );
-        }
-    }
-    response
+    )
 }
 
-fn list_workspaces_api(socket_path: &Path) -> serde_json::Value {
-    let tabs = send_json_request(
+fn list_tabs_api(socket_path: &Path) -> serde_json::Value {
+    send_json_request(
         socket_path,
         serde_json::json!({
-            "id": "test_workspace_list",
+            "id": "test_tab_list",
             "method": "tab.list",
             "params": {},
         }),
-    );
-    let mut workspaces = Vec::new();
-    if let Some(tabs) = tabs["result"]["tabs"].as_array() {
-        for tab in tabs {
-            let Some(tab_id) = tab["tab_id"].as_str() else {
-                continue;
-            };
-            let workspace_id = synthetic_workspace_id_from_tab_id(tab_id);
-            if workspaces
-                .iter()
-                .any(|workspace: &serde_json::Value| workspace["workspace_id"] == workspace_id)
-            {
-                continue;
-            }
-            workspaces.push(serde_json::json!({
-                "workspace_id": workspace_id,
-                "active_tab_id": tab["tab_id"],
-                "label": tab["label"],
-            }));
-        }
-    }
-    serde_json::json!({
-        "id": "test_workspace_list",
-        "result": {
-            "type": "workspace_list",
-            "workspaces": workspaces,
-        }
-    })
+    )
 }
 
-fn focus_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Value {
-    let tab_id = format!("{workspace_id}:1");
-    let response = send_json_request(
+fn focus_tab_api(socket_path: &Path, tab_id: &str) -> serde_json::Value {
+    send_json_request(
         socket_path,
         serde_json::json!({
-            "id": "test_workspace_focus",
+            "id": "test_tab_focus",
             "method": "tab.focus",
             "params": { "tab_id": tab_id },
         }),
-    );
-    serde_json::json!({
-        "id": "test_workspace_focus",
-        "result": {
-            "type": "workspace_info",
-            "workspace": {
-                "workspace_id": synthetic_workspace_id_from_tab_id(
-                    response["result"]["tab"]["tab_id"].as_str().unwrap_or("")
-                ),
-            },
-        },
-    })
+    )
 }
 
-fn rename_workspace_api(socket_path: &Path, workspace_id: &str, label: &str) -> serde_json::Value {
-    let tab_id = format!("{workspace_id}:1");
-    let _ = send_json_request(
+fn rename_tab_api(socket_path: &Path, tab_id: &str, label: &str) -> serde_json::Value {
+    send_json_request(
         socket_path,
         serde_json::json!({
-            "id": "test_workspace_rename",
+            "id": "test_tab_rename",
             "method": "tab.rename",
             "params": { "tab_id": tab_id, "label": label },
         }),
-    );
-    serde_json::json!({
-        "id": "test_workspace_rename",
-        "result": {
-            "type": "workspace_info",
-            "workspace": {
-                "workspace_id": workspace_id,
-                "label": label,
-            },
-        },
-    })
+    )
 }
 
-fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Value {
+fn close_session_api(socket_path: &Path) -> serde_json::Value {
     let panes = send_json_request(
         socket_path,
         serde_json::json!({
-            "id": "test_workspace_panes",
+            "id": "test_session_panes",
             "method": "pane.list",
             "params": {},
         }),
     );
     if let Some(panes) = panes["result"]["panes"].as_array() {
-        let target_workspace_id = workspace_id
-            .parse::<usize>()
-            .ok()
-            .and_then(|number| number.checked_sub(1))
-            .and_then(|index| {
-                panes
-                    .iter()
-                    .filter_map(|pane| pane["pane_id"].as_str())
-                    .map(synthetic_workspace_id_from_pane_id)
-                    .fold(Vec::<String>::new(), |mut workspace_ids, id| {
-                        if !workspace_ids.contains(&id) {
-                            workspace_ids.push(id);
-                        }
-                        workspace_ids
-                    })
-                    .get(index)
-                    .map(|id| (*id).to_string())
-            })
-            .unwrap_or_else(|| workspace_id.to_string());
         let mut pane_ids: Vec<_> = panes
             .iter()
-            .filter(|pane| {
-                pane["pane_id"]
-                    .as_str()
-                    .map(synthetic_workspace_id_from_pane_id)
-                    .as_deref()
-                    == Some(target_workspace_id.as_str())
-            })
             .filter_map(|pane| pane["pane_id"].as_str().map(str::to_string))
             .collect();
         pane_ids.reverse();
@@ -635,7 +510,7 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
             let _ = send_json_request(
                 socket_path,
                 serde_json::json!({
-                    "id": "test_workspace_close",
+                    "id": "test_session_close",
                     "method": "pane.close",
                     "params": { "pane_id": pane_id },
                 }),
@@ -643,7 +518,7 @@ fn close_workspace_api(socket_path: &Path, workspace_id: &str) -> serde_json::Va
         }
     }
     serde_json::json!({
-        "id": "test_workspace_close",
+        "id": "test_session_close",
         "result": { "type": "ok" },
     })
 }
@@ -884,23 +759,23 @@ fn named_sessions_use_separate_servers_and_tab_state() {
         Duration::from_secs(5),
     );
 
-    let alpha_workspace = create_workspace_api(
+    let alpha_tab = create_tab_api(
         &named_session_socket(&config_home, "alpha"),
         None,
-        Some("alpha-ws"),
+        Some("alpha-tab"),
         true,
     );
-    let beta_workspace = create_workspace_api(
+    let beta_tab = create_tab_api(
         &named_session_socket(&config_home, "beta"),
         None,
-        Some("beta-ws"),
+        Some("beta-tab"),
         true,
     );
-    let alpha_tab_id = alpha_workspace["result"]["workspace"]["active_tab_id"]
+    let alpha_tab_id = alpha_tab["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
-    let beta_tab_id = beta_workspace["result"]["workspace"]["active_tab_id"]
+    let beta_tab_id = beta_tab["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -1266,10 +1141,10 @@ fn server_stop_then_restart_restores_pane_history() {
     wait_for_socket(&socket_path, Duration::from_secs(5));
     wait_for_socket(&client_socket, Duration::from_secs(5));
 
-    let created = create_workspace_api(&socket_path, Some(&base), Some("history-restart"), true);
+    let created = create_tab_api(&socket_path, Some(&base), Some("history-restart"), true);
     let pane_id = created["result"]["root_pane"]["pane_id"]
         .as_str()
-        .expect("workspace create should return root pane id")
+        .expect("tab.create should return root pane id")
         .to_string();
     let sent = run_cli(
         &socket_path,
@@ -1304,14 +1179,14 @@ fn server_stop_then_restart_restores_pane_history() {
     wait_for_socket(&socket_path, Duration::from_secs(5));
     wait_for_socket(&client_socket, Duration::from_secs(5));
 
-    let workspaces = list_workspaces_api(&socket_path);
+    let tabs = list_tabs_api(&socket_path);
     assert!(
-        workspaces["result"]["workspaces"]
+        tabs["result"]["tabs"]
             .as_array()
             .expect("tab.list should return tabs")
             .iter()
-            .any(|workspace| workspace["label"] == "history-restart"),
-        "restored workspace should exist"
+            .any(|tab| tab["label"] == "history-restart"),
+        "restored tab should exist"
     );
     let panes = run_cli_json(&socket_path, &["pane", "list"]);
     let restored_pane_id = panes["result"]["panes"]
@@ -1352,18 +1227,12 @@ fn pane_management_commands_work() {
     assert_eq!(reload_json["result"]["type"], "config_reload");
     assert_eq!(reload_json["result"]["status"], "applied");
 
-    let listed_json = list_workspaces_api(&socket_path);
-    assert_eq!(listed_json["result"]["type"], "workspace_list");
-    assert_eq!(
-        listed_json["result"]["workspaces"]
-            .as_array()
-            .unwrap()
-            .len(),
-        0
-    );
+    let listed_json = list_tabs_api(&socket_path);
+    assert_eq!(listed_json["result"]["type"], "tab_list");
+    assert_eq!(listed_json["result"]["tabs"].as_array().unwrap().len(), 0);
 
-    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
-    let workspace_id = created_json["result"]["workspace"]["workspace_id"]
+    let created_json = create_tab_api(&socket_path, Some(&base), None, true);
+    let tab_id = created_json["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -1395,17 +1264,14 @@ fn pane_management_commands_work() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let renamed_json = rename_workspace_api(&socket_path, &workspace_id, "demo");
-    assert_eq!(renamed_json["result"]["workspace"]["label"], "demo");
+    let renamed_json = rename_tab_api(&socket_path, &tab_id, "demo");
+    assert_eq!(renamed_json["result"]["tab"]["label"], "demo");
 
-    let focused_json = focus_workspace_api(&socket_path, &workspace_id);
-    assert_eq!(
-        focused_json["result"]["workspace"]["workspace_id"],
-        workspace_id
-    );
+    let focused_json = focus_tab_api(&socket_path, &tab_id);
+    assert_eq!(focused_json["result"]["tab"]["tab_id"], tab_id);
 
-    let closed_workspace_json = close_workspace_api(&socket_path, &workspace_id);
-    assert_eq!(closed_workspace_json["result"]["type"], "ok");
+    let closed_session_json = close_session_api(&socket_path);
+    assert_eq!(closed_session_json["result"]["type"], "ok");
 
     cleanup_spawned_gmux(gmux, base);
 }
@@ -1477,8 +1343,8 @@ fn tab_management_commands_work() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
-    let first_tab_id = created_json["result"]["workspace"]["active_tab_id"]
+    let created_json = create_tab_api(&socket_path, Some(&base), None, true);
+    let first_tab_id = created_json["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -1533,8 +1399,8 @@ fn top_level_tab_and_pane_aliases_work() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
-    let first_tab_id = created_json["result"]["workspace"]["active_tab_id"]
+    let created_json = create_tab_api(&socket_path, Some(&base), None, true);
+    let first_tab_id = created_json["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -1716,8 +1582,8 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
-    let workspace_id = created_json["result"]["workspace"]["workspace_id"]
+    let created_json = create_tab_api(&socket_path, Some(&base), None, true);
+    let first_tab_id = created_json["result"]["tab"]["tab_id"]
         .as_str()
         .unwrap()
         .to_string();
@@ -1735,18 +1601,9 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let workspaces_json = list_workspaces_api(&socket_path);
-    assert_eq!(
-        workspaces_json["result"]["workspaces"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
-    assert_eq!(
-        workspaces_json["result"]["workspaces"][0]["workspace_id"],
-        workspace_id
-    );
+    let tabs_json = list_tabs_api(&socket_path);
+    assert_eq!(tabs_json["result"]["tabs"].as_array().unwrap().len(), 1);
+    assert_eq!(tabs_json["result"]["tabs"][0]["tab_id"], first_tab_id);
 
     let tabs = run_cli(&socket_path, &["tab", "list"]);
     assert!(tabs.status.success());
@@ -1757,7 +1614,7 @@ fn pane_close_only_removes_the_target_tab_when_other_tabs_exist() {
 }
 
 #[test]
-fn pane_close_removes_the_workspace_when_it_closes_the_last_pane() {
+fn pane_close_removes_the_session_when_it_closes_the_last_pane() {
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
@@ -1766,7 +1623,7 @@ fn pane_close_removes_the_workspace_when_it_closes_the_last_pane() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created_json = create_workspace_api(&socket_path, Some(&base), None, true);
+    let created_json = create_tab_api(&socket_path, Some(&base), None, true);
     let root_pane_id = created_json["result"]["root_pane"]["pane_id"]
         .as_str()
         .unwrap()
@@ -1777,11 +1634,8 @@ fn pane_close_removes_the_workspace_when_it_closes_the_last_pane() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let workspaces_json = list_workspaces_api(&socket_path);
-    assert!(workspaces_json["result"]["workspaces"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    let tabs_json = list_tabs_api(&socket_path);
+    assert!(tabs_json["result"]["tabs"].as_array().unwrap().is_empty());
 
     cleanup_spawned_gmux(gmux, base);
 }
@@ -1796,8 +1650,8 @@ fn pane_run_read_and_wait_commands_work() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = create_workspace_api(&socket_path, Some(&base), None, true);
-    assert!(created["result"]["workspace"]["workspace_id"].is_string());
+    let created = create_tab_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["tab"]["tab_id"].is_string());
 
     let create = run_cli(
         &socket_path,
@@ -1904,8 +1758,8 @@ fn wait_output_matches_recent_unwrapped_text() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = create_workspace_api(&socket_path, Some(&base), None, true);
-    assert!(created["result"]["workspace"]["workspace_id"].is_string());
+    let created = create_tab_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["tab"]["tab_id"].is_string());
 
     let token = "WRAP_WAIT_TEST_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789_ABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789";
     let script = base.join("emit-long-token.sh");
@@ -1976,8 +1830,8 @@ fn closing_pane_terminates_processes_inside_it() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = create_workspace_api(&socket_path, Some(&base), None, true);
-    assert!(created["result"]["workspace"]["workspace_id"].is_string());
+    let created = create_tab_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["tab"]["tab_id"].is_string());
 
     let split = run_cli(
         &socket_path,
@@ -2025,7 +1879,7 @@ fn closing_pane_terminates_processes_inside_it() {
 }
 
 #[test]
-fn closing_workspace_terminates_processes_inside_it() {
+fn closing_session_terminates_processes_inside_it() {
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
@@ -2034,10 +1888,10 @@ fn closing_workspace_terminates_processes_inside_it() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = create_workspace_api(&socket_path, Some(&base), None, true);
-    assert!(created["result"]["workspace"]["workspace_id"].is_string());
+    let created = create_tab_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["tab"]["tab_id"].is_string());
 
-    let pid_file = base.join("workspace-close.pid");
+    let pid_file = base.join("session-close.pid");
     let command = format!(
         "python3 -c 'import os,time,pathlib; pathlib.Path(r\"{}\").write_text(str(os.getpid())); time.sleep(1000)'",
         pid_file.display()
@@ -2060,11 +1914,11 @@ fn closing_workspace_terminates_processes_inside_it() {
     });
     assert!(process_exists(pid), "child process was not running");
 
-    let closed = close_workspace_api(&socket_path, "1");
+    let closed = close_session_api(&socket_path);
     assert_eq!(closed["result"]["type"], "ok");
     assert!(
         wait_for_pid_exit(pid, Duration::from_secs(3)),
-        "process {pid} survived workspace close"
+        "process {pid} survived session close"
     );
 
     cleanup_spawned_gmux(gmux, base);
@@ -2080,7 +1934,7 @@ fn pane_numbers_stay_compact_after_close() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    create_workspace_api(&socket_path, Some(&base), None, true);
+    create_tab_api(&socket_path, Some(&base), None, true);
     let split_12_json = run_cli_json(
         &socket_path,
         &["pane", "split", "1-1", "--direction", "right", "--no-focus"],
@@ -2122,8 +1976,8 @@ fn pane_shell_gets_gmux_socket_env() {
     let gmux = spawn_gmux(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let created = create_workspace_api(&socket_path, Some(&base), None, true);
-    assert!(created["result"]["workspace"]["workspace_id"].is_string());
+    let created = create_tab_api(&socket_path, Some(&base), None, true);
+    assert!(created["result"]["tab"]["tab_id"].is_string());
 
     let env_capture = base.join("pane-env.txt");
     let ran = run_cli(
