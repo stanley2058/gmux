@@ -1568,10 +1568,10 @@ mod tests {
         let mut state = AppState::test_new();
         for name in names {
             let ws = Workspace::test_new(name);
-            state.session_containers.push(ws);
+            state.sessions.push(ws);
         }
         state.ensure_test_terminals();
-        if !state.session_containers.is_empty() {
+        if !state.sessions.is_empty() {
             state.active = Some(0);
             state.mode = Mode::Terminal;
         }
@@ -1775,7 +1775,7 @@ mod tests {
     #[test]
     fn navigator_rows_show_tab_nodes_for_flattened_session_tabs() {
         let mut state = app_with_workspaces(&["single", "multi"]);
-        state.session_containers[1].test_add_tab(Some("tests"));
+        state.sessions[1].test_add_tab(Some("tests"));
         state.ensure_test_terminals();
 
         state.open_navigator();
@@ -1834,12 +1834,9 @@ mod tests {
         workspace.custom_name = None;
         workspace.identity_cwd = stale_cwd.clone();
         let pane = workspace.tabs[0].root_pane;
-        state.session_containers = vec![workspace];
+        state.sessions = vec![workspace];
         state.ensure_test_terminals();
-        let terminal_id = state.session_containers[0]
-            .terminal_id(pane)
-            .cloned()
-            .unwrap();
+        let terminal_id = state.sessions[0].terminal_id(pane).cloned().unwrap();
         state.terminals.get_mut(&terminal_id).unwrap().cwd = stale_cwd;
 
         let (events, _) = tokio::sync::mpsc::channel(4);
@@ -1883,8 +1880,8 @@ mod tests {
     #[test]
     fn navigator_rows_include_plain_panes_with_generic_meta() {
         let mut state = app_with_workspaces(&["one"]);
-        let shell = state.session_containers[0].tabs[0].root_pane;
-        let split = state.session_containers[0].test_split(Direction::Horizontal);
+        let shell = state.sessions[0].tabs[0].root_pane;
+        let split = state.sessions[0].test_split(Direction::Horizontal);
         state.ensure_test_terminals();
 
         state.open_navigator();
@@ -1923,7 +1920,7 @@ mod tests {
     #[test]
     fn accepting_navigator_pane_collapses_to_session_tab_and_focus() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let target = state.session_containers[1].tabs[0].root_pane;
+        let target = state.sessions[1].tabs[0].root_pane;
         state.open_navigator();
         state.navigator.selected = state
             .navigator_rows()
@@ -1938,17 +1935,17 @@ mod tests {
 
         assert!(state.accept_navigator_selection());
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 1);
-        assert_eq!(state.session_containers[0].focused_pane_id(), Some(target));
+        assert_eq!(state.sessions[0].active_tab, 1);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(target));
         assert_eq!(state.mode, Mode::Terminal);
     }
 
     #[test]
     fn navigator_search_by_session_label_shows_child_rows() {
         let mut state = app_with_workspaces(&["issue-work"]);
-        let root = state.session_containers[0].tabs[0].root_pane;
+        let root = state.sessions[0].tabs[0].root_pane;
 
         state.open_navigator();
         state.navigator.query = "work".into();
@@ -1962,7 +1959,7 @@ mod tests {
     #[test]
     fn navigator_search_by_inherited_tab_label_shows_child_rows() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let target = state.session_containers[1].tabs[0].root_pane;
+        let target = state.sessions[1].tabs[0].root_pane;
 
         state.open_navigator();
         state.navigator.query = "two".into();
@@ -1986,14 +1983,11 @@ mod tests {
     #[test]
     fn navigator_search_ignores_hidden_status_metadata() {
         let mut state = app_with_workspaces(&["one"]);
-        let shell = state.session_containers[0].tabs[0].root_pane;
-        let split = state.session_containers[0].test_split(Direction::Horizontal);
+        let shell = state.sessions[0].tabs[0].root_pane;
+        let split = state.sessions[0].test_split(Direction::Horizontal);
         state.ensure_test_terminals();
 
-        let shell_terminal_id = state.session_containers[0]
-            .terminal_id(shell)
-            .cloned()
-            .unwrap();
+        let shell_terminal_id = state.sessions[0].terminal_id(shell).cloned().unwrap();
         state
             .terminals
             .get_mut(&shell_terminal_id)
@@ -2025,11 +2019,8 @@ mod tests {
     #[test]
     fn navigator_search_filters_panes_without_workspace_context_rows() {
         let mut state = app_with_workspaces(&["one"]);
-        let root = state.session_containers[0].tabs[0].root_pane;
-        let terminal_id = state.session_containers[0]
-            .terminal_id(root)
-            .cloned()
-            .unwrap();
+        let root = state.sessions[0].tabs[0].root_pane;
+        let terminal_id = state.sessions[0].terminal_id(root).cloned().unwrap();
         state
             .terminals
             .get_mut(&terminal_id)
@@ -2077,7 +2068,7 @@ mod tests {
         let second_root = second.tabs[0].root_pane;
 
         let mut state = AppState::test_new();
-        state.session_containers = vec![first, second];
+        state.sessions = vec![first, second];
         state.ensure_test_terminals();
         state.active = Some(0);
         state.selected = 0;
@@ -2086,28 +2077,19 @@ mod tests {
 
         state.next_pane_panel_entry();
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers.len(), 1);
-        assert_eq!(state.session_containers[0].active_tab, 0);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_second)
-        );
+        assert_eq!(state.sessions.len(), 1);
+        assert_eq!(state.sessions[0].active_tab, 0);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second));
 
         state.next_pane_panel_entry();
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 1);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(second_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 1);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(second_root));
 
         state.previous_pane_panel_entry();
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 0);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_second)
-        );
+        assert_eq!(state.sessions[0].active_tab, 0);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second));
     }
 
     #[test]
@@ -2120,7 +2102,7 @@ mod tests {
         let second_root = second.tabs[0].root_pane;
 
         let mut state = AppState::test_new();
-        state.session_containers = vec![first, second];
+        state.sessions = vec![first, second];
         state.ensure_test_terminals();
         state.active = Some(0);
         state.selected = 0;
@@ -2129,24 +2111,21 @@ mod tests {
 
         assert!(state.focus_pane_panel_entry(2));
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 1);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(second_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 1);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(second_root));
     }
 
     #[test]
     fn focus_pane_panel_entry_succeeds_for_already_focused_pane() {
         let mut state = app_with_workspaces(&["one"]);
-        let root = state.session_containers[0].tabs[0].root_pane;
+        let root = state.sessions[0].tabs[0].root_pane;
         state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         assert!(state.focus_pane_panel_entry(0));
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(root));
     }
 
     #[test]
@@ -2158,7 +2137,7 @@ mod tests {
         let second = Workspace::test_new("two");
 
         let mut state = AppState::test_new();
-        state.session_containers = vec![first, second];
+        state.sessions = vec![first, second];
         state.ensure_test_terminals();
         state.active = Some(0);
         state.selected = 0;
@@ -2168,10 +2147,7 @@ mod tests {
         state.next_pane_panel_entry();
 
         assert_eq!(state.active, Some(0));
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_root)
-        );
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
     }
 
     #[test]
@@ -2183,19 +2159,19 @@ mod tests {
         }
 
         let mut state = AppState::test_new();
-        state.session_containers = vec![workspace];
+        state.sessions = vec![workspace];
         state.ensure_test_terminals();
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::Current;
-        state.session_containers[0].tabs[0].layout.focus_pane(root);
+        state.sessions[0].tabs[0].layout.focus_pane(root);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
         state.previous_pane_panel_entry();
 
-        let last_idx = state.session_containers[0].tabs.len() - 1;
-        assert_eq!(state.session_containers[0].active_tab, last_idx);
+        let last_idx = state.sessions[0].tabs.len() - 1;
+        assert_eq!(state.sessions[0].active_tab, last_idx);
         assert!(state.pane_panel_scroll > 0);
     }
 
@@ -2203,59 +2179,59 @@ mod tests {
     fn focus_session_flattens_to_session_tab() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
         state.focus_session(2);
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
-        assert_eq!(state.session_containers[0].active_tab, 2);
+        assert_eq!(state.sessions[0].active_tab, 2);
     }
 
     #[test]
     fn session_tab_switch_works_without_active_index() {
         let mut state = app_with_workspaces(&["one"]);
-        let second_tab = state.session_containers[0].test_add_tab(Some("logs"));
+        let second_tab = state.sessions[0].test_add_tab(Some("logs"));
         state.active = None;
         state.selected = 0;
 
         state.switch_tab(second_tab);
 
-        assert_eq!(state.session_containers[0].active_tab, second_tab);
+        assert_eq!(state.sessions[0].active_tab, second_tab);
         assert_eq!(state.active, None);
     }
 
     #[test]
     fn collapse_to_single_session_merges_tabs_and_focus() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let second_first_root = state.session_containers[1].tabs[0].root_pane;
-        let second_tab = state.session_containers[1].test_add_tab(Some("logs"));
-        let second_tab_root = state.session_containers[1].tabs[second_tab].root_pane;
-        state.session_containers[1].switch_tab(second_tab);
+        let second_first_root = state.sessions[1].tabs[0].root_pane;
+        let second_tab = state.sessions[1].test_add_tab(Some("logs"));
+        let second_tab_root = state.sessions[1].tabs[second_tab].root_pane;
+        state.sessions[1].switch_tab(second_tab);
         state.active = Some(1);
         state.selected = 1;
 
         assert!(state.collapse_to_single_session());
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
-        assert_eq!(state.session_containers[0].active_tab, 2);
-        let tab_labels: Vec<_> = state.session_containers[0]
+        assert_eq!(state.sessions[0].active_tab, 2);
+        let tab_labels: Vec<_> = state.sessions[0]
             .tabs
             .iter()
             .map(|tab| tab.custom_name.as_deref())
             .collect();
         assert_eq!(tab_labels, vec![None, Some("two"), Some("logs")]);
-        let tab_numbers: Vec<_> = state.session_containers[0]
+        let tab_numbers: Vec<_> = state.sessions[0]
             .tabs
             .iter()
             .map(|tab| tab.number)
             .collect();
         assert_eq!(tab_numbers, vec![1, 2, 3]);
         assert_eq!(
-            state.session_containers[0].public_pane_number(second_first_root),
+            state.sessions[0].public_pane_number(second_first_root),
             Some(2)
         );
         assert_eq!(
-            state.session_containers[0].public_pane_number(second_tab_root),
+            state.sessions[0].public_pane_number(second_tab_root),
             Some(3)
         );
     }
@@ -2263,139 +2239,115 @@ mod tests {
     #[test]
     fn last_pane_toggles_to_previous_focus_in_active_tab() {
         let mut state = app_with_workspaces(&["test"]);
-        let root = state.session_containers[0].tabs[0].root_pane;
-        let right = state.session_containers[0].test_split(Direction::Horizontal);
+        let root = state.sessions[0].tabs[0].root_pane;
+        let right = state.sessions[0].test_split(Direction::Horizontal);
 
         state.focus_pane_in_session_at(0, root);
         state.focus_pane_in_session_at(0, right);
         state.last_pane();
 
-        assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(root));
 
         state.last_pane();
 
-        assert_eq!(state.session_containers[0].focused_pane_id(), Some(right));
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(right));
     }
 
     #[test]
     fn removing_background_pane_preserves_last_pane_history() {
         let mut state = app_with_workspaces(&["test"]);
-        let root = state.session_containers[0].tabs[0].root_pane;
-        let right = state.session_containers[0].test_split(Direction::Horizontal);
-        let background = state.session_containers[0].test_split(Direction::Horizontal);
+        let root = state.sessions[0].tabs[0].root_pane;
+        let right = state.sessions[0].test_split(Direction::Horizontal);
+        let background = state.sessions[0].test_split(Direction::Horizontal);
 
         state.focus_pane_in_session_at(0, root);
         state.focus_pane_in_session_at(0, right);
-        state.session_containers[0].remove_pane(background);
+        state.sessions[0].remove_pane(background);
         state.last_pane();
 
-        assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(root));
     }
 
     #[test]
     fn last_pane_jumps_across_workspaces_and_tabs() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let first_root = state.session_containers[0].tabs[0].root_pane;
-        let second_tab = state.session_containers[1].test_add_tab(Some("logs"));
-        let second_tab_root = state.session_containers[1].tabs[second_tab].root_pane;
+        let first_root = state.sessions[0].tabs[0].root_pane;
+        let second_tab = state.sessions[1].test_add_tab(Some("logs"));
+        let second_tab_root = state.sessions[1].tabs[second_tab].root_pane;
 
         state.focus_pane_in_session_at(1, second_tab_root);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 0);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 0);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
 
         state.last_pane();
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 2);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(second_tab_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 2);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(second_tab_root));
     }
 
     #[test]
     fn last_pane_tracks_tab_and_session_tab_switches() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let first_root = state.session_containers[0].tabs[0].root_pane;
-        let first_second_tab = state.session_containers[0].test_add_tab(Some("logs"));
-        let first_second_root = state.session_containers[0].tabs[first_second_tab].root_pane;
-        let second_root = state.session_containers[1].tabs[0].root_pane;
+        let first_root = state.sessions[0].tabs[0].root_pane;
+        let first_second_tab = state.sessions[0].test_add_tab(Some("logs"));
+        let first_second_root = state.sessions[0].tabs[first_second_tab].root_pane;
+        let second_root = state.sessions[1].tabs[0].root_pane;
 
         state.switch_tab(first_second_tab);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 0);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 0);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
 
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, first_second_tab);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_second_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, first_second_tab);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second_root));
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
 
         state.focus_session_tab(0, 2);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, first_second_tab);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_second_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, first_second_tab);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second_root));
 
         state.last_pane();
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 2);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(second_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 2);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(second_root));
     }
 
     #[test]
     fn last_pane_tracks_cross_workspace_tab_selection() {
         let mut state = app_with_workspaces(&["one", "two"]);
-        let first_root = state.session_containers[0].tabs[0].root_pane;
-        let second_first_root = state.session_containers[1].tabs[0].root_pane;
-        let second_tab = state.session_containers[1].test_add_tab(Some("logs"));
-        let second_tab_root = state.session_containers[1].tabs[second_tab].root_pane;
+        let first_root = state.sessions[0].tabs[0].root_pane;
+        let second_first_root = state.sessions[1].tabs[0].root_pane;
+        let second_tab = state.sessions[1].test_add_tab(Some("logs"));
+        let second_tab_root = state.sessions[1].tabs[second_tab].root_pane;
 
         state.focus_session_tab(1, second_tab);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(first_root)
-        );
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
 
         state.last_pane();
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 2);
-        assert_eq!(
-            state.session_containers[0].focused_pane_id(),
-            Some(second_tab_root)
-        );
+        assert_eq!(state.sessions[0].active_tab, 2);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(second_tab_root));
         assert_ne!(second_first_root, second_tab_root);
     }
 
@@ -2407,27 +2359,21 @@ mod tests {
         state.focus_session(7);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
-        assert_eq!(state.session_containers[0].active_tab, 7);
+        assert_eq!(state.sessions[0].active_tab, 7);
     }
 
     #[test]
     fn focus_session_marks_panes_seen() {
         let mut state = app_with_workspaces(&["a", "b"]);
         // Mark a pane in workspace 1 as unseen
-        let id = *state.session_containers[1].panes.keys().next().unwrap();
-        state.session_containers[1].panes.get_mut(&id).unwrap().seen = false;
+        let id = *state.sessions[1].panes.keys().next().unwrap();
+        state.sessions[1].panes.get_mut(&id).unwrap().seen = false;
 
         state.focus_session(1);
-        assert!(
-            state.session_containers[0].tabs[1]
-                .panes
-                .get(&id)
-                .unwrap()
-                .seen
-        );
+        assert!(state.sessions[0].tabs[1].panes.get(&id).unwrap().seen);
     }
 
     #[test]
@@ -2445,7 +2391,7 @@ mod tests {
 
         state.close_session();
 
-        assert!(state.session_containers.is_empty());
+        assert!(state.sessions.is_empty());
         assert_eq!(state.selected, 0);
         assert_eq!(state.active, None);
     }
@@ -2456,7 +2402,7 @@ mod tests {
         state.selected = 0;
         state.close_session();
 
-        assert!(state.session_containers.is_empty());
+        assert!(state.sessions.is_empty());
         assert_eq!(state.active, None);
         assert_eq!(state.selected, 0);
     }
@@ -2469,7 +2415,7 @@ mod tests {
 
         state.close_session();
 
-        assert!(state.session_containers.is_empty());
+        assert!(state.sessions.is_empty());
         assert_eq!(state.selected, 0);
         assert_eq!(state.active, None);
     }
@@ -2477,39 +2423,36 @@ mod tests {
     #[test]
     fn pane_died_last_pane_in_tab_removes_tab_after_session_collapse() {
         let mut state = app_with_workspaces(&["a", "b"]);
-        let pane_id = *state.session_containers[0].panes.keys().next().unwrap();
+        let pane_id = *state.sessions[0].panes.keys().next().unwrap();
 
         state.handle_pane_died(pane_id);
 
-        assert_eq!(state.session_containers.len(), 1);
-        assert_eq!(state.session_containers[0].tabs.len(), 1);
-        assert_eq!(
-            state.session_containers[0].tabs[0].custom_name.as_deref(),
-            Some("b")
-        );
+        assert_eq!(state.sessions.len(), 1);
+        assert_eq!(state.sessions[0].tabs.len(), 1);
+        assert_eq!(state.sessions[0].tabs[0].custom_name.as_deref(), Some("b"));
     }
 
     #[test]
     fn pane_died_last_workspace_enters_navigate() {
         let mut state = app_with_workspaces(&["only"]);
         state.mode = Mode::Terminal;
-        let pane_id = *state.session_containers[0].panes.keys().next().unwrap();
+        let pane_id = *state.sessions[0].panes.keys().next().unwrap();
 
         state.handle_pane_died(pane_id);
 
-        assert!(state.session_containers.is_empty());
+        assert!(state.sessions.is_empty());
         assert_eq!(state.mode, Mode::Navigate);
     }
 
     #[test]
     fn pane_died_multi_pane_keeps_workspace() {
         let mut state = app_with_workspaces(&["test"]);
-        let second_id = state.session_containers[0].test_split(Direction::Horizontal);
+        let second_id = state.sessions[0].test_split(Direction::Horizontal);
 
         state.handle_pane_died(second_id);
 
-        assert_eq!(state.session_containers.len(), 1);
-        assert_eq!(state.session_containers[0].panes.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
+        assert_eq!(state.sessions[0].panes.len(), 1);
     }
 
     #[test]
@@ -2519,7 +2462,7 @@ mod tests {
 
         state.handle_pane_died(fake_id);
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
     }
 
     #[test]
@@ -2527,8 +2470,8 @@ mod tests {
         // Two workspaces; user is selecting text in workspace 0.
         // A pane in workspace 1 dies — selection must be preserved.
         let mut state = app_with_workspaces(&["active", "bg"]);
-        let active_pane = *state.session_containers[0].panes.keys().next().unwrap();
-        let bg_pane = *state.session_containers[1].panes.keys().next().unwrap();
+        let active_pane = *state.sessions[0].panes.keys().next().unwrap();
+        let bg_pane = *state.sessions[1].panes.keys().next().unwrap();
 
         state.selection = Some(crate::selection::Selection::anchor(active_pane, 0, 0, None));
         state.selection_autoscroll = Some(crate::app::state::SelectionAutoscroll {
@@ -2547,8 +2490,8 @@ mod tests {
     #[test]
     fn pane_died_same_pane_clears_selection() {
         let mut state = app_with_workspaces(&["test"]);
-        let first_id = state.session_containers[0].tabs[0].root_pane;
-        let second_id = state.session_containers[0].test_split(Direction::Horizontal);
+        let first_id = state.sessions[0].tabs[0].root_pane;
+        let second_id = state.sessions[0].test_split(Direction::Horizontal);
 
         state.selection = Some(crate::selection::Selection::anchor(second_id, 0, 0, None));
         state.selection_autoscroll = Some(crate::app::state::SelectionAutoscroll {
@@ -2563,11 +2506,8 @@ mod tests {
         // first_id still alive, workspace stays, but selection was on the dying pane
         assert!(state.selection.is_none());
         assert!(state.selection_autoscroll.is_none());
-        assert_eq!(state.session_containers[0].panes.len(), 1);
-        assert_eq!(
-            state.session_containers[0].panes.keys().next().unwrap(),
-            &first_id
-        );
+        assert_eq!(state.sessions[0].panes.len(), 1);
+        assert_eq!(state.sessions[0].panes.keys().next().unwrap(), &first_id);
     }
 
     #[test]
@@ -2616,29 +2556,29 @@ mod tests {
     #[test]
     fn toggle_zoom_works() {
         let mut state = app_with_workspaces(&["test"]);
-        state.session_containers[0].test_split(Direction::Horizontal);
+        state.sessions[0].test_split(Direction::Horizontal);
 
-        assert!(!state.session_containers[0].zoomed);
+        assert!(!state.sessions[0].zoomed);
         state.toggle_zoom();
-        assert!(state.session_containers[0].zoomed);
+        assert!(state.sessions[0].zoomed);
         state.toggle_zoom();
-        assert!(!state.session_containers[0].zoomed);
+        assert!(!state.sessions[0].zoomed);
     }
 
     #[test]
     fn toggle_zoom_single_pane_noop() {
         let mut state = app_with_workspaces(&["test"]);
         state.toggle_zoom();
-        assert!(!state.session_containers[0].zoomed);
+        assert!(!state.sessions[0].zoomed);
     }
 
     #[test]
     fn navigate_pane_changes_focus_while_zoomed() {
         let mut state = app_with_workspaces(&["test"]);
-        let root = state.session_containers[0].tabs[0].root_pane;
-        let right = state.session_containers[0].test_split(Direction::Horizontal);
-        state.session_containers[0].layout.focus_pane(root);
-        state.session_containers[0].zoomed = true;
+        let root = state.sessions[0].tabs[0].root_pane;
+        let right = state.sessions[0].test_split(Direction::Horizontal);
+        state.sessions[0].layout.focus_pane(root);
+        state.sessions[0].zoomed = true;
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 20));
 
         assert_eq!(state.view.pane_infos.len(), 1);
@@ -2647,8 +2587,8 @@ mod tests {
         state.navigate_pane(NavDirection::Right);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 20));
 
-        assert!(state.session_containers[0].zoomed);
-        assert_eq!(state.session_containers[0].focused_pane_id(), Some(right));
+        assert!(state.sessions[0].zoomed);
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(right));
         assert_eq!(state.view.pane_infos.len(), 1);
         assert_eq!(state.view.pane_infos[0].id, right);
         assert!(state.view.pane_infos[0].inner_rect.x > state.view.pane_infos[0].rect.x);
@@ -2657,17 +2597,17 @@ mod tests {
     #[test]
     fn close_pane_removes_from_workspace() {
         let mut state = app_with_workspaces(&["test"]);
-        state.session_containers[0].test_split(Direction::Horizontal);
-        assert_eq!(state.session_containers[0].panes.len(), 2);
+        state.sessions[0].test_split(Direction::Horizontal);
+        assert_eq!(state.sessions[0].panes.len(), 2);
 
         state.close_pane();
-        assert_eq!(state.session_containers[0].panes.len(), 1);
+        assert_eq!(state.sessions[0].panes.len(), 1);
     }
 
     #[test]
     fn close_pane_removes_unattached_terminal_state() {
         let mut state = app_with_workspaces(&["test"]);
-        let pane_id = state.session_containers[0].test_split(Direction::Horizontal);
+        let pane_id = state.sessions[0].test_split(Direction::Horizontal);
         state.ensure_test_terminals();
         let terminal_id = state.terminal_id_for_pane(0, pane_id).unwrap();
 
@@ -2679,10 +2619,10 @@ mod tests {
     #[test]
     fn close_tab_removes_unattached_terminal_states() {
         let mut state = app_with_workspaces(&["test"]);
-        let tab_idx = state.session_containers[0].test_add_tab(Some("logs"));
+        let tab_idx = state.sessions[0].test_add_tab(Some("logs"));
         state.ensure_test_terminals();
-        state.session_containers[0].switch_tab(tab_idx);
-        let pane_id = state.session_containers[0].tabs[tab_idx].root_pane;
+        state.sessions[0].switch_tab(tab_idx);
+        let pane_id = state.sessions[0].tabs[tab_idx].root_pane;
         let terminal_id = state.terminal_id_for_pane(0, pane_id).unwrap();
 
         state.close_tab();
@@ -2694,7 +2634,7 @@ mod tests {
     fn close_session_removes_unattached_terminal_states() {
         let mut state = app_with_workspaces(&["one", "two"]);
         let terminal_id = state
-            .terminal_id_for_pane(0, state.session_containers[0].tabs[0].root_pane)
+            .terminal_id_for_pane(0, state.sessions[0].tabs[0].root_pane)
             .unwrap();
 
         state.close_session();
@@ -2706,15 +2646,15 @@ mod tests {
     fn close_tab_closes_active_workspace_not_selected_workspace() {
         let mut state = app_with_workspaces(&["selected", "active"]);
         let active_terminal_id = state
-            .terminal_id_for_pane(1, state.session_containers[1].tabs[0].root_pane)
+            .terminal_id_for_pane(1, state.sessions[1].tabs[0].root_pane)
             .unwrap();
         state.active = Some(1);
         state.selected = 0;
 
         state.close_tab();
 
-        assert_eq!(state.session_containers.len(), 1);
-        assert_eq!(state.session_containers[0].display_name(), "selected");
+        assert_eq!(state.sessions.len(), 1);
+        assert_eq!(state.sessions[0].display_name(), "selected");
         assert!(!state.terminals.contains_key(&active_terminal_id));
     }
 
@@ -2722,15 +2662,15 @@ mod tests {
     fn close_pane_last_pane_closes_active_workspace_not_selected_workspace() {
         let mut state = app_with_workspaces(&["selected", "active"]);
         let active_terminal_id = state
-            .terminal_id_for_pane(1, state.session_containers[1].tabs[0].root_pane)
+            .terminal_id_for_pane(1, state.sessions[1].tabs[0].root_pane)
             .unwrap();
         state.active = Some(1);
         state.selected = 0;
 
         state.close_pane();
 
-        assert_eq!(state.session_containers.len(), 1);
-        assert_eq!(state.session_containers[0].display_name(), "selected");
+        assert_eq!(state.sessions.len(), 1);
+        assert_eq!(state.sessions[0].display_name(), "selected");
         assert!(!state.terminals.contains_key(&active_terminal_id));
     }
 }

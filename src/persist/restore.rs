@@ -103,10 +103,10 @@ pub fn restore_handoff(
 #[cfg(unix)]
 pub fn handoff_pane_aliases(
     snapshot: &SessionSnapshot,
-    session_containers: &[SessionUiState],
+    sessions: &[SessionUiState],
 ) -> HashMap<u32, PaneId> {
     let mut aliases = HashMap::new();
-    if let Some(container) = session_containers.first() {
+    if let Some(container) = sessions.first() {
         for (tab_snap, tab) in snapshot.tabs.iter().zip(&container.tabs) {
             let old_ids = collect_snapshot_pane_ids(&tab_snap.layout);
             let new_ids = tab.layout.pane_ids();
@@ -216,7 +216,7 @@ fn restore_with_imports_and_failures(
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
 ) -> RestoreFailures<RestoredSession> {
-    let mut session_containers = Vec::new();
+    let mut sessions = Vec::new();
     let mut terminals = HashMap::new();
     let mut terminal_runtimes = HashMap::new();
     let mut failed_imports = 0;
@@ -243,13 +243,10 @@ fn restore_with_imports_and_failures(
                 terminals.insert(terminal.id.clone(), terminal);
             }
             terminal_runtimes.extend(restored_runtimes);
-            session_containers.push(container);
+            sessions.push(container);
         }
     }
-    (
-        (session_containers, terminals, terminal_runtimes),
-        failed_imports,
-    )
+    ((sessions, terminals, terminal_runtimes), failed_imports)
 }
 
 fn restore_session_container(

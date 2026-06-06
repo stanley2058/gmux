@@ -347,7 +347,7 @@ mod tests {
         let workspace = crate::workspace::Workspace::test_new("restored");
         let pane_id = workspace.tabs[0].root_pane;
         let terminal_id = workspace.terminal_id(pane_id).cloned().unwrap();
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         let terminal = app
             .state

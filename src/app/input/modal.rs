@@ -848,10 +848,7 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
         assert_eq!(state.mode, Mode::Terminal);
-        assert_eq!(
-            state.session_containers[0].tabs[0].display_name(),
-            "renamed"
-        );
+        assert_eq!(state.sessions[0].tabs[0].display_name(), "renamed");
         let snapshot = capture_snapshot(&state);
         assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("renamed"));
 
@@ -893,10 +890,10 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.active, Some(0));
-        assert_eq!(state.session_containers[0].active_tab, 1);
-        assert_eq!(state.session_containers[0].tabs[1].display_name(), "deploy");
+        assert_eq!(state.sessions[0].active_tab, 1);
+        assert_eq!(state.sessions[0].tabs[1].display_name(), "deploy");
         let snapshot = capture_snapshot(&state);
         assert_eq!(snapshot.tabs[1].custom_name.as_deref(), Some("deploy"));
     }
@@ -904,8 +901,8 @@ mod tests {
     #[test]
     fn pane_rename_collapses_legacy_workspace_target() {
         let mut state = state_with_workspaces(&["one", "two"]);
-        let target_pane = state.session_containers[1].tabs[0].root_pane;
-        let terminal_id = state.session_containers[1]
+        let target_pane = state.sessions[1].tabs[0].root_pane;
+        let terminal_id = state.sessions[1]
             .pane_state(target_pane)
             .unwrap()
             .attached_terminal_id
@@ -922,10 +919,8 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.session_containers.len(), 1);
-        assert!(state.session_containers[0]
-            .pane_state(target_pane)
-            .is_some());
+        assert_eq!(state.sessions.len(), 1);
+        assert!(state.sessions[0].pane_state(target_pane).is_some());
         assert_eq!(
             state
                 .terminals
@@ -940,8 +935,8 @@ mod tests {
     #[test]
     fn context_menu_clear_pane_name_collapses_legacy_workspace_target() {
         let mut state = state_with_workspaces(&["one", "two"]);
-        let target_pane = state.session_containers[1].tabs[0].root_pane;
-        let terminal_id = state.session_containers[1]
+        let target_pane = state.sessions[1].tabs[0].root_pane;
+        let terminal_id = state.sessions[1]
             .pane_state(target_pane)
             .unwrap()
             .attached_terminal_id
@@ -971,10 +966,8 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.session_containers.len(), 1);
-        assert!(state.session_containers[0]
-            .pane_state(target_pane)
-            .is_some());
+        assert_eq!(state.sessions.len(), 1);
+        assert!(state.sessions[0].pane_state(target_pane).is_some());
         assert!(state
             .terminals
             .get(&terminal_id)
@@ -1094,8 +1087,8 @@ mod tests {
     #[test]
     fn open_rename_active_tab_can_prefill_default_new_tab_name() {
         let mut state = state_with_workspaces(&["test"]);
-        state.session_containers[0].test_add_tab(None);
-        state.session_containers[0].switch_tab(1);
+        state.sessions[0].test_add_tab(None);
+        state.sessions[0].switch_tab(1);
 
         open_rename_active_tab(&mut state, true);
 
@@ -1118,7 +1111,7 @@ mod tests {
         assert!(!state.creating_new_tab);
         assert!(!state.request_new_tab);
         assert!(state.requested_new_tab_name.is_none());
-        assert_eq!(state.session_containers[0].tabs.len(), 1);
+        assert_eq!(state.sessions[0].tabs.len(), 1);
     }
 
     #[test]
@@ -1164,15 +1157,15 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
 
-        state.session_containers[0].test_add_tab(state.requested_new_tab_name.as_deref());
+        state.sessions[0].test_add_tab(state.requested_new_tab_name.as_deref());
         state.request_new_tab = false;
         state.requested_new_tab_name = None;
 
-        state.session_containers[0].close_tab(0);
-        state.session_containers[0].switch_tab(0);
+        state.sessions[0].close_tab(0);
+        state.sessions[0].switch_tab(0);
 
-        assert_eq!(state.session_containers[0].tabs[0].display_name(), "1");
-        assert!(state.session_containers[0].tabs[0].custom_name.is_none());
+        assert_eq!(state.sessions[0].tabs[0].display_name(), "1");
+        assert!(state.sessions[0].tabs[0].custom_name.is_none());
 
         open_new_tab_dialog(&mut state);
         assert_eq!(state.name_input, "2");
@@ -1181,8 +1174,8 @@ mod tests {
     #[test]
     fn renaming_auto_tab_to_its_default_number_keeps_it_auto_named() {
         let mut state = state_with_workspaces(&["test"]);
-        state.session_containers[0].test_add_tab(None);
-        state.session_containers[0].switch_tab(1);
+        state.sessions[0].test_add_tab(None);
+        state.sessions[0].switch_tab(1);
 
         open_rename_active_tab(&mut state, false);
         handle_rename_key(
@@ -1191,8 +1184,8 @@ mod tests {
         );
 
         assert_eq!(state.mode, Mode::Terminal);
-        assert!(state.session_containers[0].tabs[1].custom_name.is_none());
-        assert_eq!(state.session_containers[0].tabs[1].display_name(), "2");
+        assert!(state.sessions[0].tabs[1].custom_name.is_none());
+        assert_eq!(state.sessions[0].tabs[1].display_name(), "2");
     }
 
     #[test]
@@ -1206,13 +1199,13 @@ mod tests {
             KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
         );
         assert_eq!(state.mode, Mode::Navigate);
-        assert_eq!(state.session_containers.len(), 2);
+        assert_eq!(state.sessions.len(), 2);
 
         state.mode = Mode::ConfirmClose;
         handle_confirm_close_key(
             &mut state,
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
-        assert!(state.session_containers.is_empty());
+        assert!(state.sessions.is_empty());
     }
 }

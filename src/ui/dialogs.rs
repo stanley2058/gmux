@@ -244,7 +244,7 @@ mod tests {
         workspace.test_add_tab(Some("logs"));
 
         let mut app = AppState::test_new();
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.active = Some(0);
         app.selected = 99;
 

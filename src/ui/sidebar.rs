@@ -651,7 +651,7 @@ mod tests {
         let mut second = Workspace::test_new("two");
         second.test_add_tab(Some("logs"));
 
-        app.session_containers = vec![first, second];
+        app.sessions = vec![first, second];
         app.ensure_test_terminals();
         app.active = Some(0);
         app.selected = 0;
@@ -691,9 +691,9 @@ mod tests {
         workspace.identity_cwd = stale_cwd.clone();
         let pane = workspace.tabs[0].root_pane;
 
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.ensure_test_terminals();
-        let terminal_id = app.session_containers[0].tabs[0].panes[&pane]
+        let terminal_id = app.sessions[0].tabs[0].panes[&pane]
             .attached_terminal_id
             .clone();
         let terminal = app.terminals.get_mut(&terminal_id).unwrap();

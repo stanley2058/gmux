@@ -454,7 +454,7 @@ mod tests {
         ws.tabs[0].set_custom_name("main".into());
         let first_tab = ws.test_add_tab(Some("logs"));
         let second_pane = ws.tabs[first_tab].root_pane;
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -468,11 +468,8 @@ mod tests {
             body.y + 3,
         ));
 
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
-        assert_eq!(
-            app.state.session_containers[0].tabs[1].layout.focused(),
-            second_pane
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].tabs[1].layout.focused(), second_pane);
         assert_eq!(app.state.mode, Mode::Terminal);
         let snapshot = capture_snapshot(&app.state);
         assert_eq!(snapshot.active_tab, first_tab);
@@ -482,7 +479,7 @@ mod tests {
     #[test]
     fn clicking_pane_panel_toggle_switches_scope() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -508,7 +505,7 @@ mod tests {
         let second = Workspace::test_new("two");
         let second_pane = second.tabs[0].root_pane;
 
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -522,14 +519,11 @@ mod tests {
             detail_area.y + 6,
         ));
 
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
-        assert_eq!(
-            app.state.session_containers[0].tabs[1].layout.focused(),
-            second_pane
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].tabs[1].layout.focused(), second_pane);
     }
 
     #[test]
@@ -544,10 +538,10 @@ mod tests {
             tabs.push((tab_idx, pane_id));
         }
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.ensure_test_terminals();
         for (tab_idx, pane_id) in tabs {
-            let terminal_id = app.state.session_containers[0].tabs[tab_idx].panes[&pane_id]
+            let terminal_id = app.state.sessions[0].tabs[tab_idx].panes[&pane_id]
                 .attached_terminal_id
                 .clone();
             assert!(app.state.terminals.contains_key(&terminal_id));
@@ -584,10 +578,10 @@ mod tests {
             extra_tabs.push((tab_idx, pane_id));
         }
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.ensure_test_terminals();
         for (tab_idx, pane_id) in extra_tabs {
-            let terminal_id = app.state.session_containers[0].tabs[tab_idx].panes[&pane_id]
+            let terminal_id = app.state.sessions[0].tabs[tab_idx].panes[&pane_id]
                 .attached_terminal_id
                 .clone();
             assert!(app.state.terminals.contains_key(&terminal_id));
@@ -605,11 +599,9 @@ mod tests {
             body.y,
         ));
 
-        assert_eq!(app.state.session_containers[0].active_tab, second_tab);
+        assert_eq!(app.state.sessions[0].active_tab, second_tab);
         assert_eq!(
-            app.state.session_containers[0].tabs[second_tab]
-                .layout
-                .focused(),
+            app.state.sessions[0].tabs[second_tab].layout.focused(),
             second_pane
         );
         assert_eq!(app.state.mode, Mode::Terminal);
@@ -621,7 +613,7 @@ mod tests {
         let mut ws = Workspace::test_new("test");
         let second_tab = ws.test_add_tab(Some("logs"));
         let second_pane = ws.tabs[second_tab].root_pane;
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -638,11 +630,8 @@ mod tests {
             detail_area.y + 1,
         ));
 
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
-        assert_eq!(
-            app.state.session_containers[0].tabs[1].layout.focused(),
-            second_pane
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].tabs[1].layout.focused(), second_pane);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -653,7 +642,7 @@ mod tests {
         let second_tab = first.test_add_tab(Some("logs"));
         let target_pane = first.tabs[second_tab].root_pane;
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 1;
@@ -670,14 +659,11 @@ mod tests {
             detail_area.y + 1,
         ));
 
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
-        assert_eq!(
-            app.state.session_containers[0].tabs[1].layout.focused(),
-            target_pane
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].tabs[1].layout.focused(), target_pane);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -719,7 +705,7 @@ mod tests {
     #[test]
     fn expanded_sidebar_has_no_workspace_rows() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("a"), Workspace::test_new("b")];
+        app.state.sessions = vec![Workspace::test_new("a"), Workspace::test_new("b")];
         app.state.active = Some(0);
         app.state.selected = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -731,7 +717,7 @@ mod tests {
     #[test]
     fn wheel_over_sidebar_outside_pane_panel_does_not_select_sessions() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![
+        app.state.sessions = vec![
             Workspace::test_new("main"),
             Workspace::test_new("normal"),
             Workspace::test_new("issue"),
@@ -750,7 +736,7 @@ mod tests {
     #[test]
     fn dragging_expanded_sidebar_body_does_not_reorder_sessions() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![
+        app.state.sessions = vec![
             Workspace::test_new("a"),
             Workspace::test_new("b"),
             Workspace::test_new("c"),
@@ -777,7 +763,7 @@ mod tests {
 
         let names: Vec<_> = app
             .state
-            .session_containers
+            .sessions
             .iter()
             .map(|ws| ws.display_name())
             .collect();
@@ -794,7 +780,7 @@ mod tests {
         ws.test_add_tab(Some("review"));
         ws.test_add_tab(Some("ops"));
         ws.test_add_tab(Some("notes"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 65, 20));
@@ -810,15 +796,11 @@ mod tests {
 
         assert_eq!(app.state.tab_scroll, 1);
         assert!(!app.state.tab_scroll_follow_active);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
         assert_eq!(app.state.view.tab_hit_areas[0].width, 0);
-        assert!(app.state.session_containers[0].tabs[0]
-            .custom_name
-            .is_none());
+        assert!(app.state.sessions[0].tabs[0].custom_name.is_none());
         assert_eq!(
-            app.state.session_containers[0].tabs[1]
-                .custom_name
-                .as_deref(),
+            app.state.sessions[0].tabs[1].custom_name.as_deref(),
             Some("logs")
         );
     }
@@ -832,14 +814,14 @@ mod tests {
         ] {
             ws.test_add_tab(Some(name));
         }
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.tab_scroll = usize::MAX;
         app.state.tab_scroll_follow_active = false;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 65, 20));
 
-        let last_idx = app.state.session_containers[0].tabs.len() - 1;
+        let last_idx = app.state.sessions[0].tabs.len() - 1;
         let target = app.state.view.tab_hit_areas[last_idx];
         let clamped_scroll = app.state.tab_scroll;
         assert!(target.width > 0, "last tab should already be visible");
@@ -855,7 +837,7 @@ mod tests {
             target.y,
         ));
 
-        assert_eq!(app.state.session_containers[0].active_tab, last_idx);
+        assert_eq!(app.state.sessions[0].active_tab, last_idx);
         assert_eq!(app.state.tab_scroll, clamped_scroll);
         assert!(app.state.view.tab_hit_areas[last_idx].width > 0);
     }
@@ -867,7 +849,7 @@ mod tests {
         ws.test_add_tab(Some("foo"));
         ws.test_add_tab(None);
         let moved_root = ws.tabs[0].root_pane;
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -900,29 +882,20 @@ mod tests {
             source.y,
         ));
 
-        let labels: Vec<_> = app.state.session_containers[0]
+        let labels: Vec<_> = app.state.sessions[0]
             .tabs
             .iter()
             .map(|tab| tab.display_name())
             .collect();
         assert_eq!(labels, vec!["foo", "2", "3"]);
         assert_eq!(
-            app.state.session_containers[0].tabs[0]
-                .custom_name
-                .as_deref(),
+            app.state.sessions[0].tabs[0].custom_name.as_deref(),
             Some("foo")
         );
-        assert!(app.state.session_containers[0].tabs[1]
-            .custom_name
-            .is_none());
-        assert!(app.state.session_containers[0].tabs[2]
-            .custom_name
-            .is_none());
-        assert_eq!(
-            app.state.session_containers[0].tabs[2].root_pane,
-            moved_root
-        );
-        assert_eq!(app.state.session_containers[0].active_tab, 2);
+        assert!(app.state.sessions[0].tabs[1].custom_name.is_none());
+        assert!(app.state.sessions[0].tabs[2].custom_name.is_none());
+        assert_eq!(app.state.sessions[0].tabs[2].root_pane, moved_root);
+        assert_eq!(app.state.sessions[0].active_tab, 2);
     }
 
     #[test]

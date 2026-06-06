@@ -520,7 +520,7 @@ mod tests {
             root_pane,
             TerminalRuntime::test_with_scrollback_bytes(40, 8, 1024, b"ready\n"),
         );
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.active = Some(0);
 
         let area = Rect::new(10, 3, 40, 8);
@@ -549,7 +549,7 @@ mod tests {
             root_pane,
             TerminalRuntime::test_with_scrollback_bytes(40, 8, 1024, b"ready\n"),
         );
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.active = Some(0);
 
         let area = Rect::new(10, 3, 40, 8);
@@ -578,7 +578,7 @@ mod tests {
             focused_pane,
             TerminalRuntime::test_with_scrollback_bytes(40, 8, 1024, b"ready\n"),
         );
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.active = Some(0);
 
         let area = Rect::new(10, 3, 40, 8);
@@ -607,7 +607,7 @@ mod tests {
             root_pane,
             TerminalRuntime::test_with_scrollback_bytes(4, 8, 1024, b"ready\n"),
         );
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.active = Some(0);
 
         let area = Rect::new(10, 3, 4, 8);
@@ -640,7 +640,7 @@ mod tests {
                 b"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n",
             ),
         );
-        app.session_containers = vec![workspace];
+        app.sessions = vec![workspace];
         app.active = Some(0);
 
         let area = Rect::new(10, 3, 40, 8);

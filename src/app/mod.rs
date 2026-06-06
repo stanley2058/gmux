@@ -235,7 +235,7 @@ impl App {
         // Try to restore previous session
         let mut restored_terminals = std::collections::HashMap::new();
         let mut restored_terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let (session_containers, active, selected) = if no_session {
+        let (sessions, active, selected) = if no_session {
             (Vec::new(), None, 0)
         } else if let Some(snap) = crate::persist::load() {
             let history = config
@@ -319,7 +319,7 @@ impl App {
             terminals: std::collections::HashMap::new(),
             direct_attach_resize_locks: std::collections::HashSet::new(),
             pane_id_aliases: std::collections::HashMap::new(),
-            session_containers,
+            sessions,
             active,
             previous_pane_focus: None,
             selected,
@@ -501,7 +501,7 @@ impl App {
         >,
     ) -> io::Result<Self> {
         let mut app = Self::new(config, true, config_diagnostic, api_rx, event_hub);
-        let (session_containers, terminals, runtimes) = crate::persist::restore_handoff(
+        let (sessions, terminals, runtimes) = crate::persist::restore_handoff(
             snapshot,
             config.advanced.scrollback_limit_bytes,
             &config.terminal.default_shell,
@@ -511,12 +511,12 @@ impl App {
             app.render_notify.clone(),
             app.render_dirty.clone(),
         )?;
-        let pane_id_aliases = crate::persist::handoff_pane_aliases(snapshot, &session_containers);
+        let pane_id_aliases = crate::persist::handoff_pane_aliases(snapshot, &sessions);
 
         app.no_session = false;
         app.state.detach_exits = false;
         app.state.pane_id_aliases = pane_id_aliases;
-        *app.state.sessions_mut() = session_containers;
+        *app.state.sessions_mut() = sessions;
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
         app.state.selected = 0;
@@ -1340,7 +1340,7 @@ mod tests {
     #[test]
     fn create_session_container_with_existing_container_collapses_instead_of_appending() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("one"), Workspace::test_new("two")];
+        app.state.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];
         app.state.active = None;
         app.state.selected = 1;
 
@@ -1349,10 +1349,10 @@ mod tests {
             .expect("existing session should be reused");
 
         assert_eq!(idx, 0);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].tabs.len(), 2);
+        assert_eq!(app.state.sessions[0].tabs.len(), 2);
     }
 
     #[tokio::test]
@@ -1362,7 +1362,7 @@ mod tests {
         // event that exits prefix (here Esc) still restores the host source.
         let mut app = test_app();
         app.state.switch_ascii_input_source_in_prefix = true;
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2089,7 +2089,7 @@ mod tests {
     #[tokio::test]
     async fn terminal_mode_handles_repeat_key_events() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2114,19 +2114,19 @@ mod tests {
         let background_tab = workspace.test_add_tab(Some("background"));
         let background_pane = workspace.tabs[background_tab].root_pane;
 
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
-        app.state.session_containers[0].tabs[0]
+        app.state.sessions[0].tabs[0]
             .panes
             .get_mut(&root_pane)
             .unwrap()
             .seen = false;
-        app.state.session_containers[0].tabs[0]
+        app.state.sessions[0].tabs[0]
             .panes
             .get_mut(&split_pane)
             .unwrap()
             .seen = false;
-        app.state.session_containers[0].tabs[background_tab]
+        app.state.sessions[0].tabs[background_tab]
             .panes
             .get_mut(&background_pane)
             .unwrap()
@@ -2143,9 +2143,9 @@ mod tests {
 
         assert!(handled);
         assert_eq!(app.state.outer_terminal_focus, Some(true));
-        assert!(app.state.session_containers[0].tabs[0].panes[&root_pane].seen);
-        assert!(app.state.session_containers[0].tabs[0].panes[&split_pane].seen);
-        assert!(!app.state.session_containers[0].tabs[background_tab].panes[&background_pane].seen);
+        assert!(app.state.sessions[0].tabs[0].panes[&root_pane].seen);
+        assert!(app.state.sessions[0].tabs[0].panes[&split_pane].seen);
+        assert!(!app.state.sessions[0].tabs[background_tab].panes[&background_pane].seen);
     }
 
     #[tokio::test]
@@ -2184,7 +2184,7 @@ mod tests {
     #[tokio::test]
     async fn modal_press_does_not_leak_repeat_into_terminal_mode() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::ReleaseNotes;
@@ -2257,7 +2257,7 @@ mod tests {
         let mut app = test_app();
         let mut workspace = Workspace::test_new("api-tab-root-pane");
         workspace.test_add_tab(None);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2277,7 +2277,7 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2293,10 +2293,10 @@ mod tests {
 
         assert_eq!(response["result"]["type"], "tab_info");
         assert_eq!(response["result"]["tab"]["tab_id"], target_tab_id);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
     }
 
     #[test]
@@ -2304,7 +2304,7 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2320,10 +2320,10 @@ mod tests {
 
         assert_eq!(response["result"]["type"], "tab_info");
         assert_eq!(response["result"]["tab"]["tab_id"], target_tab_id);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 
     #[test]
@@ -2331,7 +2331,7 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(1);
         app.state.selected = 1;
@@ -2346,10 +2346,10 @@ mod tests {
 
         assert_eq!(response["result"]["type"], "tab_list");
         assert_eq!(response["result"]["tabs"].as_array().unwrap().len(), 2);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
     }
 
     #[test]
@@ -2357,7 +2357,7 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2372,9 +2372,9 @@ mod tests {
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
         assert_eq!(response["result"]["type"], "ok");
-        assert_eq!(app.state.session_containers.len(), 1);
-        assert_eq!(app.state.session_containers[0].tabs.len(), 1);
-        assert_eq!(app.state.session_containers[0].display_name(), "one");
+        assert_eq!(app.state.sessions.len(), 1);
+        assert_eq!(app.state.sessions[0].tabs.len(), 1);
+        assert_eq!(app.state.sessions[0].display_name(), "one");
     }
 
     #[test]
@@ -2382,7 +2382,7 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2400,14 +2400,11 @@ mod tests {
         assert_eq!(response["result"]["type"], "tab_info");
         assert_eq!(response["result"]["tab"]["tab_id"], target_tab_id);
         assert_eq!(response["result"]["tab"]["label"], "worker");
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
-        assert_eq!(
-            app.state.session_containers[0].tabs[1].display_name(),
-            "worker"
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].tabs[1].display_name(), "worker");
     }
 
     #[test]
@@ -2463,7 +2460,7 @@ mod tests {
         let mut app = test_app();
         let workspace = Workspace::test_new("api-pane-rename");
         let pane = workspace.tabs[0].root_pane;
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2480,7 +2477,7 @@ mod tests {
 
         assert_eq!(response["result"]["type"], "pane_info");
         assert_eq!(response["result"]["pane"]["label"], "reviewer");
-        let terminal_id = app.state.session_containers[0]
+        let terminal_id = app.state.sessions[0]
             .pane_state(pane)
             .unwrap()
             .attached_terminal_id
@@ -2521,7 +2518,7 @@ mod tests {
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
         let target_pane = second.tabs[0].root_pane;
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2541,10 +2538,10 @@ mod tests {
         assert_eq!(response["result"]["pane"]["pane_id"], target_pane_id);
         assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
         assert_eq!(response["result"]["pane"]["label"], "reviewer");
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 
     #[test]
@@ -2553,7 +2550,7 @@ mod tests {
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
         let target_pane = second.tabs[0].root_pane;
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2571,10 +2568,10 @@ mod tests {
         assert_eq!(response["result"]["type"], "pane_info");
         assert_eq!(response["result"]["pane"]["pane_id"], target_pane_id);
         assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 
     #[test]
@@ -2582,7 +2579,7 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(1);
         app.state.selected = 1;
@@ -2597,10 +2594,10 @@ mod tests {
 
         assert_eq!(response["result"]["type"], "pane_list");
         assert_eq!(response["result"]["panes"].as_array().unwrap().len(), 2);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
     }
 
     #[tokio::test]
@@ -2611,7 +2608,7 @@ mod tests {
         let target_pane = second.tabs[0].root_pane;
         let (runtime, mut rx) = TerminalRuntime::test_with_channel(80, 24);
         second.tabs[0].runtimes.insert(target_pane, runtime);
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2633,10 +2630,10 @@ mod tests {
             rx.recv().await.unwrap(),
             bytes::Bytes::from("echo via collapsed session")
         );
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 
     #[tokio::test]
@@ -2654,10 +2651,10 @@ mod tests {
         let background_previous_focus =
             workspace.test_split(ratatui::layout::Direction::Horizontal);
         workspace.switch_tab(0);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         let split_cwd = std::env::temp_dir();
-        let target_terminal_id = app.state.session_containers[0]
+        let target_terminal_id = app.state.sessions[0]
             .pane_state(target_pane)
             .unwrap()
             .attached_terminal_id
@@ -2697,33 +2694,23 @@ mod tests {
         );
         assert_eq!(response["result"]["pane"]["focused"], false);
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].tabs[0].layout.focused(), active_pane);
+        assert_eq!(app.state.sessions[0].tabs[0].layout.pane_count(), 1);
         assert_eq!(
-            app.state.session_containers[0].tabs[0].layout.focused(),
-            active_pane
-        );
-        assert_eq!(
-            app.state.session_containers[0].tabs[0].layout.pane_count(),
-            1
-        );
-        assert_eq!(
-            app.state.session_containers[0].tabs[background_tab]
-                .layout
-                .focused(),
+            app.state.sessions[0].tabs[background_tab].layout.focused(),
             background_previous_focus
         );
         assert_eq!(
-            app.state.session_containers[0].tabs[background_tab]
+            app.state.sessions[0].tabs[background_tab]
                 .layout
                 .pane_count(),
             3
         );
         app.state.last_pane();
-        assert_eq!(app.state.session_containers[0].active_tab, background_tab);
+        assert_eq!(app.state.sessions[0].active_tab, background_tab);
         assert_eq!(
-            app.state.session_containers[0].tabs[background_tab]
-                .layout
-                .focused(),
+            app.state.sessions[0].tabs[background_tab].layout.focused(),
             background_previous_focus
         );
 
@@ -2747,7 +2734,7 @@ mod tests {
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
         let target_pane = second.tabs[0].root_pane;
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -2770,15 +2757,12 @@ mod tests {
         assert_eq!(response["result"]["type"], "pane_info");
         assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
         assert_eq!(response["result"]["pane"]["focused"], false);
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
-        assert_eq!(app.state.session_containers[0].tabs.len(), 2);
-        assert_eq!(
-            app.state.session_containers[0].tabs[1].layout.pane_count(),
-            2
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].tabs.len(), 2);
+        assert_eq!(app.state.sessions[0].tabs[1].layout.pane_count(), 2);
 
         let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
         for (_terminal_id, runtime) in runtimes {
@@ -2800,12 +2784,12 @@ mod tests {
         let mut workspace = Workspace::test_new("api-pane-split-focus-background-tab");
         let background_tab = workspace.test_add_tab(Some("worker"));
         workspace.switch_tab(0);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
 
-        let target_pane = app.state.session_containers[0].tabs[background_tab].root_pane;
+        let target_pane = app.state.sessions[0].tabs[background_tab].root_pane;
         let target_pane_id = app.pane_info(0, target_pane).unwrap().pane_id;
         let target_tab_id = app.public_tab_id(0, background_tab).unwrap();
 
@@ -2824,7 +2808,7 @@ mod tests {
         assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
         assert_eq!(response["result"]["pane"]["focused"], true);
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.session_containers[0].active_tab, background_tab);
+        assert_eq!(app.state.sessions[0].active_tab, background_tab);
 
         let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
         for (_terminal_id, runtime) in runtimes {
@@ -2842,12 +2826,12 @@ mod tests {
         let mut workspace = Workspace::test_new("api-pane-close");
         let second_tab = workspace.test_add_tab(Some("logs"));
         workspace.switch_tab(second_tab);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
 
-        let target_pane = app.state.session_containers[0].tabs[second_tab].root_pane;
+        let target_pane = app.state.sessions[0].tabs[second_tab].root_pane;
         let target_pane_id = app.pane_info(0, target_pane).unwrap().pane_id;
 
         let response = app.handle_api_request(crate::api::schema::Request {
@@ -2859,24 +2843,21 @@ mod tests {
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
         assert_eq!(response["result"]["type"], "ok");
-        assert_eq!(app.state.session_containers.len(), 1);
-        assert_eq!(app.state.session_containers[0].tabs.len(), 1);
-        assert_eq!(
-            app.state.session_containers[0].display_name(),
-            "api-pane-close"
-        );
+        assert_eq!(app.state.sessions.len(), 1);
+        assert_eq!(app.state.sessions[0].tabs.len(), 1);
+        assert_eq!(app.state.sessions[0].display_name(), "api-pane-close");
     }
 
     #[test]
     fn pane_close_request_closes_workspace_when_it_removes_the_last_pane() {
         let mut app = test_app();
         let workspace = Workspace::test_new("api-pane-close-last");
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
 
-        let target_pane = app.state.session_containers[0].tabs[0].root_pane;
+        let target_pane = app.state.sessions[0].tabs[0].root_pane;
         let target_pane_id = app.pane_info(0, target_pane).unwrap().pane_id;
 
         let response = app.handle_api_request(crate::api::schema::Request {
@@ -2888,7 +2869,7 @@ mod tests {
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
         assert_eq!(response["result"]["type"], "ok");
-        assert!(app.state.session_containers.is_empty());
+        assert!(app.state.sessions.is_empty());
     }
 
     #[test]
@@ -2896,12 +2877,12 @@ mod tests {
         let mut app = test_app();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
 
-        let target_pane = app.state.session_containers[1].tabs[0].root_pane;
+        let target_pane = app.state.sessions[1].tabs[0].root_pane;
         let target_pane_id = app.pane_info(1, target_pane).unwrap().pane_id;
 
         let response = app.handle_api_request(crate::api::schema::Request {
@@ -2913,9 +2894,9 @@ mod tests {
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
 
         assert_eq!(response["result"]["type"], "ok");
-        assert_eq!(app.state.session_containers.len(), 1);
-        assert_eq!(app.state.session_containers[0].tabs.len(), 1);
-        assert_eq!(app.state.session_containers[0].display_name(), "one");
+        assert_eq!(app.state.sessions.len(), 1);
+        assert_eq!(app.state.sessions[0].tabs.len(), 1);
+        assert_eq!(app.state.sessions[0].display_name(), "one");
     }
 
     #[test]
@@ -2968,7 +2949,7 @@ mod tests {
         app.next_animation_tick = None;
         app.next_auto_update_check = None;
         app.session_save_deadline = None;
-        app.state.session_containers.clear();
+        app.state.sessions.clear();
 
         assert_eq!(app.next_headless_loop_deadline(now, false), None);
     }
@@ -3013,7 +2994,7 @@ mod tests {
         let now = Instant::now();
         let ws = Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
-        app.state.session_containers.push(ws);
+        app.state.sessions.push(ws);
         app.state.active = Some(0);
         app.state.selection = Some(crate::selection::Selection::anchor(pane_id, 0, 0, None));
         // Set autoscroll with a stale inner_rect that doesn't match pane_infos
@@ -3077,7 +3058,7 @@ mod tests {
     #[test]
     fn route_client_input_dispatches_navigate_mode_keybinds() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
 
@@ -3100,7 +3081,7 @@ mod tests {
     #[test]
     fn route_client_input_q_detaches_in_persistence_mode() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.detach_exits = false;
@@ -3126,7 +3107,7 @@ mod tests {
     #[test]
     fn route_client_input_prefix_then_d_detaches_in_persistence_mode() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.detach_exits = false;
@@ -3178,33 +3159,30 @@ last_pane = "prefix+tab"
         let first_second_root = first.tabs[first_second_tab].root_pane;
         let second = Workspace::test_new("two");
         let second_root = second.tabs[0].root_pane;
-        app.state.session_containers = vec![first, second];
+        app.state.sessions = vec![first, second];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.keybinds = config.keybinds();
         app.state.mode = Mode::Terminal;
-        app.state.session_containers[0].switch_tab(first_second_tab);
+        app.state.sessions[0].switch_tab(first_second_tab);
         app.state.focus_session_tab(1, 0);
 
         app.route_client_input(vec![0x02, b'\t']);
 
         assert_eq!(app.state.mode, Mode::Terminal);
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.session_containers[0].active_tab, first_second_tab);
+        assert_eq!(app.state.sessions[0].active_tab, first_second_tab);
         assert_eq!(
-            app.state.session_containers[0].focused_pane_id(),
+            app.state.sessions[0].focused_pane_id(),
             Some(first_second_root)
         );
 
         app.route_client_input(vec![0x02, b'\t']);
 
-        assert_eq!(app.state.session_containers.len(), 1);
+        assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.session_containers[0].active_tab, 2);
-        assert_eq!(
-            app.state.session_containers[0].focused_pane_id(),
-            Some(second_root)
-        );
+        assert_eq!(app.state.sessions[0].active_tab, 2);
+        assert_eq!(app.state.sessions[0].focused_pane_id(), Some(second_root));
     }
 
     #[tokio::test]
@@ -3214,7 +3192,7 @@ last_pane = "prefix+tab"
         let focused = workspace.focused_pane_id().unwrap();
         let (runtime, mut rx) = TerminalRuntime::test_with_channel(80, 24);
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -3236,7 +3214,7 @@ last_pane = "prefix+tab"
         let focused = workspace.focused_pane_id().unwrap();
         let (runtime, mut rx) = TerminalRuntime::test_with_channel(80, 24);
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -3256,7 +3234,7 @@ last_pane = "prefix+tab"
         let (runtime, mut rx) =
             TerminalRuntime::test_with_channel_and_scrollback_bytes(80, 24, 0, b"\x1b[>4;1m", 4);
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -3276,7 +3254,7 @@ last_pane = "prefix+tab"
         let focused = workspace.focused_pane_id().unwrap();
         let (runtime, mut rx) = TerminalRuntime::test_with_channel(80, 24);
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -3297,7 +3275,7 @@ last_pane = "prefix+tab"
         let (runtime, mut rx) =
             TerminalRuntime::test_with_channel_capacity(80, 24, text.chars().count());
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -3322,7 +3300,7 @@ last_pane = "prefix+tab"
         let char_count = text.chars().count();
         let (runtime, mut rx) = TerminalRuntime::test_with_channel_capacity(80, 24, char_count);
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -3341,7 +3319,7 @@ last_pane = "prefix+tab"
     #[test]
     fn route_client_input_handles_mouse_events() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
 
@@ -3366,7 +3344,7 @@ last_pane = "prefix+tab"
     #[test]
     fn route_client_input_closes_release_notes_modal() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::ReleaseNotes;
@@ -3381,7 +3359,7 @@ last_pane = "prefix+tab"
     #[test]
     fn route_client_input_closes_settings_modal() {
         let mut app = test_app();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Settings;
@@ -3416,7 +3394,7 @@ last_pane = "prefix+tab"
         let focused = workspace.focused_pane_id().unwrap();
         let (runtime, mut rx) = TerminalRuntime::test_with_channel_capacity(80, 24, 1);
         workspace.tabs[0].runtimes.insert(focused, runtime);
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;

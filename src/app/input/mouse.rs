@@ -1376,7 +1376,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1414,7 +1414,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1471,7 +1471,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1508,7 +1508,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1548,7 +1548,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1585,7 +1585,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
@@ -1618,7 +1618,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1657,7 +1657,7 @@ mod tests {
             );
         ws.insert_test_runtime(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1683,7 +1683,7 @@ mod tests {
         let mut ws = Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
         let other_pane = ws.test_split(Direction::Vertical);
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1761,7 +1761,7 @@ mod tests {
         background.test_split(Direction::Horizontal);
         background.tabs[0].layout.focus_pane(first_pane);
 
-        app.state.session_containers = vec![active, background];
+        app.state.sessions = vec![active, background];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -1777,10 +1777,7 @@ mod tests {
         ));
 
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(
-            app.state.session_containers[1].focused_pane_id(),
-            Some(first_pane)
-        );
+        assert_eq!(app.state.sessions[1].focused_pane_id(), Some(first_pane));
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -1792,7 +1789,7 @@ mod tests {
         let target_pane = background.tabs[0].root_pane;
         let session_id = background.id.clone();
 
-        app.state.session_containers = vec![active, background];
+        app.state.sessions = vec![active, background];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.toast = Some(crate::app::state::ToastNotification {
@@ -1821,7 +1818,7 @@ mod tests {
     #[test]
     fn clicking_confirm_close_accepts_workspace_close() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("a"), Workspace::test_new("b")];
+        app.state.sessions = vec![Workspace::test_new("a"), Workspace::test_new("b")];
         app.state.active = Some(0);
         app.state.selected = 1;
         app.state.mode = Mode::ConfirmClose;
@@ -1841,7 +1838,7 @@ mod tests {
             confirm.y,
         ));
 
-        assert!(app.state.session_containers.is_empty());
+        assert!(app.state.sessions.is_empty());
         assert_eq!(app.state.mode, Mode::Navigate);
     }
 
@@ -1861,12 +1858,12 @@ mod tests {
             app.render_dirty.clone(),
         )
         .expect("workspace should spawn");
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.terminal_runtimes.insert(terminal.id.clone(), runtime);
         app.state.terminals.insert(terminal.id.clone(), terminal);
         app.state.active = Some(0);
         app.state.selected = 0;
-        let pane_id = app.state.session_containers[0].tabs[0].root_pane;
+        let pane_id = app.state.sessions[0].tabs[0].root_pane;
         let runtime_count = app.terminal_runtimes.len();
         app.state.context_menu = Some(ContextMenuState {
             kind: ContextMenuKind::Pane {
@@ -1886,10 +1883,7 @@ mod tests {
         );
 
         assert_eq!(app.state.mode, Mode::Terminal);
-        assert_eq!(
-            app.state.session_containers[0].tabs[0].layout.pane_count(),
-            2
-        );
+        assert_eq!(app.state.sessions[0].tabs[0].layout.pane_count(), 2);
         assert_eq!(app.terminal_runtimes.len(), runtime_count + 1);
 
         let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
@@ -1901,10 +1895,10 @@ mod tests {
     #[test]
     fn dragging_pane_split_updates_captured_layout_ratio() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
-        app.state.session_containers[0].test_split(Direction::Horizontal);
+        app.state.sessions[0].test_split(Direction::Horizontal);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let border = app.state.view.split_borders[0].clone();
         let before = capture_snapshot(&app.state);
@@ -1928,10 +1922,10 @@ mod tests {
     #[test]
     fn pane_split_hitbox_does_not_overlap_right_pane_content() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
-        app.state.session_containers[0].test_split(Direction::Horizontal);
+        app.state.sessions[0].test_split(Direction::Horizontal);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let border = app.state.view.split_borders[0].clone();
         let row = border.area.y.saturating_add(1);
@@ -1950,10 +1944,10 @@ mod tests {
     #[test]
     fn pane_split_hitbox_does_not_overlap_bottom_pane_content() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
-        app.state.session_containers[0].test_split(Direction::Vertical);
+        app.state.sessions[0].test_split(Direction::Vertical);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let border = app.state.view.split_borders[0].clone();
         let col = border.area.x.saturating_add(1);
@@ -1974,7 +1968,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         let second_pane = ws.test_split(Direction::Horizontal);
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -2008,7 +2002,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");
         let second_pane = ws.test_split(Direction::Vertical);
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -2044,7 +2038,7 @@ mod tests {
         let first_pane = ws.tabs[0].root_pane;
         let second_pane = ws.test_split(Direction::Vertical);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
 
@@ -2113,7 +2107,7 @@ mod tests {
         let first_pane = ws.tabs[0].root_pane;
         let second_pane = ws.test_split(Direction::Horizontal);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
 
@@ -2197,7 +2191,7 @@ mod tests {
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("two"));
         ws.test_add_tab(Some("three"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2206,20 +2200,20 @@ mod tests {
         let tab_bar = app.state.view.tab_bar_rect;
 
         app.handle_mouse(mouse(MouseEventKind::ScrollDown, tab_bar.x + 1, tab_bar.y));
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
 
         app.handle_mouse(mouse(MouseEventKind::ScrollUp, tab_bar.x + 1, tab_bar.y));
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
 
         app.handle_mouse(mouse(MouseEventKind::ScrollUp, tab_bar.x + 1, tab_bar.y));
-        assert_eq!(app.state.session_containers[0].active_tab, 2);
+        assert_eq!(app.state.sessions[0].active_tab, 2);
 
         app.handle_mouse(mouse(
             MouseEventKind::ScrollDown,
             tab_bar.x + tab_bar.width.saturating_sub(1),
             tab_bar.y,
         ));
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 
     #[test]
@@ -2229,7 +2223,7 @@ mod tests {
         ws.tabs[0].set_custom_name("very-long-one".into());
         ws.test_add_tab(Some("very-long-two"));
         ws.test_add_tab(Some("very-long-three"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2243,14 +2237,14 @@ mod tests {
             tab_bar.x + tab_bar.width.saturating_sub(2),
             tab_bar.y,
         ));
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
 
         app.handle_mouse(mouse(
             MouseEventKind::ScrollDown,
             tab_bar.x + tab_bar.width.saturating_sub(2),
             tab_bar.y,
         ));
-        assert_eq!(app.state.session_containers[0].active_tab, 2);
+        assert_eq!(app.state.sessions[0].active_tab, 2);
     }
 
     #[test]
@@ -2258,7 +2252,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("two"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2272,7 +2266,7 @@ mod tests {
             terminal.y + 1,
         ));
 
-        assert_eq!(app.state.session_containers[0].active_tab, 0);
+        assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 
     #[test]
@@ -2280,7 +2274,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("two"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2305,14 +2299,14 @@ mod tests {
         ));
 
         assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
     #[test]
     fn mobile_switcher_flattens_legacy_workspaces_into_session_tabs() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("one"), Workspace::test_new("two")];
+        app.state.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2335,12 +2329,10 @@ mod tests {
 
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.session_containers.len(), 1);
-        assert_eq!(app.state.session_containers[0].active_tab, 1);
+        assert_eq!(app.state.sessions.len(), 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
         assert_eq!(
-            app.state.session_containers[0].tabs[1]
-                .custom_name
-                .as_deref(),
+            app.state.sessions[0].tabs[1].custom_name.as_deref(),
             Some("two")
         );
         assert_eq!(app.state.mode, Mode::Terminal);
@@ -2353,7 +2345,7 @@ mod tests {
         ws.test_add_tab(Some("two"));
         ws.test_add_tab(Some("three"));
         ws.test_add_tab(Some("four"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2384,7 +2376,7 @@ mod tests {
             viewport.x + 2,
             viewport.y + 2,
         ));
-        assert_eq!(app.state.session_containers[0].active_tab, 2);
+        assert_eq!(app.state.sessions[0].active_tab, 2);
     }
 
     #[test]
@@ -2392,7 +2384,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("logs"));
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2418,7 +2410,7 @@ mod tests {
     #[test]
     fn mobile_switcher_swallows_non_left_mouse_events() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("one")];
+        app.state.sessions = vec![Workspace::test_new("one")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2446,7 +2438,7 @@ mod tests {
     #[test]
     fn mobile_switch_button_does_not_bypass_rename_modal() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("one")];
+        app.state.sessions = vec![Workspace::test_new("one")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::RenameTab;
@@ -2469,7 +2461,7 @@ mod tests {
     #[test]
     fn mobile_switcher_close_returns_to_terminal() {
         let mut app = app_for_mouse_test();
-        app.state.session_containers = vec![Workspace::test_new("one")];
+        app.state.sessions = vec![Workspace::test_new("one")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;

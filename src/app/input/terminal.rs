@@ -218,7 +218,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -278,7 +278,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -344,7 +344,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -469,7 +469,7 @@ mod tests {
     async fn pane_cell_url_resolver_finds_visible_url() {
         let line = "see https://example.com/pr/307.";
         let (app, info) = app_with_screen_bytes(line.as_bytes());
-        let pane_id = app.state.session_containers[0].tabs[0].root_pane;
+        let pane_id = app.state.sessions[0].tabs[0].root_pane;
         let col = line.find("example").expect("url host") as u16;
 
         assert_eq!(
@@ -494,7 +494,7 @@ mod tests {
         let (app, _info) = app_with_screen_bytes(
             b"\x1b]8;;https://example.com/hidden-target\x1b\\label\x1b]8;;\x1b\\",
         );
-        let pane_id = app.state.session_containers[0].tabs[0].root_pane;
+        let pane_id = app.state.sessions[0].tabs[0].root_pane;
 
         assert_eq!(
             app.state
@@ -552,7 +552,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -632,7 +632,7 @@ mod tests {
 
         ws.tabs[0].layout.focus_pane(first_pane);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -644,10 +644,7 @@ mod tests {
             second_info.inner_rect.y + 2,
         ));
 
-        assert_eq!(
-            app.state.session_containers[0].tabs[0].layout.focused(),
-            second_pane
-        );
+        assert_eq!(app.state.sessions[0].tabs[0].layout.focused(), second_pane);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -690,7 +687,7 @@ mod tests {
 
         ws.tabs[0].layout.focus_pane(first_pane);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -702,10 +699,7 @@ mod tests {
             second_info.inner_rect.y + 2,
         ));
 
-        assert_eq!(
-            app.state.session_containers[0].tabs[0].layout.focused(),
-            second_pane
-        );
+        assert_eq!(app.state.sessions[0].tabs[0].layout.focused(), second_pane);
         assert_eq!(app.state.mode, Mode::ContextMenu);
         assert!(app.state.context_menu.is_some());
     }
@@ -720,26 +714,23 @@ mod tests {
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
-        app.state.session_containers[0].test_split(ratatui::layout::Direction::Horizontal);
-        app.state.view.pane_infos = app.state.session_containers[0]
+        app.state.sessions[0].test_split(ratatui::layout::Direction::Horizontal);
+        app.state.view.pane_infos = app.state.sessions[0]
             .active_tab()
             .unwrap()
             .layout
             .panes(Rect::new(0, 0, 80, 24));
-        let focused_before = app.state.session_containers[0].layout.focused();
+        let focused_before = app.state.sessions[0].layout.focused();
         app.state.keybinds.focus_pane_left = crate::config::ActionKeybinds::direct("alt+h");
 
         app.handle_terminal_key(TerminalKey::new(KeyCode::Char('h'), KeyModifiers::ALT))
             .await;
 
-        assert_ne!(
-            app.state.session_containers[0].layout.focused(),
-            focused_before
-        );
+        assert_ne!(app.state.sessions[0].layout.focused(), focused_before);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -764,7 +755,7 @@ mod tests {
                 b"alpha\nbeta\n",
             ),
         );
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -806,7 +797,7 @@ mod tests {
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.session_containers = vec![Workspace::test_new("test")];
+        app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -855,7 +846,7 @@ mod tests {
             app.render_dirty.clone(),
         )
         .expect("workspace should spawn");
-        app.state.session_containers = vec![workspace];
+        app.state.sessions = vec![workspace];
         app.terminal_runtimes.insert(terminal.id.clone(), runtime);
         app.state.terminals.insert(terminal.id.clone(), terminal);
         app.state.active = Some(0);
@@ -876,11 +867,8 @@ mod tests {
         ))
         .await;
 
-        assert_eq!(
-            app.state.session_containers[0].tabs[0].layout.pane_count(),
-            2
-        );
-        assert!(app.state.session_containers[0].tabs[0].zoomed);
+        assert_eq!(app.state.sessions[0].tabs[0].layout.pane_count(), 2);
+        assert!(app.state.sessions[0].tabs[0].zoomed);
         assert_eq!(app.state.mode, Mode::Terminal);
 
         let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
@@ -902,7 +890,7 @@ mod tests {
         );
         ws.tabs[0].runtimes.insert(pane_id, runtime);
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -933,7 +921,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -976,7 +964,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1019,7 +1007,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1069,7 +1057,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1104,7 +1092,7 @@ mod tests {
             ),
         );
 
-        app.state.session_containers = vec![ws];
+        app.state.sessions = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
