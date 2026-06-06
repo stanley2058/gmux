@@ -54,38 +54,40 @@ impl App {
     }
 
     fn public_pane_number(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> Option<usize> {
-        let ws = self.state.sessions().get(ws_idx)?;
+        let entry = self
+            .state
+            .session_entries()
+            .find(|entry| entry.session_idx == ws_idx)?;
         let preceding = self
             .state
-            .sessions()
-            .iter()
+            .session_entries()
             .take(ws_idx)
-            .map(|ws| ws.public_pane_numbers.len())
+            .map(|entry| entry.session.public_pane_numbers.len())
             .sum::<usize>();
-        Some(preceding + ws.public_pane_number(pane_id)?)
+        Some(preceding + entry.session.public_pane_number(pane_id)?)
     }
 
     fn pane_by_public_number(&self, number: usize) -> Option<(usize, crate::layout::PaneId)> {
         let mut remaining = number.checked_sub(1)?;
-        for (ws_idx, ws) in self.state.sessions().iter().enumerate() {
-            if remaining < ws.public_pane_numbers.len() {
+        for entry in self.state.session_entries() {
+            if remaining < entry.session.public_pane_numbers.len() {
                 let local_number = remaining + 1;
-                let pane_id = ws
+                let pane_id = entry
+                    .session
                     .public_pane_numbers
                     .iter()
                     .find_map(|(pane_id, number)| (*number == local_number).then_some(*pane_id))?;
-                return Some((ws_idx, pane_id));
+                return Some((entry.session_idx, pane_id));
             }
-            remaining = remaining.checked_sub(ws.public_pane_numbers.len())?;
+            remaining = remaining.checked_sub(entry.session.public_pane_numbers.len())?;
         }
         None
     }
 
     pub(super) fn parse_session_id(&self, id: &str) -> Option<usize> {
         self.state
-            .sessions()
-            .iter()
-            .position(|workspace| workspace.id == id)
+            .session_entries()
+            .find_map(|entry| (entry.session.id == id).then_some(entry.session_idx))
             .or_else(|| id.strip_prefix("w_")?.parse::<usize>().ok()?.checked_sub(1))
             .or_else(|| id.parse::<usize>().ok()?.checked_sub(1))
     }
@@ -141,8 +143,12 @@ impl App {
         let (session_raw, pane_number_raw) = id.rsplit_once('-')?;
         let ws_idx = self.parse_session_id(session_raw)?;
         let pane_number = pane_number_raw.parse::<usize>().ok()?;
-        let ws = self.state.sessions().get(ws_idx)?;
-        let pane_id = ws
+        let entry = self
+            .state
+            .session_entries()
+            .find(|entry| entry.session_idx == ws_idx)?;
+        let pane_id = entry
+            .session
             .public_pane_numbers
             .iter()
             .find_map(|(pane_id, number)| (*number == pane_number).then_some(*pane_id))?;

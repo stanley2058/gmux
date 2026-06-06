@@ -959,6 +959,11 @@ pub(crate) struct SessionTabEntry<'a> {
     pub tab: &'a crate::workspace::Tab,
 }
 
+pub(crate) struct SessionEntry<'a> {
+    pub session_idx: usize,
+    pub session: &'a SessionUiState,
+}
+
 /// All application state — pure data, no channels or async runtime.
 /// Testable without PTYs or a tokio runtime.
 pub struct AppState {
@@ -1170,6 +1175,16 @@ impl AppState {
         self.sessions.push(session);
         self.active_session = Some(0);
         self.selected_session = 0;
+    }
+
+    pub(crate) fn session_entries(&self) -> impl Iterator<Item = SessionEntry<'_>> {
+        self.sessions()
+            .iter()
+            .enumerate()
+            .map(|(session_idx, session)| SessionEntry {
+                session_idx,
+                session,
+            })
     }
 
     pub(crate) fn session_tab_entries(&self) -> impl Iterator<Item = SessionTabEntry<'_>> {
