@@ -285,7 +285,7 @@ impl App {
         let new_cols = cols.max(10);
         let (env, _) = self.custom_command_env();
 
-        let (workspace_id, tab_idx, previous_focus, previous_zoomed, cwd) = {
+        let (session_id, tab_idx, previous_focus, previous_zoomed, cwd) = {
             let ws = self
                 .state
                 .session_containers()
@@ -330,7 +330,7 @@ impl App {
             .terminals
             .insert(new_pane.terminal.id.clone(), new_pane.terminal);
         let new_focus_target = crate::app::state::PaneFocusTarget {
-            workspace_id,
+            session_id,
             pane_id: new_pane_id,
         };
         if previous_focus_target.as_ref() != Some(&new_focus_target) {
@@ -961,14 +961,14 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Navigate;
         state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
-        let target_workspace_id = state.session_containers[1].id.clone();
+        let target_session_id = state.session_containers[1].id.clone();
         let target_pane = state.session_containers[1].tabs[0].root_pane;
         state.toast = Some(crate::app::state::ToastNotification {
             kind: crate::app::state::ToastKind::NeedsAttention,
             title: "pi needs attention".into(),
             context: "two".into(),
             target: Some(crate::app::state::ToastTarget {
-                workspace_id: target_workspace_id,
+                session_id: target_session_id,
                 pane_id: target_pane,
             }),
         });
@@ -997,14 +997,14 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Navigate;
         state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
-        let target_workspace_id = state.session_containers[1].id.clone();
+        let target_session_id = state.session_containers[1].id.clone();
         let target_pane = state.session_containers[1].tabs[0].root_pane;
         state.toast = Some(crate::app::state::ToastNotification {
             kind: crate::app::state::ToastKind::NeedsAttention,
             title: "pi needs attention".into(),
             context: "two".into(),
             target: Some(crate::app::state::ToastTarget {
-                workspace_id: target_workspace_id,
+                session_id: target_session_id,
                 pane_id: target_pane,
             }),
         });

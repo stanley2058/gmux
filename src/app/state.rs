@@ -909,7 +909,7 @@ pub enum ToastKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToastTarget {
-    pub workspace_id: String,
+    pub session_id: String,
     pub pane_id: PaneId,
 }
 
@@ -954,7 +954,7 @@ pub enum SidebarWidthSource {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PaneFocusTarget {
-    pub workspace_id: String,
+    pub session_id: String,
     pub pane_id: PaneId,
 }
 

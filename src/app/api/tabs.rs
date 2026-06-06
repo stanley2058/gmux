@@ -48,10 +48,10 @@ impl App {
             return match self.create_session_container_with_options(cwd, focus) {
                 Ok(ws_idx) => {
                     if let Some(label) = label {
-                        let workspace_id = self.state.session_containers()[ws_idx].id.clone();
+                        let session_id = self.state.session_containers()[ws_idx].id.clone();
                         let tab_id = self
                             .public_tab_id(ws_idx, 0)
-                            .unwrap_or_else(|| format!("{workspace_id}:1"));
+                            .unwrap_or_else(|| format!("{session_id}:1"));
                         if let Some(tab) = self
                             .state
                             .session_containers_mut()
@@ -59,7 +59,7 @@ impl App {
                             .and_then(|ws| ws.tabs.get_mut(0))
                         {
                             tab.set_custom_name(label);
-                            crate::logging::tab_renamed(&workspace_id, &tab_id);
+                            crate::logging::tab_renamed(&session_id, &tab_id);
                             self.schedule_session_save();
                         }
                     }
@@ -122,10 +122,10 @@ impl App {
                 let root_pane = self.state.session_containers()[ws_idx].tabs[tab_idx].root_pane;
                 self.state.remove_alias_shadowed_by_new_pane(root_pane);
                 if let Some(label) = label {
-                    let workspace_id = self.state.session_containers()[ws_idx].id.clone();
+                    let session_id = self.state.session_containers()[ws_idx].id.clone();
                     let tab_id = self
                         .public_tab_id(ws_idx, tab_idx)
-                        .unwrap_or_else(|| format!("{}:{}", workspace_id, tab_idx + 1));
+                        .unwrap_or_else(|| format!("{}:{}", session_id, tab_idx + 1));
                     if let Some(tab) = self
                         .state
                         .session_containers_mut()
@@ -133,7 +133,7 @@ impl App {
                         .and_then(|ws| ws.tabs.get_mut(tab_idx))
                     {
                         tab.set_custom_name(label);
-                        crate::logging::tab_renamed(&workspace_id, &tab_id);
+                        crate::logging::tab_renamed(&session_id, &tab_id);
                     }
                 }
                 if focus {
@@ -189,10 +189,10 @@ impl App {
             return tab_not_found(id, &params.tab_id);
         };
         self.state.collapse_to_single_session_workspace();
-        let workspace_id = self.state.session_containers()[0].id.clone();
+        let session_id = self.state.session_containers()[0].id.clone();
         let tab_id = self
             .public_tab_id(0, flat_tab_idx)
-            .unwrap_or_else(|| format!("{}:{}", workspace_id, flat_tab_idx + 1));
+            .unwrap_or_else(|| format!("{}:{}", session_id, flat_tab_idx + 1));
         let Some(tab) = self
             .state
             .session_containers_mut()
@@ -202,7 +202,7 @@ impl App {
             return tab_not_found(id, &params.tab_id);
         };
         tab.set_custom_name(params.label.clone());
-        crate::logging::tab_renamed(&workspace_id, &tab_id);
+        crate::logging::tab_renamed(&session_id, &tab_id);
         self.schedule_session_save();
         self.emit_event(EventEnvelope {
             event: EventKind::TabRenamed,

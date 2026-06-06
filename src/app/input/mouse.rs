@@ -1788,7 +1788,7 @@ mod tests {
         let active = Workspace::test_new("active");
         let background = Workspace::test_new("background");
         let target_pane = background.tabs[0].root_pane;
-        let workspace_id = background.id.clone();
+        let session_id = background.id.clone();
 
         app.state.session_containers = vec![active, background];
         app.state.active = Some(0);
@@ -1798,7 +1798,7 @@ mod tests {
             title: "pi finished".into(),
             context: "background · 2".into(),
             target: Some(crate::app::state::ToastTarget {
-                workspace_id,
+                session_id,
                 pane_id: target_pane,
             }),
         });

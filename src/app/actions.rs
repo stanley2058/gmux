@@ -21,7 +21,7 @@ impl AppState {
         let ws = self.session_container()?;
         let pane_id = ws.focused_pane_id()?;
         Some(PaneFocusTarget {
-            workspace_id: ws.id.clone(),
+            session_id: ws.id.clone(),
             pane_id,
         })
     }
@@ -30,7 +30,7 @@ impl AppState {
         if let Some(ws_idx) = self
             .session_containers()
             .iter()
-            .position(|ws| ws.id == target.workspace_id)
+            .position(|ws| ws.id == target.session_id)
         {
             if let Some(tab_idx) =
                 self.session_containers()[ws_idx].find_tab_index_for_pane(target.pane_id)
@@ -65,7 +65,7 @@ impl AppState {
             return;
         };
         let target = PaneFocusTarget {
-            workspace_id: ws.id.clone(),
+            session_id: ws.id.clone(),
             pane_id,
         };
         if previous.as_ref() != Some(&target) {
@@ -93,7 +93,7 @@ impl AppState {
         };
         let previous = self.current_pane_focus_target();
         let target = PaneFocusTarget {
-            workspace_id: ws.id.clone(),
+            session_id: ws.id.clone(),
             pane_id,
         };
         if self.session_containers().len() == 1
@@ -595,9 +595,9 @@ impl AppState {
         self.collapse_to_single_session_workspace();
         self.active = Some(0);
         self.selected = 0;
-        let workspace_id = self.session_containers()[0].id.clone();
+        let session_id = self.session_containers()[0].id.clone();
         if workspace_changed {
-            crate::logging::session_focused(&workspace_id);
+            crate::logging::session_focused(&session_id);
         }
         self.mark_session_dirty();
         if workspace_changed
@@ -611,8 +611,8 @@ impl AppState {
         self.ensure_session_container_visible(0);
         if let Some(ws) = self.session_containers_mut().get_mut(0) {
             ws.switch_tab(flat_tab_idx);
-            let tab_id = format!("{}:{}", workspace_id, flat_tab_idx + 1);
-            crate::logging::tab_focused(&workspace_id, &tab_id);
+            let tab_id = format!("{}:{}", session_id, flat_tab_idx + 1);
+            crate::logging::tab_focused(&session_id, &tab_id);
         }
         self.tab_scroll_follow_active = true;
         self.refresh_tab_bar_view();
@@ -651,9 +651,9 @@ impl AppState {
             return;
         };
         ws.switch_tab(idx);
-        let workspace_id = ws.id.clone();
-        let tab_id = format!("{}:{}", workspace_id, idx + 1);
-        crate::logging::tab_focused(&workspace_id, &tab_id);
+        let session_id = ws.id.clone();
+        let tab_id = format!("{}:{}", session_id, idx + 1);
+        crate::logging::tab_focused(&session_id, &tab_id);
         self.mark_session_dirty();
         self.tab_scroll_follow_active = true;
         self.refresh_tab_bar_view();
@@ -874,12 +874,12 @@ impl AppState {
 
         let mut terminal_ids = Vec::new();
         terminal_ids.extend(self.terminal_ids_for_session_container(close_idx));
-        if let Some(workspace_id) = self
+        if let Some(session_id) = self
             .session_containers()
             .get(close_idx)
             .map(|ws| ws.id.clone())
         {
-            crate::logging::session_closed(&workspace_id);
+            crate::logging::session_closed(&session_id);
         }
         self.session_containers_mut().remove(close_idx);
         self.remove_unattached_terminal_ids(terminal_ids);
@@ -1082,11 +1082,11 @@ impl AppState {
             let Some(ws) = self.session_containers_mut().get_mut(ws_idx) else {
                 return false;
             };
-            let workspace_id = ws.id.clone();
-            let closing_tab_id = format!("{}:{}", workspace_id, ws.active_tab + 1);
+            let session_id = ws.id.clone();
+            let closing_tab_id = format!("{}:{}", session_id, ws.active_tab + 1);
             ws.close_active_tab();
             self.remove_unattached_terminal_ids(terminal_ids);
-            crate::logging::tab_closed(&workspace_id, &closing_tab_id);
+            crate::logging::tab_closed(&session_id, &closing_tab_id);
             self.tab_scroll_follow_active = true;
             self.refresh_tab_bar_view();
         }
