@@ -276,7 +276,7 @@ impl AppState {
                     self.tab_at(mouse.column, mouse.row),
                 ) {
                     self.tab_press = Some(TabPressState {
-                        ws_idx,
+                        session_container_idx: ws_idx,
                         tab_idx,
                         start_col: mouse.column,
                         start_row: mouse.row,
@@ -401,7 +401,7 @@ impl AppState {
                         if delta_col.max(delta_row) >= TAB_DRAG_THRESHOLD {
                             self.drag = Some(DragState {
                                 target: DragTarget::TabReorder {
-                                    session_container_idx: press.ws_idx,
+                                    session_container_idx: press.session_container_idx,
                                     source_tab_idx: press.tab_idx,
                                     insert_idx: tab_drop_index,
                                 },
@@ -530,7 +530,7 @@ impl AppState {
                     Some(_) => {}
                     None => {
                         if let Some(press) = tab_press {
-                            if self.session_container_index() == Some(press.ws_idx) {
+                            if self.session_container_index() == Some(press.session_container_idx) {
                                 self.switch_tab(press.tab_idx);
                                 self.mode = Mode::Terminal;
                                 return None;

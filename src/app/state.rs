@@ -839,7 +839,7 @@ pub(crate) struct DragState {
 }
 
 pub(crate) struct TabPressState {
-    pub ws_idx: usize,
+    pub session_container_idx: usize,
     pub tab_idx: usize,
     pub start_col: u16,
     pub start_row: u16,
