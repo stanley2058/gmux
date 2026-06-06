@@ -441,7 +441,7 @@ impl App {
             std::thread::spawn(move || crate::update::auto_update(update_tx));
         }
 
-        let last_focus = state.active.and_then(|idx| {
+        let last_focus = state.session_container_index().and_then(|idx| {
             state
                 .workspaces
                 .get(idx)
@@ -518,12 +518,8 @@ impl App {
         app.state.active = (!app.state.workspaces.is_empty()).then_some(0);
         app.state.selected = 0;
         app.state.collapse_to_single_session_workspace();
-        app.state.mode = if app.state.active.is_some() {
-            state::Mode::Terminal
-        } else {
-            state::Mode::Navigate
-        };
-        app.last_focus = app.state.active.and_then(|idx| {
+        app.state.mode = app.state.terminal_or_navigate_mode();
+        app.last_focus = app.state.session_container_index().and_then(|idx| {
             app.state
                 .workspaces
                 .get(idx)
@@ -798,11 +794,7 @@ impl App {
         if self.state.product_announcement.is_some() {
             self.state.mode = Mode::ProductAnnouncement;
         } else {
-            self.state.mode = if self.state.active.is_some() {
-                Mode::Terminal
-            } else {
-                Mode::Navigate
-            };
+            self.state.mode = self.state.terminal_or_navigate_mode();
         }
     }
 
@@ -819,11 +811,7 @@ impl App {
             }
         }
 
-        self.state.mode = if self.state.active.is_some() {
-            Mode::Terminal
-        } else {
-            Mode::Navigate
-        };
+        self.state.mode = self.state.terminal_or_navigate_mode();
     }
 
     pub(crate) fn scroll_release_notes(&mut self, delta: i16) {
@@ -1106,28 +1094,21 @@ impl App {
                 }
                 crate::raw_input::RawInputEvent::Paste(text) => {
                     if self.state.mode == Mode::Terminal {
-                        if let Some(ws_idx) = self.state.active {
-                            if let Some(ws) = self.state.workspaces.get(ws_idx) {
-                                if let Some(focused) = ws.focused_pane_id() {
-                                    if let Some(runtime) = self.state.runtime_for_pane_in_workspace(
-                                        &self.terminal_runtimes,
-                                        ws_idx,
-                                        focused,
-                                    ) {
-                                        let _ = runtime.try_send_bytes(bytes::Bytes::from(
-                                            if runtime
-                                                .input_state()
-                                                .map(|s| s.bracketed_paste)
-                                                .unwrap_or(false)
-                                            {
-                                                format!("\x1b[200~{text}\x1b[201~")
-                                            } else {
-                                                text
-                                            },
-                                        ));
-                                    }
-                                }
-                            }
+                        if let Some(runtime) = self
+                            .state
+                            .focused_runtime_in_session_container(&self.terminal_runtimes)
+                        {
+                            let _ = runtime.try_send_bytes(bytes::Bytes::from(
+                                if runtime
+                                    .input_state()
+                                    .map(|s| s.bracketed_paste)
+                                    .unwrap_or(false)
+                                {
+                                    format!("\x1b[200~{text}\x1b[201~")
+                                } else {
+                                    text
+                                },
+                            ));
                         }
                     }
                 }

@@ -1077,6 +1077,14 @@ impl AppState {
         self.session_dirty = true;
     }
 
+    pub(crate) fn terminal_or_navigate_mode(&self) -> Mode {
+        if self.session_container().is_some() {
+            Mode::Terminal
+        } else {
+            Mode::Navigate
+        }
+    }
+
     pub(crate) fn remove_alias_shadowed_by_new_pane(&mut self, pane_id: PaneId) {
         self.pane_id_aliases.remove(&pane_id.raw());
     }
@@ -1206,7 +1214,7 @@ impl AppState {
         tab_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> bool {
-        let Some(active_ws_idx) = self.active else {
+        let Some(active_ws_idx) = self.session_container_index() else {
             return false;
         };
         if ws_idx != active_ws_idx {
