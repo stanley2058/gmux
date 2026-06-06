@@ -180,9 +180,6 @@ fn compute_view_internal(
             pane_panel_scroll_metrics(app, detail_area).max_offset_from_bottom;
         app.pane_panel_scroll = app.pane_panel_scroll.min(max_pane_panel_scroll);
     } else {
-        app.workspace_scroll = app
-            .workspace_scroll
-            .min(app.workspaces.len().saturating_sub(1));
         app.pane_panel_scroll = 0;
     }
 
