@@ -40,10 +40,9 @@ fn expand_tilde_path(path: &str) -> PathBuf {
 }
 
 impl App {
-    pub(super) fn seed_cwd_from_workspace(&self, ws_idx: usize) -> Option<PathBuf> {
+    pub(super) fn seed_cwd_from_session_container(&self) -> Option<PathBuf> {
         self.state
-            .workspaces
-            .get(ws_idx)?
+            .session_container()?
             .resolved_identity_cwd_from(&self.state.terminals, &self.terminal_runtimes)
     }
 
@@ -53,19 +52,12 @@ impl App {
 
     pub(crate) fn create_tab(&mut self) {
         let custom_name = self.state.requested_new_tab_name.take();
-        let follow_cwd = self
-            .state
-            .active
-            .and_then(|ws_idx| self.seed_cwd_from_workspace(ws_idx));
+        let follow_cwd = self.seed_cwd_from_session_container();
         let initial_cwd = self.resolve_new_terminal_cwd(follow_cwd);
         match self.create_tab_with_options(initial_cwd, true) {
             Ok(tab_idx) => {
                 if let Some(name) = custom_name {
-                    if let Some(ws) = self
-                        .state
-                        .active
-                        .and_then(|ws_idx| self.state.workspaces.get_mut(ws_idx))
-                    {
+                    if let Some(ws) = self.state.session_container_mut() {
                         if let Some(tab) = ws.tabs.get_mut(tab_idx) {
                             tab.set_custom_name(name);
                         }
@@ -87,7 +79,7 @@ impl App {
         if self.state.active.is_none() && !self.state.workspaces.is_empty() {
             self.state.collapse_to_single_session_workspace();
         }
-        let Some(ws_idx) = self.state.active else {
+        let Some(ws_idx) = self.state.session_container_index() else {
             return self.create_session_container_with_options(initial_cwd, focus);
         };
         let (rows, cols) = self.state.estimate_pane_size();

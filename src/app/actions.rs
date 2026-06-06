@@ -419,6 +419,22 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 impl AppState {
+    pub(crate) fn session_container_index(&self) -> Option<usize> {
+        self.active
+            .filter(|idx| self.workspaces.get(*idx).is_some())
+            .or_else(|| (!self.workspaces.is_empty()).then_some(0))
+    }
+
+    pub(crate) fn session_container(&self) -> Option<&crate::workspace::Workspace> {
+        self.session_container_index()
+            .and_then(|idx| self.workspaces.get(idx))
+    }
+
+    pub(crate) fn session_container_mut(&mut self) -> Option<&mut crate::workspace::Workspace> {
+        let idx = self.session_container_index()?;
+        self.workspaces.get_mut(idx)
+    }
+
     pub(crate) fn collapse_to_single_session_workspace(&mut self) -> bool {
         match self.workspaces.len() {
             0 => {
@@ -593,31 +609,31 @@ impl AppState {
     }
 
     pub fn switch_tab(&mut self, idx: usize) {
-        if let Some(ws_idx) = self.active {
-            let previous_focus = self.current_pane_focus_target();
-            self.selection = None;
-            self.selection_autoscroll = None;
-            let Some(ws) = self.workspaces.get_mut(ws_idx) else {
-                return;
-            };
-            ws.switch_tab(idx);
-            let workspace_id = ws.id.clone();
-            let tab_id = format!("{}:{}", workspace_id, idx + 1);
-            crate::logging::tab_focused(&workspace_id, &tab_id);
-            self.mark_session_dirty();
-            self.tab_scroll_follow_active = true;
-            self.refresh_tab_bar_view();
-            self.record_pane_focus_after_navigation(previous_focus);
+        if self
+            .session_container()
+            .is_none_or(|ws| idx >= ws.tabs.len())
+        {
+            return;
         }
+        let previous_focus = self.current_pane_focus_target();
+        self.selection = None;
+        self.selection_autoscroll = None;
+        let Some(ws) = self.session_container_mut() else {
+            return;
+        };
+        ws.switch_tab(idx);
+        let workspace_id = ws.id.clone();
+        let tab_id = format!("{}:{}", workspace_id, idx + 1);
+        crate::logging::tab_focused(&workspace_id, &tab_id);
+        self.mark_session_dirty();
+        self.tab_scroll_follow_active = true;
+        self.refresh_tab_bar_view();
+        self.record_pane_focus_after_navigation(previous_focus);
     }
 
     pub(crate) fn mark_active_tab_seen(&mut self) -> bool {
-        let Some(ws_idx) = self.active else {
-            return false;
-        };
         let Some(tab) = self
-            .workspaces
-            .get_mut(ws_idx)
+            .session_container_mut()
             .and_then(crate::workspace::Workspace::active_tab_mut)
         else {
             return false;
@@ -646,7 +662,7 @@ impl AppState {
     }
 
     pub fn move_tab(&mut self, source_idx: usize, insert_idx: usize) {
-        if let Some(ws) = self.active.and_then(|i| self.workspaces.get_mut(i)) {
+        if let Some(ws) = self.session_container_mut() {
             if ws.move_tab(source_idx, insert_idx) {
                 self.mark_session_dirty();
                 self.tab_scroll_follow_active = true;
@@ -656,7 +672,7 @@ impl AppState {
     }
 
     pub fn next_tab(&mut self) {
-        if let Some(ws) = self.active.and_then(|i| self.workspaces.get(i)) {
+        if let Some(ws) = self.session_container() {
             if !ws.tabs.is_empty() {
                 let next = (ws.active_tab + 1) % ws.tabs.len();
                 self.switch_tab(next);
@@ -665,7 +681,7 @@ impl AppState {
     }
 
     pub fn previous_tab(&mut self) {
-        if let Some(ws) = self.active.and_then(|i| self.workspaces.get(i)) {
+        if let Some(ws) = self.session_container() {
             if !ws.tabs.is_empty() {
                 let prev = if ws.active_tab == 0 {
                     ws.tabs.len() - 1
@@ -1011,17 +1027,16 @@ impl AppState {
         self.selection_autoscroll = None;
         self.mark_session_dirty();
         let should_close_workspace = self
-            .active
-            .and_then(|i| self.workspaces.get(i))
+            .session_container()
             .is_some_and(|ws| ws.tabs.len() <= 1);
         if should_close_workspace {
-            if let Some(active) = self.active {
-                self.selected = active;
+            if let Some(idx) = self.session_container_index() {
+                self.selected = idx;
             }
             self.close_selected_workspace();
             return false;
         }
-        if let Some(ws_idx) = self.active {
+        if let Some(ws_idx) = self.session_container_index() {
             let terminal_ids = self
                 .workspaces
                 .get(ws_idx)
@@ -2129,6 +2144,19 @@ mod tests {
         state.switch_workspace(2);
         assert_eq!(state.active, Some(2));
         assert_eq!(state.selected, 2);
+    }
+
+    #[test]
+    fn session_container_tab_switch_works_without_active_index() {
+        let mut state = app_with_workspaces(&["one"]);
+        let second_tab = state.workspaces[0].test_add_tab(Some("logs"));
+        state.active = None;
+        state.selected = 0;
+
+        state.switch_tab(second_tab);
+
+        assert_eq!(state.workspaces[0].active_tab, second_tab);
+        assert_eq!(state.active, None);
     }
 
     #[test]
