@@ -195,73 +195,34 @@ fn ping_socket(socket_path: &Path) -> String {
     response.to_string()
 }
 
-fn workspace_create(socket_path: &Path, label: &str) -> Value {
-    let mut response = send_json_request(
+fn tab_create(socket_path: &Path, label: &str) -> Value {
+    send_json_request(
         socket_path,
-        "workspace_create",
+        "tab_create",
         "tab.create",
         json!({ "label": label, "focus": true }),
-    );
-    if let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) {
-        if let (Some(workspace_id), Some(tab_id)) = (
-            result
-                .get("tab")
-                .and_then(|tab| tab.get("workspace_id"))
-                .cloned(),
-            result.get("tab").and_then(|tab| tab.get("tab_id")).cloned(),
-        ) {
-            result.insert(
-                "workspace".to_string(),
-                json!({
-                    "workspace_id": workspace_id,
-                    "active_tab_id": tab_id,
-                    "label": label,
-                }),
-            );
-        }
-    }
-    response
+    )
 }
 
-fn workspace_list(socket_path: &Path) -> Value {
-    let tabs = send_json_request(socket_path, "workspace_list", "tab.list", json!({}));
-    let mut workspaces = Vec::new();
-    if let Some(tabs) = tabs["result"]["tabs"].as_array() {
-        for tab in tabs {
-            let Some(workspace_id) = tab["workspace_id"].as_str() else {
-                continue;
-            };
-            workspaces.push(json!({
-                "workspace_id": workspace_id,
-                "active_tab_id": tab["tab_id"],
-                "label": tab["label"],
-            }));
-        }
-    }
-    json!({
-        "id": "workspace_list",
-        "result": {
-            "type": "workspace_list",
-            "workspaces": workspaces,
-        },
-    })
+fn tab_list(socket_path: &Path) -> Value {
+    send_json_request(socket_path, "tab_list", "tab.list", json!({}))
 }
 
-fn workspace_count(socket_path: &Path) -> usize {
-    workspace_list(socket_path)["result"]["workspaces"]
+fn tab_count(socket_path: &Path) -> usize {
+    tab_list(socket_path)["result"]["tabs"]
         .as_array()
-        .map(|workspaces| workspaces.len())
+        .map(|tabs| tabs.len())
         .unwrap_or(0)
 }
 
-fn workspace_id_by_label(response: &Value, label: &str) -> String {
-    response["result"]["workspaces"]
+fn tab_id_by_label(response: &Value, label: &str) -> String {
+    response["result"]["tabs"]
         .as_array()
         .expect("tab.list should return tabs array")
         .iter()
-        .find(|workspace| workspace["label"] == label)
-        .and_then(|workspace| workspace["workspace_id"].as_str())
-        .expect("workspace with matching label should exist")
+        .find(|tab| tab["label"] == label)
+        .and_then(|tab| tab["tab_id"].as_str())
+        .expect("tab with matching label should exist")
         .to_string()
 }
 
@@ -712,11 +673,11 @@ fn cross_area_detach_and_reattach_preserves_state() {
     client_handshake(&mut client_a, 12, 100, 30);
     assert!(wait_for_frame(&mut client_a, Duration::from_secs(2)));
 
-    // Use gmux: create a workspace and write output into its pane.
-    let create = workspace_create(&api_socket, "cross-ssh-state");
-    let workspace_id = create["result"]["workspace"]["workspace_id"]
+    // Use gmux: create a tab and write output into its pane.
+    let create = tab_create(&api_socket, "cross-ssh-state");
+    let tab_id = create["result"]["tab"]["tab_id"]
         .as_str()
-        .expect("workspace id")
+        .expect("tab id")
         .to_string();
     let pane_id = create["result"]["root_pane"]["pane_id"]
         .as_str()
@@ -752,11 +713,11 @@ fn cross_area_detach_and_reattach_preserves_state() {
         "reattached client should receive frame"
     );
 
-    let listed = workspace_list(&api_socket);
+    let listed = tab_list(&api_socket);
     assert_eq!(
-        workspace_id,
-        workspace_id_by_label(&listed, "cross-ssh-state"),
-        "reattached session should see same workspace"
+        tab_id,
+        tab_id_by_label(&listed, "cross-ssh-state"),
+        "reattached session should see same tab"
     );
 
     let readback = pane_read_recent(&api_socket, &pane_id);
@@ -785,7 +746,7 @@ fn cross_area_removed_agent_report_survives_detach_and_reattach() {
     client_handshake(&mut client_a, 12, 100, 30);
     assert!(wait_for_frame(&mut client_a, Duration::from_secs(2)));
 
-    let created = workspace_create(&api_socket, "agent-persist");
+    let created = tab_create(&api_socket, "agent-persist");
     let pane_id = created["result"]["root_pane"]["pane_id"]
         .as_str()
         .expect("root pane id")
@@ -832,7 +793,7 @@ fn cross_area_removed_agent_report_survives_detach_and_reattach() {
 }
 
 #[test]
-fn cross_area_client_and_api_workspace_views_are_consistent() {
+fn cross_area_client_and_api_tab_views_are_consistent() {
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -849,46 +810,42 @@ fn cross_area_client_and_api_workspace_views_are_consistent() {
     assert!(wait_for_frame(&mut client, Duration::from_secs(2)));
     drain_server_messages(&mut client, Duration::from_millis(300));
 
-    let before = workspace_count(&api_socket);
+    let before = tab_count(&api_socket);
 
     // Create a tab via API while the client is attached.
-    let created = workspace_create(&api_socket, "api-visible-workspace");
-    let created_workspace_id = created["result"]["workspace"]["workspace_id"]
+    let created = tab_create(&api_socket, "api-visible-tab");
+    let created_tab_id = created["result"]["tab"]["tab_id"]
         .as_str()
-        .expect("tab.create should return workspace_id")
+        .expect("tab.create should return tab_id")
         .to_string();
 
-    // The attached client must receive a frame that includes the new workspace
-    // label, proving client-side state reflects the API surface.
-    let saw_workspace_on_client =
-        wait_for_frame_matching(&mut client, Duration::from_secs(3), |frame| {
-            frame_contains_text(frame, "api-visible-workspace")
-        })
-        .expect("frame decoding should succeed");
+    // The attached client must receive a frame that includes the new tab label,
+    // proving client-side state reflects the API surface.
+    let saw_tab_on_client = wait_for_frame_matching(&mut client, Duration::from_secs(3), |frame| {
+        frame_contains_text(frame, "api-visible-tab")
+    })
+    .expect("frame decoding should succeed");
     assert!(
-        saw_workspace_on_client,
-        "client-side frame should include the newly created workspace label"
+        saw_tab_on_client,
+        "client-side frame should include the newly created tab label"
     );
 
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut count_reached = false;
     while Instant::now() < deadline {
-        if workspace_count(&api_socket) == before + 1 {
+        if tab_count(&api_socket) == before + 1 {
             count_reached = true;
             break;
         }
         thread::sleep(Duration::from_millis(50));
     }
-    assert!(
-        count_reached,
-        "API workspace list should include the created workspace"
-    );
+    assert!(count_reached, "API tab list should include the created tab");
 
-    let listed = workspace_list(&api_socket);
-    let listed_workspace_id = workspace_id_by_label(&listed, "api-visible-workspace");
+    let listed = tab_list(&api_socket);
+    let listed_tab_id = tab_id_by_label(&listed, "api-visible-tab");
     assert_eq!(
-        listed_workspace_id, created_workspace_id,
-        "API and client-side state should reference the same created workspace"
+        listed_tab_id, created_tab_id,
+        "API and client-side state should reference the same created tab"
     );
 
     cleanup_spawned_gmux(server, base);
@@ -917,19 +874,18 @@ fn cross_area_two_clients_shared_view_and_single_detach_stability() {
     drain_server_messages(&mut client_a, Duration::from_millis(250));
     drain_server_messages(&mut client_b, Duration::from_millis(250));
 
-    let created = workspace_create(&api_socket, "shared-view");
+    let created = tab_create(&api_socket, "shared-view");
     let pane_id = created["result"]["root_pane"]["pane_id"]
         .as_str()
         .expect("root pane id")
         .to_string();
-    let saw_shared_workspace =
-        wait_for_frame_matching(&mut client_b, Duration::from_secs(3), |frame| {
-            frame_contains_text(frame, "shared-view")
-        })
-        .expect("frame decoding should succeed");
+    let saw_shared_tab = wait_for_frame_matching(&mut client_b, Duration::from_secs(3), |frame| {
+        frame_contains_text(frame, "shared-view")
+    })
+    .expect("frame decoding should succeed");
     assert!(
-        saw_shared_workspace,
-        "client B should observe focused shared workspace before input"
+        saw_shared_tab,
+        "client B should observe focused shared tab before input"
     );
 
     // Input from client A should update shared state visible to client B.

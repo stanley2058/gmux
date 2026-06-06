@@ -747,7 +747,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_tracks_workspace_closure() {
+    fn capture_contract_tracks_session_closure() {
         let mut state = state_with_workspaces(&["one", "two"]);
         state.selected = 1;
         state.active = Some(1);
@@ -755,8 +755,7 @@ mod tests {
         state.close_session_container();
 
         let snapshot = capture_from_state(&state);
-        assert_eq!(snapshot.tabs.len(), 1);
-        assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("one"));
+        assert!(snapshot.tabs.is_empty());
         assert_eq!(snapshot.active_tab, 0);
     }
 
