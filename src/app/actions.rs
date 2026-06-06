@@ -179,13 +179,14 @@ impl AppState {
         });
         let multi_tab = self.session_tab_count() > 1;
 
-        for ws_idx in 0..self.sessions().len() {
+        for entry in self.session_entries() {
             let child_query_kind = if session_matches {
                 NavigatorQueryKind::Empty
             } else {
                 query_kind
             };
-            let child_rows = self.navigator_child_rows(ws_idx, child_query_kind, &query, multi_tab);
+            let child_rows =
+                self.navigator_child_rows(entry.session_idx, child_query_kind, &query, multi_tab);
             if !session_matches && child_rows.is_empty() {
                 continue;
             }
@@ -202,12 +203,18 @@ impl AppState {
         query: &str,
         multi_tab: bool,
     ) -> Vec<NavigatorRow> {
-        let Some(ws) = self.sessions().get(ws_idx) else {
+        let Some(session) = self
+            .session_entries()
+            .find(|entry| entry.session_idx == ws_idx)
+            .map(|entry| entry.session)
+        else {
             return Vec::new();
         };
         let mut rows = Vec::new();
-        for tab_idx in 0..ws.tabs.len() {
-            let tab_row = multi_tab.then(|| self.navigator_tab_row(ws_idx, tab_idx));
+        for tab_idx in 0..session.tabs.len() {
+            let tab_row = multi_tab
+                .then(|| self.navigator_tab_row(ws_idx, tab_idx))
+                .flatten();
             let tab_matches = tab_row.as_ref().is_some_and(|row| match query_kind {
                 NavigatorQueryKind::Empty => true,
                 NavigatorQueryKind::Text => navigator_matches(query, &row.search_text),
@@ -232,14 +239,16 @@ impl AppState {
         rows
     }
 
-    fn navigator_tab_row(&self, ws_idx: usize, tab_idx: usize) -> NavigatorRow {
-        let ws = &self.sessions()[ws_idx];
-        let tab = &ws.tabs[tab_idx];
-        let label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
-        let pane_count = tab.panes.len();
+    fn navigator_tab_row(&self, ws_idx: usize, tab_idx: usize) -> Option<NavigatorRow> {
+        let entry = self
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)?;
+        let label =
+            crate::workspace::session_tab_display_name(ws_idx, entry.session, tab_idx, entry.tab);
+        let pane_count = entry.tab.panes.len();
         let meta = format!("{pane_count} panes");
         let search_text = format!("{label} {meta}").to_lowercase();
-        NavigatorRow {
+        Some(NavigatorRow {
             target: NavigatorTarget::Tab { ws_idx, tab_idx },
             depth: 0,
             label,
@@ -248,7 +257,7 @@ impl AppState {
             is_current: false,
             is_tab: true,
             search_text,
-        }
+        })
     }
 
     fn navigator_pane_rows_for_tab(
@@ -257,19 +266,19 @@ impl AppState {
         tab_idx: usize,
         multi_tab: bool,
     ) -> Vec<NavigatorRow> {
-        let Some(ws) = self.sessions().get(ws_idx) else {
-            return Vec::new();
-        };
-        let Some(tab) = ws.tabs.get(tab_idx) else {
+        let Some(entry) = self
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
+        else {
             return Vec::new();
         };
         let mut rows = Vec::new();
-        for pane_id in tab.layout.pane_ids() {
-            let Some(pane) = tab.panes.get(&pane_id) else {
+        for pane_id in entry.tab.layout.pane_ids() {
+            let Some(pane) = entry.tab.panes.get(&pane_id) else {
                 continue;
             };
             let terminal = self.terminals.get(&pane.attached_terminal_id);
-            let pane_number = ws.public_pane_number(pane_id).unwrap_or(0);
+            let pane_number = entry.session.public_pane_number(pane_id).unwrap_or(0);
             let label = terminal
                 .and_then(|terminal| terminal.effective_title())
                 .or_else(|| {
@@ -395,14 +404,10 @@ impl AppState {
     pub(crate) fn focus_navigator_target(&mut self, target: NavigatorTarget) -> bool {
         match target {
             NavigatorTarget::Tab { ws_idx, tab_idx } => {
-                if ws_idx >= self.sessions().len() {
-                    return false;
-                }
-                let tab_exists = self
-                    .sessions()
-                    .get(ws_idx)
-                    .is_some_and(|ws| tab_idx < ws.tabs.len());
-                if !tab_exists {
+                if !self
+                    .session_tab_entries()
+                    .any(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
+                {
                     return false;
                 }
                 self.focus_session_tab(ws_idx, tab_idx);
@@ -414,15 +419,11 @@ impl AppState {
                 tab_idx,
                 pane_id,
             } => {
-                if ws_idx >= self.sessions().len() {
-                    return false;
-                }
-                if self
-                    .sessions()
-                    .get(ws_idx)
-                    .and_then(|ws| ws.tabs.get(tab_idx))
-                    .is_some_and(|tab| tab.panes.contains_key(&pane_id))
-                {
+                if self.session_tab_entries().any(|entry| {
+                    entry.session_idx == ws_idx
+                        && entry.tab_idx == tab_idx
+                        && entry.tab.panes.contains_key(&pane_id)
+                }) {
                     self.focus_pane_in_session_at(ws_idx, pane_id);
                     self.mode = Mode::Terminal;
                     return true;
