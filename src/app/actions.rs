@@ -593,7 +593,8 @@ impl AppState {
         };
 
         let previous_focus = self.current_pane_focus_target();
-        let workspace_changed = self.active_session != Some(ws_idx) || self.sessions().len() > 1;
+        let workspace_changed =
+            self.active_session != Some(ws_idx) || self.session_entries().nth(1).is_some();
         self.selection = None;
         self.selection_autoscroll = None;
 
@@ -1514,9 +1515,9 @@ impl AppState {
     fn handle_pane_died(&mut self, pane_id: PaneId) {
         self.collapse_to_single_session();
         let ws_idx = self
-            .sessions()
-            .iter()
-            .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some());
+            .session_tab_entries()
+            .find(|entry| entry.tab.panes.contains_key(&pane_id))
+            .map(|entry| entry.session_idx);
 
         let Some(ws_idx) = ws_idx else {
             warn!(pane = pane_id.raw(), "PaneDied for unknown pane");
@@ -1536,7 +1537,22 @@ impl AppState {
         let session_terminal_ids = self.terminal_ids_for_session_at(ws_idx);
         self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
         let should_close_session = {
-            let ws = &mut self.sessions_mut()[ws_idx];
+            if self.session_index() != Some(ws_idx) {
+                warn!(
+                    pane = pane_id.raw(),
+                    session = ws_idx,
+                    "PaneDied target session disappeared"
+                );
+                return;
+            }
+            let Some(ws) = self.session_mut() else {
+                warn!(
+                    pane = pane_id.raw(),
+                    session = ws_idx,
+                    "PaneDied target session disappeared"
+                );
+                return;
+            };
             ws.remove_pane(pane_id)
         };
         self.mark_session_dirty();
