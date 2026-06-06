@@ -56,7 +56,7 @@ impl App {
             None => return pane_not_found(id, &params.target_pane_id),
         };
         if params.focus {
-            self.state.switch_workspace_tab(ws_idx, target_tab_idx);
+            self.state.focus_session_tab(ws_idx, target_tab_idx);
             self.state
                 .record_pane_focus_change(previous_focus, ws_idx, new_pane.pane_id);
             self.state.mode = Mode::Terminal;
@@ -105,7 +105,8 @@ impl App {
                 let Some((ws_idx, raw_pane_id)) = self.parse_pane_id(&pane_id) else {
                     return pane_not_found(id, &pane_id);
                 };
-                self.state.focus_pane_in_workspace(ws_idx, raw_pane_id);
+                self.state
+                    .focus_pane_in_session_container(ws_idx, raw_pane_id);
                 self.state.mode = Mode::Terminal;
                 let Some(pane) = self.pane_info(ws_idx, raw_pane_id) else {
                     return pane_not_found(id, &pane_id);

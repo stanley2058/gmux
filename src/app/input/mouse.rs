@@ -293,7 +293,7 @@ impl AppState {
                         if let Some((ws_idx, _tab_idx, pane_id)) =
                             self.collapsed_pane_detail_target_at(mouse.row)
                         {
-                            self.focus_pane_in_workspace(ws_idx, pane_id);
+                            self.focus_pane_in_session_container(ws_idx, pane_id);
                             self.mode = Mode::Terminal;
                         }
                         return None;
@@ -337,7 +337,7 @@ impl AppState {
 
                     if let Some((ws_idx, _tab_idx, pane_id)) = self.pane_detail_target_at(mouse.row)
                     {
-                        self.focus_pane_in_workspace(ws_idx, pane_id);
+                        self.focus_pane_in_session_container(ws_idx, pane_id);
                         self.mode = Mode::Terminal;
                         return None;
                     }
@@ -929,7 +929,7 @@ impl AppState {
 
     pub(super) fn focus_pane(&mut self, pane_id: crate::layout::PaneId) {
         if let Some(ws_idx) = self.session_container_index() {
-            self.focus_pane_in_workspace(ws_idx, pane_id);
+            self.focus_pane_in_session_container(ws_idx, pane_id);
         }
     }
 
@@ -955,7 +955,7 @@ impl AppState {
             return;
         };
 
-        self.focus_pane_in_workspace(ws_idx, target.pane_id);
+        self.focus_pane_in_session_container(ws_idx, target.pane_id);
         self.toast = None;
         self.mode = Mode::Terminal;
     }

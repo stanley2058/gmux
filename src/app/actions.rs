@@ -60,7 +60,11 @@ impl AppState {
         }
     }
 
-    pub(crate) fn focus_pane_in_workspace(&mut self, ws_idx: usize, pane_id: PaneId) -> bool {
+    pub(crate) fn focus_pane_in_session_container(
+        &mut self,
+        ws_idx: usize,
+        pane_id: PaneId,
+    ) -> bool {
         let Some(ws) = self.workspaces.get(ws_idx) else {
             return false;
         };
@@ -76,7 +80,7 @@ impl AppState {
             return false;
         }
 
-        self.switch_workspace_tab(ws_idx, tab_idx);
+        self.focus_session_tab(ws_idx, tab_idx);
         if let Some(tab) = self
             .workspaces
             .get_mut(ws_idx)
@@ -357,7 +361,7 @@ impl AppState {
                 if !tab_exists {
                     return false;
                 }
-                self.switch_workspace_tab(ws_idx, tab_idx);
+                self.focus_session_tab(ws_idx, tab_idx);
                 self.mode = Mode::Terminal;
                 true
             }
@@ -375,7 +379,7 @@ impl AppState {
                     .and_then(|ws| ws.tabs.get(tab_idx))
                     .is_some_and(|tab| tab.panes.contains_key(&pane_id))
                 {
-                    self.focus_pane_in_workspace(ws_idx, pane_id);
+                    self.focus_pane_in_session_container(ws_idx, pane_id);
                     self.mode = Mode::Terminal;
                     return true;
                 }
@@ -414,7 +418,7 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace operations
+// Session container operations
 // ---------------------------------------------------------------------------
 
 impl AppState {
@@ -518,7 +522,7 @@ impl AppState {
         }
     }
 
-    pub fn switch_workspace(&mut self, idx: usize) {
+    pub fn focus_session_container(&mut self, idx: usize) {
         if idx < self.workspaces.len() {
             let previous_focus = self.current_pane_focus_target();
             self.selection = None;
@@ -534,7 +538,7 @@ impl AppState {
             ) {
                 self.pane_panel_scroll = 0;
             }
-            self.ensure_workspace_visible(idx);
+            self.ensure_session_container_visible(idx);
             if let Some(ws) = self.workspaces.get_mut(idx) {
                 let active_tab = ws.active_tab;
                 ws.switch_tab(active_tab);
@@ -547,7 +551,7 @@ impl AppState {
         }
     }
 
-    pub(crate) fn switch_workspace_tab(&mut self, ws_idx: usize, tab_idx: usize) -> bool {
+    pub(crate) fn focus_session_tab(&mut self, ws_idx: usize, tab_idx: usize) -> bool {
         if ws_idx >= self.workspaces.len() {
             return false;
         }
@@ -578,7 +582,7 @@ impl AppState {
         {
             self.pane_panel_scroll = 0;
         }
-        self.ensure_workspace_visible(ws_idx);
+        self.ensure_session_container_visible(ws_idx);
         if let Some(ws) = self.workspaces.get_mut(ws_idx) {
             ws.switch_tab(tab_idx);
             let tab_id = format!("{}:{}", workspace_id, tab_idx + 1);
@@ -590,7 +594,7 @@ impl AppState {
         true
     }
 
-    pub(crate) fn ensure_workspace_visible(&mut self, idx: usize) {
+    pub(crate) fn ensure_session_container_visible(&mut self, idx: usize) {
         if idx >= self.workspaces.len() {
             return;
         }
@@ -719,7 +723,7 @@ impl AppState {
             return true;
         }
 
-        if self.focus_pane_in_workspace(ws_idx, pane_id) {
+        if self.focus_pane_in_session_container(ws_idx, pane_id) {
             self.ensure_pane_panel_entry_visible(idx);
             return true;
         }
@@ -771,7 +775,7 @@ impl AppState {
         self.pane_panel_scroll = self.pane_panel_scroll.min(max_scroll);
     }
 
-    pub(crate) fn terminal_ids_for_workspace(
+    pub(crate) fn terminal_ids_for_session_container(
         &self,
         ws_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
@@ -841,7 +845,7 @@ impl AppState {
 
         let mut terminal_ids = Vec::new();
         for idx in &close_indices {
-            terminal_ids.extend(self.terminal_ids_for_workspace(*idx));
+            terminal_ids.extend(self.terminal_ids_for_session_container(*idx));
             if let Some(workspace_id) = self.workspaces.get(*idx).map(|ws| ws.id.clone()) {
                 crate::logging::session_closed(&workspace_id);
             }
@@ -860,7 +864,7 @@ impl AppState {
                 self.selected = self.workspaces.len() - 1;
             }
             self.active = Some(self.selected);
-            self.ensure_workspace_visible(self.selected);
+            self.ensure_session_container_visible(self.selected);
             self.tab_scroll_follow_active = true;
             self.refresh_tab_bar_view();
         }
@@ -912,7 +916,7 @@ impl AppState {
 
         if let Some(focused) = panes.iter().find(|p| p.is_focused) {
             if let Some(target) = find_in_direction(focused, direction, &panes) {
-                return self.focus_pane_in_workspace(ws_idx, target);
+                return self.focus_pane_in_session_container(ws_idx, target);
             }
         }
         false
@@ -951,7 +955,7 @@ impl AppState {
             } else {
                 ids[(pos + 1) % ids.len()]
             };
-            self.focus_pane_in_workspace(ws_idx, target);
+            self.focus_pane_in_session_container(ws_idx, target);
         }
     }
 
@@ -969,7 +973,7 @@ impl AppState {
             return;
         }
 
-        self.switch_workspace_tab(ws_idx, tab_idx);
+        self.focus_session_tab(ws_idx, tab_idx);
         if let Some(tab) = self
             .workspaces
             .get_mut(ws_idx)
@@ -1523,7 +1527,7 @@ impl AppState {
         }
 
         let pane_terminal_id = self.terminal_id_for_pane(ws_idx, pane_id);
-        let workspace_terminal_ids = self.terminal_ids_for_workspace(ws_idx);
+        let workspace_terminal_ids = self.terminal_ids_for_session_container(ws_idx);
         self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
         let should_close_workspace = {
             let ws = &mut self.workspaces[ws_idx];
@@ -2134,9 +2138,9 @@ mod tests {
     }
 
     #[test]
-    fn switch_workspace_updates_active_and_selected() {
+    fn focus_session_container_updates_active_and_selected() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
-        state.switch_workspace(2);
+        state.focus_session_container(2);
         assert_eq!(state.active, Some(2));
         assert_eq!(state.selected, 2);
     }
@@ -2198,8 +2202,8 @@ mod tests {
         let root = state.workspaces[0].tabs[0].root_pane;
         let right = state.workspaces[0].test_split(Direction::Horizontal);
 
-        state.focus_pane_in_workspace(0, root);
-        state.focus_pane_in_workspace(0, right);
+        state.focus_pane_in_session_container(0, root);
+        state.focus_pane_in_session_container(0, right);
         state.last_pane();
 
         assert_eq!(state.workspaces[0].focused_pane_id(), Some(root));
@@ -2216,8 +2220,8 @@ mod tests {
         let right = state.workspaces[0].test_split(Direction::Horizontal);
         let background = state.workspaces[0].test_split(Direction::Horizontal);
 
-        state.focus_pane_in_workspace(0, root);
-        state.focus_pane_in_workspace(0, right);
+        state.focus_pane_in_session_container(0, root);
+        state.focus_pane_in_session_container(0, right);
         state.workspaces[0].remove_pane(background);
         state.last_pane();
 
@@ -2231,8 +2235,8 @@ mod tests {
         let second_tab = state.workspaces[1].test_add_tab(Some("logs"));
         let second_tab_root = state.workspaces[1].tabs[second_tab].root_pane;
 
-        state.focus_pane_in_workspace(0, first_root);
-        state.focus_pane_in_workspace(1, second_tab_root);
+        state.focus_pane_in_session_container(0, first_root);
+        state.focus_pane_in_session_container(1, second_tab_root);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
@@ -2270,7 +2274,7 @@ mod tests {
             Some(first_second_root)
         );
 
-        state.switch_workspace(1);
+        state.focus_session_container(1);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
@@ -2294,7 +2298,7 @@ mod tests {
         let second_tab = state.workspaces[1].test_add_tab(Some("logs"));
         let second_tab_root = state.workspaces[1].tabs[second_tab].root_pane;
 
-        state.switch_workspace_tab(1, second_tab);
+        state.focus_session_tab(1, second_tab);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));
@@ -2309,11 +2313,11 @@ mod tests {
     }
 
     #[test]
-    fn switch_workspace_updates_active_after_sidebar_trim() {
+    fn focus_session_container_updates_active_after_sidebar_trim() {
         let mut state = app_with_workspaces(&["a", "b", "c", "d", "e", "f", "g", "h"]);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
-        state.switch_workspace(7);
+        state.focus_session_container(7);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
         assert_eq!(state.active, Some(7));
@@ -2321,20 +2325,20 @@ mod tests {
     }
 
     #[test]
-    fn switch_workspace_marks_panes_seen() {
+    fn focus_session_container_marks_panes_seen() {
         let mut state = app_with_workspaces(&["a", "b"]);
         // Mark a pane in workspace 1 as unseen
         let id = *state.workspaces[1].panes.keys().next().unwrap();
         state.workspaces[1].panes.get_mut(&id).unwrap().seen = false;
 
-        state.switch_workspace(1);
+        state.focus_session_container(1);
         assert!(state.workspaces[1].panes.get(&id).unwrap().seen);
     }
 
     #[test]
-    fn switch_workspace_out_of_bounds_is_noop() {
+    fn focus_session_container_out_of_bounds_is_noop() {
         let mut state = app_with_workspaces(&["a"]);
-        state.switch_workspace(5);
+        state.focus_session_container(5);
         assert_eq!(state.active, Some(0));
     }
 

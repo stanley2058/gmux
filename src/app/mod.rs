@@ -2405,8 +2405,8 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state
-            .focus_pane_in_workspace(0, background_previous_focus);
-        app.state.focus_pane_in_workspace(0, active_pane);
+            .focus_pane_in_session_container(0, background_previous_focus);
+        app.state.focus_pane_in_session_container(0, active_pane);
 
         let target_pane_id = app.pane_info(0, target_pane).unwrap().pane_id;
         let target_tab_id = app.public_tab_id(0, background_tab).unwrap();
@@ -2832,8 +2832,8 @@ last_pane = "prefix+tab"
         app.state.selected = 0;
         app.state.keybinds = config.keybinds();
         app.state.mode = Mode::Terminal;
-        app.state.switch_workspace_tab(0, first_second_tab);
-        app.state.switch_workspace_tab(1, 0);
+        app.state.focus_session_tab(0, first_second_tab);
+        app.state.focus_session_tab(1, 0);
 
         app.route_client_input(vec![0x02, b'\t']);
 

@@ -97,7 +97,7 @@ impl App {
         self.state.terminals.insert(terminal.id.clone(), terminal);
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
         if focus {
-            self.state.switch_workspace_tab(ws_idx, idx);
+            self.state.focus_session_tab(ws_idx, idx);
             self.state.mode = Mode::Terminal;
         }
         let workspace_id = self.state.workspaces[ws_idx].id.clone();
@@ -143,7 +143,7 @@ impl App {
         let root_pane = self.state.workspaces[idx].tabs[0].root_pane.raw();
         crate::logging::session_created(&workspace_id, root_pane);
         if should_focus {
-            self.state.switch_workspace(idx);
+            self.state.focus_session_container(idx);
             self.state.mode = Mode::Terminal;
         }
         self.schedule_session_save();
