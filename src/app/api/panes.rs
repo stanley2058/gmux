@@ -293,7 +293,7 @@ impl App {
             ws.close_pane(pane_id)
         };
         if should_close_workspace {
-            self.state.selected = ws_idx;
+            self.state.focus_session_container(ws_idx);
             self.state.close_session_container();
             self.shutdown_detached_terminal_runtimes();
             self.emit_event(EventEnvelope {
