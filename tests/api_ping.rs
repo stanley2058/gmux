@@ -356,8 +356,8 @@ fn pane_methods_round_trip_over_socket() {
     assert_ne!(root_terminal_id, root_pane_id);
     assert_eq!(created["result"]["tab"]["number"], 1);
     assert_eq!(created["result"]["tab"]["focused"], true);
-    assert!(created["result"]["tab"]["workspace_id"].is_null());
-    assert!(created["result"]["root_pane"]["workspace_id"].is_null());
+    assert!(created["result"]["tab"].get("workspace_id").is_none());
+    assert!(created["result"]["root_pane"].get("workspace_id").is_none());
     assert_eq!(created["result"]["root_pane"]["tab_id"], active_tab_id);
 
     let panes = send_request(
@@ -366,7 +366,7 @@ fn pane_methods_round_trip_over_socket() {
     );
     let panes = panes["result"]["panes"].as_array().unwrap();
     assert_eq!(panes.len(), 1);
-    assert!(panes[0]["workspace_id"].is_null());
+    assert!(panes[0].get("workspace_id").is_none());
     assert_eq!(panes[0]["tab_id"], active_tab_id);
     let pane_id = panes[0]["pane_id"].as_str().unwrap().to_string();
     assert_eq!(pane_id, root_pane_id);
@@ -510,8 +510,8 @@ fn tab_create_initializes_empty_session() {
     assert_eq!(created["result"]["tab"]["label"], "initial");
     assert_eq!(created["result"]["tab"]["number"], 1);
     assert_eq!(created["result"]["tab"]["focused"], true);
-    assert!(created["result"]["tab"]["workspace_id"].is_null());
-    assert!(created["result"]["root_pane"]["workspace_id"].is_null());
+    assert!(created["result"]["tab"].get("workspace_id").is_none());
+    assert!(created["result"]["root_pane"].get("workspace_id").is_none());
     assert_eq!(
         created["result"]["root_pane"]["tab_id"],
         created["result"]["tab"]["tab_id"]
@@ -551,7 +551,7 @@ fn tab_methods_round_trip_over_socket() {
         .as_str()
         .unwrap()
         .to_string();
-    assert!(created["result"]["tab"]["workspace_id"].is_null());
+    assert!(created["result"]["tab"].get("workspace_id").is_none());
 
     let tab_created = send_request(
         &socket_path,
@@ -573,9 +573,9 @@ fn tab_methods_round_trip_over_socket() {
     assert!(second_root_terminal_id.starts_with("term_"));
     assert_ne!(second_root_terminal_id, second_root_pane_id);
     assert_ne!(second_tab_id, first_tab_id);
-    assert!(tab_created["result"]["tab"]["workspace_id"].is_null());
+    assert!(tab_created["result"]["tab"].get("workspace_id").is_none());
     assert_eq!(tab_created["result"]["tab"]["focused"], true);
-    assert!(tab_created["result"]["root_pane"]["workspace_id"].is_null());
+    assert!(tab_created["result"]["root_pane"].get("workspace_id").is_none());
     assert_eq!(tab_created["result"]["root_pane"]["tab_id"], second_tab_id);
 
     let tab_list = send_request(
@@ -854,7 +854,7 @@ fn tab_create_with_no_focus_preserves_active_tab() {
         .as_str()
         .unwrap()
         .to_string();
-    assert!(created["result"]["tab"]["workspace_id"].is_null());
+    assert!(created["result"]["tab"].get("workspace_id").is_none());
 
     let tab_created = send_request(
         &socket_path,
@@ -866,7 +866,7 @@ fn tab_create_with_no_focus_preserves_active_tab() {
         .unwrap()
         .to_string();
     assert_ne!(second_tab_id, first_tab_id);
-    assert!(tab_created["result"]["tab"]["workspace_id"].is_null());
+    assert!(tab_created["result"]["tab"].get("workspace_id").is_none());
     assert_eq!(tab_created["result"]["tab"]["focused"], false);
 
     let tab_list = send_request(
@@ -914,13 +914,13 @@ fn events_subscribe_streams_tab_and_pane_events() {
         .as_str()
         .unwrap()
         .to_string();
-    assert!(created["result"]["tab"]["workspace_id"].is_null());
+    assert!(created["result"]["tab"].get("workspace_id").is_none());
     let tab_created = wait_for_event(&mut reader, "tab_created", Duration::from_secs(2));
     assert_eq!(tab_created["data"]["tab"]["tab_id"], first_tab_id);
-    assert!(tab_created["data"]["tab"]["workspace_id"].is_null());
+    assert!(tab_created["data"]["tab"].get("workspace_id").is_none());
     let tab_focused = wait_for_event(&mut reader, "tab_focused", Duration::from_secs(2));
     assert_eq!(tab_focused["data"]["tab_id"], first_tab_id);
-    assert!(tab_focused["data"]["workspace_id"].is_null());
+    assert!(tab_focused["data"].get("workspace_id").is_none());
 
     let pane_created = wait_for_event(&mut reader, "pane_created", Duration::from_secs(2));
     let pane_id = pane_created["data"]["pane"]["pane_id"]
@@ -929,7 +929,7 @@ fn events_subscribe_streams_tab_and_pane_events() {
         .to_string();
     let pane_focused = wait_for_event(&mut reader, "pane_focused", Duration::from_secs(2));
     assert_eq!(pane_focused["data"]["pane_id"], pane_id);
-    assert!(pane_focused["data"]["workspace_id"].is_null());
+    assert!(pane_focused["data"].get("workspace_id").is_none());
 
     let new_tab = send_request(
         &socket_path,
@@ -940,14 +940,14 @@ fn events_subscribe_streams_tab_and_pane_events() {
         .unwrap()
         .to_string();
     assert_ne!(second_tab_id, first_tab_id);
-    assert!(new_tab["result"]["tab"]["workspace_id"].is_null());
+    assert!(new_tab["result"]["tab"].get("workspace_id").is_none());
 
     let created_tab_event = wait_for_event(&mut reader, "tab_created", Duration::from_secs(2));
     assert_eq!(created_tab_event["data"]["tab"]["tab_id"], second_tab_id);
-    assert!(created_tab_event["data"]["tab"]["workspace_id"].is_null());
+    assert!(created_tab_event["data"]["tab"].get("workspace_id").is_none());
     let focused_tab_event = wait_for_event(&mut reader, "tab_focused", Duration::from_secs(2));
     assert_eq!(focused_tab_event["data"]["tab_id"], second_tab_id);
-    assert!(focused_tab_event["data"]["workspace_id"].is_null());
+    assert!(focused_tab_event["data"].get("workspace_id").is_none());
 
     let renamed_tab = send_request(
         &socket_path,
@@ -1168,7 +1168,7 @@ fn events_subscribe_streams_output_events() {
             base.display()
         ),
     );
-    assert!(created["result"]["tab"]["workspace_id"].is_null());
+    assert!(created["result"]["tab"].get("workspace_id").is_none());
 
     let panes = send_request(
         &socket_path,
