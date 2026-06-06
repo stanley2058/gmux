@@ -17,11 +17,21 @@ impl App {
         let Some((ws_idx, target_pane_id)) = self.parse_pane_id(&params.target_pane_id) else {
             return pane_not_found(id, &params.target_pane_id);
         };
+        let Some(target_tab_idx) = self
+            .state
+            .workspaces
+            .get(ws_idx)
+            .and_then(|ws| ws.find_tab_index_for_pane(target_pane_id))
+        else {
+            return pane_not_found(id, &params.target_pane_id);
+        };
+        let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, target_tab_idx) else {
+            return pane_not_found(id, &params.target_pane_id);
+        };
         let (rows, cols) = self.state.estimate_pane_size();
         let split_cwd = params.cwd.map(std::path::PathBuf::from).or_else(|| {
             let follow_cwd = self.state.workspaces.get(ws_idx).and_then(|ws| {
-                let tab_idx = ws.find_tab_index_for_pane(target_pane_id)?;
-                ws.tabs.get(tab_idx)?.cwd_for_pane(
+                ws.tabs.get(target_tab_idx)?.cwd_for_pane(
                     target_pane_id,
                     &self.state.terminals,
                     &self.terminal_runtimes,
@@ -33,6 +43,8 @@ impl App {
         let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
         let host_terminal_theme = self.state.host_terminal_theme;
         let previous_focus = self.state.current_pane_focus_target();
+        self.state.collapse_to_single_session_workspace();
+        let ws_idx = 0;
         let Some(ws) = self.state.workspaces.get_mut(ws_idx) else {
             return pane_not_found(id, &params.target_pane_id);
         };
@@ -55,6 +67,7 @@ impl App {
             Some(Err(err)) => return encode_error(id, "pane_split_failed", err.to_string()),
             None => return pane_not_found(id, &params.target_pane_id),
         };
+        debug_assert_eq!(target_tab_idx, flat_tab_idx);
         if params.focus {
             self.state.focus_session_tab(ws_idx, target_tab_idx);
             self.state

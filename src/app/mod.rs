@@ -2521,6 +2521,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pane_split_request_collapses_legacy_workspace_target() {
+        let _guard = config_env_lock().lock().unwrap();
+        let original_shell = std::env::var_os("SHELL");
+        std::env::set_var("SHELL", "/usr/bin/true");
+
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        let target_pane = second.tabs[0].root_pane;
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+
+        let target_pane_id = app.pane_info(1, target_pane).unwrap().pane_id;
+        let target_tab_id = app.public_tab_id(1, 0).unwrap();
+        let split_cwd = std::env::temp_dir();
+
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_pane_split_legacy".into(),
+            method: crate::api::schema::Method::PaneSplit(crate::api::schema::PaneSplitParams {
+                target_pane_id,
+                direction: crate::api::schema::SplitDirection::Right,
+                cwd: Some(split_cwd.display().to_string()),
+                focus: false,
+            }),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "pane_info");
+        assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
+        assert_eq!(response["result"]["pane"]["focused"], false);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 0);
+        assert_eq!(app.state.workspaces[0].tabs.len(), 2);
+        assert_eq!(app.state.workspaces[0].tabs[1].layout.pane_count(), 2);
+
+        let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
+        for (_terminal_id, runtime) in runtimes {
+            runtime.shutdown();
+        }
+        match original_shell {
+            Some(value) => std::env::set_var("SHELL", value),
+            None => std::env::remove_var("SHELL"),
+        }
+    }
+
+    #[tokio::test]
     async fn pane_split_request_focuses_new_pane_when_requested() {
         let _guard = config_env_lock().lock().unwrap();
         let original_shell = std::env::var_os("SHELL");
