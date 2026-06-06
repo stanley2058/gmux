@@ -419,6 +419,90 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 impl AppState {
+    pub(crate) fn collapse_to_single_session_workspace(&mut self) -> bool {
+        match self.workspaces.len() {
+            0 => {
+                let changed = self.active.take().is_some() || self.selected != 0;
+                self.selected = 0;
+                self.tab_scroll = 0;
+                self.tab_scroll_follow_active = true;
+                changed
+            }
+            1 => {
+                let changed = self.active != Some(0) || self.selected != 0;
+                self.active = Some(0);
+                self.selected = 0;
+                changed
+            }
+            _ => {
+                let active_ws_idx = self
+                    .active
+                    .unwrap_or(self.selected)
+                    .min(self.workspaces.len().saturating_sub(1));
+                let active_tab = self
+                    .workspaces
+                    .iter()
+                    .enumerate()
+                    .take(active_ws_idx + 1)
+                    .fold(0, |offset, (idx, ws)| {
+                        if idx == active_ws_idx {
+                            offset + ws.active_tab.min(ws.tabs.len().saturating_sub(1))
+                        } else {
+                            offset + ws.tabs.len()
+                        }
+                    });
+
+                let extras = self.workspaces.split_off(1);
+                let primary = &mut self.workspaces[0];
+                for mut workspace in extras {
+                    if let (Some(name), Some(first_tab)) =
+                        (workspace.custom_name.take(), workspace.tabs.first_mut())
+                    {
+                        if first_tab.custom_name.is_none() {
+                            first_tab.custom_name = Some(name);
+                        }
+                    }
+                    primary.tabs.append(&mut workspace.tabs);
+                }
+
+                if primary.tabs.is_empty() {
+                    self.workspaces.clear();
+                    self.active = None;
+                    self.selected = 0;
+                    self.tab_scroll = 0;
+                    self.tab_scroll_follow_active = true;
+                    return true;
+                }
+
+                for (idx, tab) in primary.tabs.iter_mut().enumerate() {
+                    tab.number = idx + 1;
+                }
+                primary.active_tab = active_tab.min(primary.tabs.len().saturating_sub(1));
+                primary.public_pane_numbers.clear();
+                let mut next_public_pane_number = 1;
+                for pane_id in primary
+                    .tabs
+                    .iter()
+                    .flat_map(|tab| tab.layout.pane_ids().into_iter())
+                {
+                    primary
+                        .public_pane_numbers
+                        .insert(pane_id, next_public_pane_number);
+                    next_public_pane_number += 1;
+                }
+                primary.next_public_pane_number = next_public_pane_number;
+
+                self.active = Some(0);
+                self.selected = 0;
+                self.mobile_switcher_scroll = 0;
+                self.pane_panel_scroll = 0;
+                self.tab_scroll_follow_active = true;
+                self.refresh_tab_bar_view();
+                true
+            }
+        }
+    }
+
     pub fn switch_workspace(&mut self, idx: usize) {
         if idx < self.workspaces.len() {
             let previous_focus = self.current_pane_focus_target();
@@ -2045,6 +2129,44 @@ mod tests {
         state.switch_workspace(2);
         assert_eq!(state.active, Some(2));
         assert_eq!(state.selected, 2);
+    }
+
+    #[test]
+    fn collapse_to_single_session_workspace_merges_tabs_and_focus() {
+        let mut state = app_with_workspaces(&["one", "two"]);
+        let second_first_root = state.workspaces[1].tabs[0].root_pane;
+        let second_tab = state.workspaces[1].test_add_tab(Some("logs"));
+        let second_tab_root = state.workspaces[1].tabs[second_tab].root_pane;
+        state.workspaces[1].switch_tab(second_tab);
+        state.active = Some(1);
+        state.selected = 1;
+
+        assert!(state.collapse_to_single_session_workspace());
+
+        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.workspaces[0].active_tab, 2);
+        let tab_labels: Vec<_> = state.workspaces[0]
+            .tabs
+            .iter()
+            .map(|tab| tab.custom_name.as_deref())
+            .collect();
+        assert_eq!(tab_labels, vec![None, Some("two"), Some("logs")]);
+        let tab_numbers: Vec<_> = state.workspaces[0]
+            .tabs
+            .iter()
+            .map(|tab| tab.number)
+            .collect();
+        assert_eq!(tab_numbers, vec![1, 2, 3]);
+        assert_eq!(
+            state.workspaces[0].public_pane_number(second_first_root),
+            Some(2)
+        );
+        assert_eq!(
+            state.workspaces[0].public_pane_number(second_tab_root),
+            Some(3)
+        );
     }
 
     #[test]

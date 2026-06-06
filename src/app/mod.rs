@@ -431,6 +431,7 @@ impl App {
         };
 
         state.terminals = restored_terminals;
+        state.collapse_to_single_session_workspace();
 
         // Background auto-update is disabled in monolithic no-session mode
         // and in debug/test builds so local development never mutates the
@@ -516,6 +517,7 @@ impl App {
         app.terminal_runtimes = runtimes.into();
         app.state.active = (!app.state.workspaces.is_empty()).then_some(0);
         app.state.selected = 0;
+        app.state.collapse_to_single_session_workspace();
         app.state.mode = if app.state.active.is_some() {
             state::Mode::Terminal
         } else {
