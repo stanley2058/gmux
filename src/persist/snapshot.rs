@@ -21,18 +21,6 @@ pub struct SessionSnapshot {
     pub tabs: Vec<TabSnapshot>,
     #[serde(default)]
     pub active_tab: usize,
-    #[serde(default)]
-    pub pane_panel_scope: crate::app::state::PanePanelScope,
-    #[serde(default)]
-    pub sidebar_width: Option<u16>,
-    #[serde(default)]
-    pub sidebar_section_split: Option<f32>,
-    #[serde(
-        default,
-        rename = "collapsed_pane_keys",
-        alias = "collapsed_space_keys"
-    )]
-    pub collapsed_space_keys: std::collections::HashSet<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -159,18 +147,6 @@ struct RawSessionSnapshot {
     workspaces: Vec<serde_json::Value>,
     #[serde(default)]
     active: Option<usize>,
-    #[serde(default)]
-    pane_panel_scope: crate::app::state::PanePanelScope,
-    #[serde(default)]
-    sidebar_width: Option<u16>,
-    #[serde(default)]
-    sidebar_section_split: Option<f32>,
-    #[serde(
-        default,
-        rename = "collapsed_pane_keys",
-        alias = "collapsed_space_keys"
-    )]
-    collapsed_space_keys: std::collections::HashSet<String>,
 }
 
 fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> {
@@ -191,10 +167,6 @@ fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> 
         version: raw.version,
         tabs,
         active_tab,
-        pane_panel_scope: raw.pane_panel_scope,
-        sidebar_width: raw.sidebar_width,
-        sidebar_section_split: raw.sidebar_section_split,
-        collapsed_space_keys: raw.collapsed_space_keys,
     })
 }
 
@@ -290,10 +262,6 @@ pub fn capture(
     terminal_runtimes: &TerminalRuntimeRegistry,
     active: Option<usize>,
     _selected: usize,
-    pane_panel_scope: crate::app::state::PanePanelScope,
-    sidebar_width: u16,
-    sidebar_section_split: f32,
-    collapsed_space_keys: std::collections::HashSet<String>,
 ) -> SessionSnapshot {
     let workspaces: Vec<_> = workspaces
         .iter()
@@ -305,10 +273,6 @@ pub fn capture(
         version: SNAPSHOT_VERSION,
         tabs,
         active_tab,
-        pane_panel_scope,
-        sidebar_width: Some(sidebar_width),
-        sidebar_section_split: Some(sidebar_section_split),
-        collapsed_space_keys,
     }
 }
 
@@ -506,7 +470,7 @@ mod tests {
     use ratatui::layout::{Direction, Rect};
 
     use super::*;
-    use crate::app::{state::PanePanelScope, AppState, Mode};
+    use crate::app::{AppState, Mode};
     use crate::layout::NavDirection;
     use crate::workspace::Workspace;
 
@@ -552,10 +516,6 @@ mod tests {
             terminal_runtimes,
             state.active,
             state.selected,
-            state.pane_panel_scope,
-            state.sidebar_width,
-            state.sidebar_section_split,
-            state.collapsed_space_keys.clone(),
         )
     }
 
@@ -579,17 +539,11 @@ mod tests {
             version: SNAPSHOT_VERSION,
             tabs: vec![],
             active_tab: 0,
-            pane_panel_scope: PanePanelScope::CurrentWorkspace,
-            sidebar_width: Some(26),
-            sidebar_section_split: Some(0.5),
-            collapsed_space_keys: std::collections::HashSet::new(),
         };
         let json = serde_json::to_string(&snap).unwrap();
         let restored = parse_snapshot(&json).unwrap();
         assert!(restored.tabs.is_empty());
         assert_eq!(restored.active_tab, 0);
-        assert_eq!(restored.sidebar_width, Some(26));
-        assert_eq!(restored.sidebar_section_split, Some(0.5));
     }
 
     #[test]
@@ -650,10 +604,6 @@ mod tests {
         let snap = SessionSnapshot {
             tabs: tabs.clone(),
             active_tab: 0,
-            pane_panel_scope: PanePanelScope::CurrentWorkspace,
-            sidebar_width: Some(26),
-            sidebar_section_split: Some(0.5),
-            collapsed_space_keys: std::collections::HashSet::new(),
             version: SNAPSHOT_VERSION,
         };
 
@@ -669,9 +619,6 @@ mod tests {
             PathBuf::from("/home/can/Projects/gmux")
         );
         assert_eq!(restored.tabs[0].panes[&1].label.as_deref(), Some("website"));
-        assert_eq!(restored.pane_panel_scope, PanePanelScope::CurrentWorkspace);
-        assert_eq!(restored.sidebar_width, Some(26));
-        assert_eq!(restored.sidebar_section_split, Some(0.5));
     }
 
     #[test]
@@ -681,9 +628,6 @@ mod tests {
         assert_eq!(snap.version, 3);
         assert_eq!(snap.tabs.len(), 3);
         assert_eq!(snap.active_tab, 0);
-        assert_eq!(snap.pane_panel_scope, PanePanelScope::AllWorkspaces);
-        assert_eq!(snap.sidebar_width, None);
-        assert_eq!(snap.sidebar_section_split, None);
         assert_eq!(snap.tabs[0].custom_name.as_deref(), Some("separate-pane"));
         assert_eq!(snap.tabs[1].custom_name.as_deref(), Some("p"));
         assert_eq!(
@@ -698,27 +642,27 @@ mod tests {
 
         assert_eq!(snap.version, 3);
         assert_eq!(snap.tabs.len(), 3);
-        assert_eq!(snap.pane_panel_scope, PanePanelScope::CurrentWorkspace);
-        assert_eq!(snap.sidebar_section_split, Some(0.4));
         assert_eq!(snap.active_tab, 1);
         assert_eq!(snap.tabs[2].panes.len(), 2);
     }
 
     #[test]
-    fn old_snapshot_defaults_pane_panel_scope() {
+    fn old_snapshot_ui_fields_are_ignored() {
         let json = serde_json::json!({
             "version": SNAPSHOT_VERSION,
             "workspaces": [],
             "active": null,
-            "selected": 0
+            "selected": 0,
+            "pane_panel_scope": "CurrentWorkspace",
+            "sidebar_width": 31,
+            "sidebar_section_split": 0.4,
+            "collapsed_pane_keys": ["repo-key"]
         })
         .to_string();
 
         let restored = parse_snapshot(&json).unwrap();
 
-        assert_eq!(restored.pane_panel_scope, PanePanelScope::AllWorkspaces);
-        assert_eq!(restored.sidebar_width, None);
-        assert_eq!(restored.sidebar_section_split, None);
+        assert!(restored.tabs.is_empty());
     }
 
     #[test]
@@ -816,21 +760,6 @@ mod tests {
         assert_eq!(snapshot.tabs.len(), 1);
         assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("one"));
         assert_eq!(snapshot.active_tab, 0);
-    }
-
-    #[test]
-    fn capture_contract_tracks_sidebar_state() {
-        let mut state = state_with_workspaces(&["one"]);
-        state.sidebar_width = 31;
-        state.sidebar_section_split = 0.4;
-        state.pane_panel_scope = PanePanelScope::AllWorkspaces;
-        state.collapsed_space_keys.insert("repo-key".into());
-
-        let snapshot = capture_from_state(&state);
-        assert_eq!(snapshot.sidebar_width, Some(31));
-        assert_eq!(snapshot.sidebar_section_split, Some(0.4));
-        assert_eq!(snapshot.pane_panel_scope, PanePanelScope::AllWorkspaces);
-        assert!(snapshot.collapsed_space_keys.contains("repo-key"));
     }
 
     #[test]
@@ -1063,10 +992,6 @@ mod tests {
                 root_pane: Some(0),
             }],
             active_tab: 0,
-            pane_panel_scope: PanePanelScope::CurrentWorkspace,
-            sidebar_width: Some(26),
-            sidebar_section_split: Some(0.5),
-            collapsed_space_keys: std::collections::HashSet::new(),
         };
 
         let json = serde_json::to_string(&snap).unwrap();

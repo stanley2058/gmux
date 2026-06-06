@@ -692,8 +692,6 @@ mod tests {
 
         assert_eq!(app.state.pane_panel_scope, PanePanelScope::CurrentWorkspace);
         assert_eq!(app.state.pane_panel_scroll, 0);
-        let snapshot = capture_snapshot(&app.state);
-        assert_eq!(snapshot.pane_panel_scope, PanePanelScope::CurrentWorkspace);
     }
 
     #[test]
@@ -1187,8 +1185,6 @@ mod tests {
         app.handle_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), 30, 5));
 
         assert_eq!(app.state.sidebar_width, 31);
-        let snapshot = capture_snapshot(&app.state);
-        assert_eq!(snapshot.sidebar_width, Some(31));
     }
 
     #[test]
@@ -1253,11 +1249,6 @@ mod tests {
         ));
 
         assert!(app.state.sidebar_section_split > 0.5);
-        let snapshot = capture_snapshot(&app.state);
-        assert_eq!(
-            snapshot.sidebar_section_split,
-            Some(app.state.sidebar_section_split)
-        );
     }
 
     #[test]
@@ -1272,7 +1263,5 @@ mod tests {
 
         assert_eq!(app.state.sidebar_width, 26);
         assert!(app.state.drag.is_none());
-        let snapshot = capture_snapshot(&app.state);
-        assert_eq!(snapshot.sidebar_width, Some(26));
     }
 }

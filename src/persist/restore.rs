@@ -771,10 +771,6 @@ mod tests {
             version: super::super::snapshot::SNAPSHOT_VERSION,
             tabs: tabs.clone(),
             active_tab: 0,
-            pane_panel_scope: crate::app::state::PanePanelScope::CurrentWorkspace,
-            sidebar_width: Some(26),
-            sidebar_section_split: Some(0.5),
-            collapsed_space_keys: Default::default(),
         };
         (snapshot, history)
     }

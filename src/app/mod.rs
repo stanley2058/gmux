@@ -235,26 +235,8 @@ impl App {
         // Try to restore previous session
         let mut restored_terminals = std::collections::HashMap::new();
         let mut restored_terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let (
-            workspaces,
-            active,
-            selected,
-            _restored_pane_panel_scope,
-            sidebar_width,
-            sidebar_width_source,
-            sidebar_section_split,
-            collapsed_space_keys,
-        ) = if no_session {
-            (
-                Vec::new(),
-                None,
-                0,
-                state::PanePanelScope::CurrentWorkspace,
-                config.ui.sidebar_width,
-                state::SidebarWidthSource::ConfigDefault,
-                0.5_f32,
-                std::collections::HashSet::new(),
-            )
+        let (workspaces, active, selected) = if no_session {
+            (Vec::new(), None, 0)
         } else if let Some(snap) = crate::persist::load() {
             let history = config
                 .experimental
@@ -277,48 +259,13 @@ impl App {
             restored_terminal_runtimes = terminal_runtimes.into();
             if ws.is_empty() {
                 crate::logging::session_restored(0, "empty");
-                (
-                    Vec::new(),
-                    None,
-                    0,
-                    snap.pane_panel_scope,
-                    snap.sidebar_width.unwrap_or(config.ui.sidebar_width),
-                    if snap.sidebar_width.is_some() {
-                        state::SidebarWidthSource::Persisted
-                    } else {
-                        state::SidebarWidthSource::ConfigDefault
-                    },
-                    snap.sidebar_section_split.unwrap_or(0.5),
-                    snap.collapsed_space_keys,
-                )
+                (Vec::new(), None, 0)
             } else {
                 crate::logging::session_restored(ws.len(), "ok");
-                (
-                    ws,
-                    Some(0),
-                    0,
-                    snap.pane_panel_scope,
-                    snap.sidebar_width.unwrap_or(config.ui.sidebar_width),
-                    if snap.sidebar_width.is_some() {
-                        state::SidebarWidthSource::Persisted
-                    } else {
-                        state::SidebarWidthSource::ConfigDefault
-                    },
-                    snap.sidebar_section_split.unwrap_or(0.5),
-                    snap.collapsed_space_keys,
-                )
+                (ws, Some(0), 0)
             }
         } else {
-            (
-                Vec::new(),
-                None,
-                0,
-                state::PanePanelScope::CurrentWorkspace,
-                config.ui.sidebar_width,
-                state::SidebarWidthSource::ConfigDefault,
-                0.5_f32,
-                std::collections::HashSet::new(),
-            )
+            (Vec::new(), None, 0)
         };
 
         let pane_panel_scope = pane_panel_scope_from_config(config.ui.pane_panel_scope);
@@ -385,7 +332,6 @@ impl App {
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,
-            collapsed_space_keys,
             request_complete_onboarding: false,
             name_input: String::new(),
             name_input_replace_on_type: false,
@@ -441,14 +387,14 @@ impl App {
             prefix_code,
             prefix_mods,
             default_sidebar_width: config.ui.sidebar_width,
-            sidebar_width,
+            sidebar_width: config.ui.sidebar_width,
             sidebar_min_width,
             sidebar_max_width,
             mobile_width_threshold: config.ui.mobile_width_threshold,
-            sidebar_width_source,
+            sidebar_width_source: state::SidebarWidthSource::ConfigDefault,
             sidebar_width_auto: false,
             sidebar_collapsed: false,
-            sidebar_section_split,
+            sidebar_section_split: 0.5,
             pane_panel_scope,
             mouse_capture: config.ui.mouse_capture,
             right_click_passthrough_modifiers: config.ui.right_click_passthrough_modifiers(),
@@ -576,15 +522,6 @@ impl App {
         app.terminal_runtimes = runtimes.into();
         app.state.active = (!app.state.workspaces.is_empty()).then_some(0);
         app.state.selected = 0;
-        app.state.pane_panel_scope = snapshot.pane_panel_scope;
-        if let Some(width) = snapshot.sidebar_width {
-            app.state.sidebar_width = width;
-            app.state.sidebar_width_source = state::SidebarWidthSource::Persisted;
-        }
-        if let Some(split) = snapshot.sidebar_section_split {
-            app.state.sidebar_section_split = split;
-        }
-        app.state.collapsed_space_keys = snapshot.collapsed_space_keys.clone();
         app.state.mode = if app.state.active.is_some() {
             state::Mode::Terminal
         } else {
@@ -1026,7 +963,7 @@ impl App {
                 self.state.sidebar_max_width = config.ui.sidebar_max_width;
                 self.state.mobile_width_threshold = config.ui.mobile_width_threshold;
                 // Re-clamp the live width to the new bounds. No source guard — bounds
-                // always apply, including to widths owned by Persisted or Manual.
+                // always apply, including to manually adjusted widths.
                 self.state.sidebar_width = self
                     .state
                     .sidebar_width

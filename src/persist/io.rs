@@ -175,7 +175,6 @@ pub fn load_history() -> Option<SessionHistorySnapshot> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::state::PanePanelScope;
     use crate::persist::snapshot::{PaneHistorySnapshot, TabHistorySnapshot};
 
     fn temp_session_path(name: &str) -> PathBuf {
@@ -202,10 +201,6 @@ mod tests {
             version: SNAPSHOT_VERSION,
             tabs: vec![],
             active_tab: 0,
-            pane_panel_scope: PanePanelScope::CurrentWorkspace,
-            sidebar_width: Some(26),
-            sidebar_section_split: Some(0.5),
-            collapsed_space_keys: std::collections::HashSet::new(),
         }
     }
 
@@ -288,15 +283,17 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
         let mut snap = empty_snapshot();
-        snap.sidebar_width = Some(31);
+        snap.active_tab = 3;
         save_to_path(&link, &snap).unwrap();
 
         assert!(std::fs::symlink_metadata(&link)
             .unwrap()
             .file_type()
             .is_symlink());
-        let parsed = parse_snapshot(&std::fs::read_to_string(&target).unwrap()).unwrap();
-        assert_eq!(parsed.sidebar_width, Some(31));
+        let raw = std::fs::read_to_string(&target).unwrap();
+        assert!(raw.contains("\"active_tab\": 3"));
+        let parsed = parse_snapshot(&raw).unwrap();
+        assert_eq!(parsed.active_tab, 0);
     }
 
     #[cfg(unix)]
