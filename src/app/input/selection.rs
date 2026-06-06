@@ -176,7 +176,7 @@ mod autoscroll_tests {
     use crate::workspace::Workspace;
     use ratatui::layout::Rect;
 
-    /// Build an AppState with one workspace/pane and pane_infos populated
+    /// Build an AppState with one session/pane and pane_infos populated
     /// so pane_info_by_id works. Returns (state, pane_id).
     fn make_state_with_pane() -> (AppState, crate::layout::PaneId) {
         let mut state = AppState::test_new();

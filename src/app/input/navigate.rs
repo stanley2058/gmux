@@ -167,16 +167,16 @@ impl App {
 
         let mut cwd = None;
         if let Some(ws_idx) = self.state.session_index() {
-            if let Some(workspace) = self.state.session() {
-                let tab_idx = workspace.active_tab_index();
+            if let Some(session) = self.state.session() {
+                let tab_idx = session.active_tab_index();
                 if let Some(tab_id) = self.public_tab_id(ws_idx, tab_idx) {
                     env.push(("GMUX_ACTIVE_TAB_ID".to_string(), tab_id));
                 }
-                if let Some(pane_id) = workspace.focused_pane_id() {
+                if let Some(pane_id) = session.focused_pane_id() {
                     if let Some(public_pane_id) = self.public_pane_id(ws_idx, pane_id) {
                         env.push(("GMUX_ACTIVE_PANE_ID".to_string(), public_pane_id));
                     }
-                    if let Some(pane_cwd) = workspace.active_tab().and_then(|tab| {
+                    if let Some(pane_cwd) = session.active_tab().and_then(|tab| {
                         tab.cwd_for_pane(pane_id, &self.state.terminals, &self.terminal_runtimes)
                     }) {
                         env.push((
@@ -338,11 +338,11 @@ impl App {
             .session_mut()
             .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         ws.active_tab_mut()
-            .expect("workspace must have an active tab")
+            .expect("session must have an active tab")
             .layout
             .focus_pane(new_pane_id);
         ws.active_tab_mut()
-            .expect("workspace must have an active tab")
+            .expect("session must have an active tab")
             .zoomed = true;
         self.overlay_panes.insert(
             new_pane_id,

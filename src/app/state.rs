@@ -64,7 +64,7 @@ pub struct Palette {
     pub overlay1: Color,
     /// Main text color — soft white.
     pub text: Color,
-    /// Subdued text (workspace numbers, dim labels).
+    /// Subdued text (session/tab numbers, dim labels).
     pub subtext0: Color,
     /// Branch name / special label color.
     pub mauve: Color,

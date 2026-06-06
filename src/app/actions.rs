@@ -531,15 +531,15 @@ impl AppState {
 
                 let mut sessions = std::mem::take(self.sessions_mut());
                 let mut primary = sessions.remove(0);
-                for mut workspace in sessions {
+                for mut session in sessions {
                     if let (Some(name), Some(first_tab)) =
-                        (workspace.custom_name.take(), workspace.tabs.first_mut())
+                        (session.custom_name.take(), session.tabs.first_mut())
                     {
                         if first_tab.custom_name.is_none() {
                             first_tab.custom_name = Some(name);
                         }
                     }
-                    primary.tabs.append(&mut workspace.tabs);
+                    primary.tabs.append(&mut session.tabs);
                 }
 
                 if primary.tabs.is_empty() {
@@ -602,7 +602,7 @@ impl AppState {
         };
 
         let previous_focus = self.current_pane_focus_target();
-        let workspace_changed =
+        let session_changed =
             self.active_session != Some(ws_idx) || self.session_entries().nth(1).is_some();
         self.selection = None;
         self.selection_autoscroll = None;
@@ -613,11 +613,11 @@ impl AppState {
         let Some(session_id) = self.session().map(|session| session.id.clone()) else {
             return false;
         };
-        if workspace_changed {
+        if session_changed {
             crate::logging::session_focused(&session_id);
         }
         self.mark_session_dirty();
-        if workspace_changed
+        if session_changed
             && matches!(
                 self.pane_panel_scope,
                 crate::app::state::PanePanelScope::Current

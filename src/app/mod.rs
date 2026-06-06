@@ -3112,7 +3112,7 @@ mod tests {
         app.state.selected_session = 0;
         app.state.detach_exits = false;
 
-        // Start in terminal mode (default after workspace creation).
+        // Start in terminal mode (default after session creation).
         app.state.mode = Mode::Terminal;
         assert!(!app.state.detach_requested);
 
