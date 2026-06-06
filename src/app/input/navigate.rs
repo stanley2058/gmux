@@ -376,21 +376,6 @@ pub(super) fn handle_navigate_reserved_key(state: &mut AppState, key: TerminalKe
     let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
     if modifiers.is_empty() {
         match code {
-            KeyCode::Enter => {
-                if !state.workspaces.is_empty() {
-                    state.switch_workspace(state.selected);
-                    leave_navigate_mode(state);
-                }
-                return true;
-            }
-            KeyCode::Char(c @ '1'..='9') => {
-                let idx = (c as usize) - ('1' as usize);
-                if let Some(ws_idx) = state.workspace_at_visible_position(idx) {
-                    state.switch_workspace(ws_idx);
-                    leave_navigate_mode(state);
-                }
-                return true;
-            }
             KeyCode::Tab => {
                 state.cycle_pane(false);
                 return true;
@@ -405,14 +390,6 @@ pub(super) fn handle_navigate_reserved_key(state: &mut AppState, key: TerminalKe
             }
             KeyCode::Right => {
                 state.navigate_pane(NavDirection::Right);
-                return true;
-            }
-            KeyCode::Up => {
-                state.move_selected_workspace_by_visible_delta(-1);
-                return true;
-            }
-            KeyCode::Down => {
-                state.move_selected_workspace_by_visible_delta(1);
                 return true;
             }
             _ => {}
@@ -872,7 +849,7 @@ mod tests {
     }
 
     #[test]
-    fn navigate_down_follows_sidebar_visual_order() {
+    fn navigate_down_no_longer_selects_workspace_rows() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
         state.mode = Mode::Navigate;
         state.active = Some(0);
@@ -883,11 +860,12 @@ mod tests {
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 1);
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.active, Some(0));
     }
 
     #[test]
-    fn navigate_number_keys_follow_sidebar_visual_order() {
+    fn navigate_number_keys_no_longer_switch_workspaces() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
         state.mode = Mode::Navigate;
         state.active = Some(0);
@@ -898,8 +876,9 @@ mod tests {
             KeyEvent::new(KeyCode::Char('2'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.active, Some(1));
-        assert_eq!(state.selected, 1);
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.mode, Mode::Navigate);
     }
 
     #[test]
@@ -976,7 +955,7 @@ mod tests {
     }
 
     #[test]
-    fn movement_action_stays_in_navigate_mode() {
+    fn removed_arrow_workspace_navigation_stays_in_navigate_mode() {
         let mut state = state_with_workspaces(&["a", "b"]);
         state.selected = 0;
 
@@ -985,7 +964,7 @@ mod tests {
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 1);
+        assert_eq!(state.selected, 0);
         assert_eq!(state.mode, Mode::Navigate);
     }
 
@@ -1142,7 +1121,7 @@ navigate_pane_right = "ctrl+l"
     }
 
     #[test]
-    fn mobile_workspace_keyboard_navigation_keeps_selected_row_visible() {
+    fn mobile_workspace_keyboard_navigation_does_not_scroll_session_rows() {
         let mut state = state_with_workspaces(&["a", "b", "c", "d"]);
         state.active = Some(0);
         state.selected = 0;
@@ -1155,8 +1134,8 @@ navigate_pane_right = "ctrl+l"
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 1);
-        assert_eq!(state.mobile_switcher_scroll, 1);
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.mobile_switcher_scroll, 0);
     }
 
     #[test]

@@ -511,7 +511,6 @@ impl Config {
 fn reserve_navigate_runtime_keys(registry: &mut BindingRegistry) {
     for combo in [
         (KeyCode::Esc, KeyModifiers::empty()),
-        (KeyCode::Enter, KeyModifiers::empty()),
         (KeyCode::Tab, KeyModifiers::empty()),
         (KeyCode::BackTab, KeyModifiers::empty()),
         (KeyCode::Tab, KeyModifiers::SHIFT),
@@ -519,13 +518,6 @@ fn reserve_navigate_runtime_keys(registry: &mut BindingRegistry) {
         (KeyCode::Right, KeyModifiers::empty()),
     ] {
         registry.reserve_direct(combo, "navigate reserved keys");
-    }
-
-    for idx in '1'..='9' {
-        registry.reserve_direct(
-            (KeyCode::Char(idx), KeyModifiers::empty()),
-            "navigate reserved keys",
-        );
     }
 }
 
@@ -1522,7 +1514,15 @@ navigate_pane_left = ["esc", "alt+esc", "enter", "1", "tab", "shift+tab", "left"
         let keybinds = config.keybinds();
         let diagnostics = config.collect_diagnostics();
 
-        assert!(keybinds.navigate.pane_left.bindings.is_empty());
+        assert_eq!(keybinds.navigate.pane_left.bindings.len(), 2);
+        assert!(keybinds
+            .navigate
+            .pane_left
+            .matches_direct_key(TerminalKey::new(KeyCode::Enter, KeyModifiers::empty())));
+        assert!(keybinds.navigate.pane_left.matches_direct_key(TerminalKey::new(
+            KeyCode::Char('1'),
+            KeyModifiers::empty()
+        )));
         assert_eq!(
             diagnostics
                 .iter()
@@ -1532,7 +1532,7 @@ navigate_pane_left = ["esc", "alt+esc", "enter", "1", "tab", "shift+tab", "left"
                         && diag.contains("keys.navigate_pane_left")
                 })
                 .count(),
-            8
+            6
         );
     }
 

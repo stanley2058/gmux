@@ -662,10 +662,6 @@ impl AppState {
         }
     }
 
-    pub(crate) fn workspace_at_visible_position(&self, position: usize) -> Option<usize> {
-        self.visible_workspace_order().get(position).copied()
-    }
-
     pub(crate) fn move_selected_workspace_by_visible_delta(&mut self, delta: isize) {
         if self.workspaces.is_empty() {
             return;
