@@ -104,7 +104,11 @@ impl App {
             let _ = std::fs::remove_file(temp_file);
         }
 
-        let Some(ws) = self.state.sessions_mut().get_mut(overlay.ws_idx) else {
+        if self.state.session_index() != Some(overlay.ws_idx) {
+            return;
+        }
+
+        let Some(ws) = self.state.session_mut() else {
             return;
         };
         if overlay.tab_idx >= ws.tabs.len() {
@@ -118,9 +122,7 @@ impl App {
         }
         tab.zoomed = overlay.previous_zoomed;
 
-        if self.state.session_index() == Some(overlay.ws_idx) {
-            self.state.mode = Mode::Terminal;
-        }
+        self.state.mode = Mode::Terminal;
     }
 
     fn runtime_exit_action(&self, pane_id: crate::layout::PaneId) -> RuntimeExitAction {

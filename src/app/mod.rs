@@ -447,8 +447,7 @@ impl App {
 
         let last_focus = state.session_index().and_then(|idx| {
             state
-                .sessions()
-                .get(idx)
+                .session()
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
 
@@ -526,8 +525,7 @@ impl App {
         app.state.mode = app.state.terminal_or_navigate_mode();
         app.last_focus = app.state.session_index().and_then(|idx| {
             app.state
-                .sessions()
-                .get(idx)
+                .session()
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
         Ok(app)
