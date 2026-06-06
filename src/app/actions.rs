@@ -103,7 +103,10 @@ impl AppState {
             workspace_id: ws.id.clone(),
             pane_id,
         };
-        if self.workspaces.len() == 1 && previous.as_ref() == Some(&target) {
+        if self.workspaces.len() == 1
+            && self.active == Some(ws_idx)
+            && previous.as_ref() == Some(&target)
+        {
             return false;
         }
 

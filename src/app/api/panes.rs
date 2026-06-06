@@ -118,10 +118,18 @@ impl App {
                 let Some((ws_idx, raw_pane_id)) = self.parse_pane_id(&pane_id) else {
                     return pane_not_found(id, &pane_id);
                 };
+                let pane_exists = self
+                    .state
+                    .workspaces
+                    .get(ws_idx)
+                    .is_some_and(|ws| ws.find_tab_index_for_pane(raw_pane_id).is_some());
+                if !pane_exists {
+                    return pane_not_found(id, &pane_id);
+                }
                 self.state
                     .focus_pane_in_session_container(ws_idx, raw_pane_id);
                 self.state.mode = Mode::Terminal;
-                let Some(pane) = self.pane_info(ws_idx, raw_pane_id) else {
+                let Some(pane) = self.pane_info_by_raw_id(raw_pane_id) else {
                     return pane_not_found(id, &pane_id);
                 };
                 encode_success(id, ResponseResult::PaneInfo { pane })
@@ -365,6 +373,17 @@ impl App {
         let pane_id = self.state.session_container()?.focused_pane_id()?;
         self.pane_info(ws_idx, pane_id)
     }
+
+    fn pane_info_by_raw_id(&self, pane_id: crate::layout::PaneId) -> Option<PaneInfo> {
+        self.state
+            .workspaces
+            .iter()
+            .enumerate()
+            .find_map(|(ws_idx, ws)| {
+                ws.find_tab_index_for_pane(pane_id)
+                    .and_then(|_| self.pane_info(ws_idx, pane_id))
+            })
+    }
 }
 
 #[cfg(test)]
@@ -422,6 +441,39 @@ mod tests {
         assert_eq!(success.id, "req");
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.mode, Mode::Terminal);
+        let ResponseResult::PaneInfo { pane } = success.result else {
+            panic!("expected pane info response");
+        };
+        assert_eq!(pane.pane_id, public_pane_id);
+        assert!(pane.focused);
+    }
+
+    #[test]
+    fn api_pane_focus_collapses_legacy_workspace_target() {
+        let mut app = app_with_workspace();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        let pane_id = second.tabs[0].root_pane;
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+        let public_pane_id = app.public_pane_id(1, pane_id).unwrap();
+
+        let response = app.handle_pane_focus(
+            "req".into(),
+            PaneFocusParams {
+                pane_id: Some(public_pane_id.clone()),
+                direction: None,
+            },
+        );
+
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        assert_eq!(success.id, "req");
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
         let ResponseResult::PaneInfo { pane } = success.result else {
             panic!("expected pane info response");
         };
