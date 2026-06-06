@@ -235,8 +235,8 @@ impl App {
         // Try to restore previous session
         let mut restored_terminals = std::collections::HashMap::new();
         let mut restored_terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let (sessions, active_session, selected_session) = if no_session {
-            (Vec::new(), None, 0)
+        let restored_session = if no_session {
+            None
         } else if let Some(snap) = crate::persist::load() {
             let history = config
                 .experimental
@@ -260,13 +260,13 @@ impl App {
             if let Some(restored_session) = restored_session {
                 let restored_tabs = restored_session.tabs.len();
                 crate::logging::session_restored(restored_tabs, "ok");
-                (vec![restored_session], Some(0), 0)
+                Some(restored_session)
             } else {
                 crate::logging::session_restored(0, "empty");
-                (Vec::new(), None, 0)
+                None
             }
         } else {
-            (Vec::new(), None, 0)
+            None
         };
 
         let pane_panel_scope = pane_panel_scope_from_config(config.ui.pane_panel_scope);
@@ -306,7 +306,7 @@ impl App {
             state::Mode::Onboarding
         } else if startup_product_announcement.is_some() {
             state::Mode::ProductAnnouncement
-        } else if active_session.is_some() {
+        } else if restored_session.is_some() {
             state::Mode::Terminal
         } else {
             state::Mode::Navigate
@@ -316,10 +316,10 @@ impl App {
             terminals: std::collections::HashMap::new(),
             direct_attach_resize_locks: std::collections::HashSet::new(),
             pane_id_aliases: std::collections::HashMap::new(),
-            sessions,
-            active_session,
+            sessions: Vec::new(),
+            active_session: None,
             previous_pane_focus: None,
-            selected_session,
+            selected_session: 0,
             mode,
             should_quit: false,
             detach_exits: no_session,
@@ -432,6 +432,9 @@ impl App {
         };
 
         state.terminals = restored_terminals;
+        if let Some(restored_session) = restored_session {
+            state.set_session(restored_session);
+        }
         state.collapse_to_single_session();
 
         // Background auto-update is disabled in monolithic no-session mode
