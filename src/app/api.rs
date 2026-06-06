@@ -104,7 +104,7 @@ impl App {
             let _ = std::fs::remove_file(temp_file);
         }
 
-        let Some(ws) = self.state.workspaces.get_mut(overlay.ws_idx) else {
+        let Some(ws) = self.state.session_containers_mut().get_mut(overlay.ws_idx) else {
             return;
         };
         if overlay.tab_idx >= ws.tabs.len() {
@@ -209,7 +209,7 @@ impl App {
     pub(crate) fn sync_focus_events(&mut self) {
         let current_focus = self.state.session_container_index().and_then(|idx| {
             self.state
-                .workspaces
+                .session_containers()
                 .get(idx)
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
@@ -222,9 +222,8 @@ impl App {
         }
         if let Some((ws_idx, pane_id)) = current_focus {
             self.send_pane_focus_event(ws_idx, pane_id, crate::ghostty::FocusEvent::Gained);
-            if let Some(tab_id) =
-                self.public_tab_id(ws_idx, self.state.workspaces[ws_idx].active_tab)
-            {
+            let active_tab = self.state.session_containers()[ws_idx].active_tab;
+            if let Some(tab_id) = self.public_tab_id(ws_idx, active_tab) {
                 self.emit_event(crate::api::schema::EventEnvelope {
                     event: crate::api::schema::EventKind::TabFocused,
                     data: crate::api::schema::EventData::TabFocused { tab_id },
@@ -249,7 +248,7 @@ impl App {
         pane_id: crate::layout::PaneId,
         event: crate::ghostty::FocusEvent,
     ) {
-        let Some(runtime) = self.state.workspaces.get(ws_idx).and_then(|_| {
+        let Some(runtime) = self.state.session_containers().get(ws_idx).and_then(|_| {
             self.state.runtime_for_pane_in_session_container(
                 &self.terminal_runtimes,
                 ws_idx,
