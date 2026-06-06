@@ -316,10 +316,6 @@ impl Tab {
         self.detach_pane(pane_id)
     }
 
-    pub fn close_pane(&mut self, pane_id: PaneId) -> Option<DetachedPane> {
-        self.detach_pane(pane_id)
-    }
-
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<DetachedPane> {
         self.detach_pane(pane_id)
     }

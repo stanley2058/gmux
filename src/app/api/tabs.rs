@@ -36,6 +36,7 @@ impl App {
 
     pub(super) fn handle_tab_create(&mut self, id: String, params: TabCreateParams) -> String {
         let TabCreateParams { cwd, focus, label } = params;
+        self.state.collapse_to_single_session_workspace();
         let ws_idx = if let Some(ws_idx) = self.state.session_container_index() {
             ws_idx
         } else {
@@ -166,8 +167,14 @@ impl App {
         let Some((ws_idx, tab_idx)) = self.parse_tab_id(&target.tab_id) else {
             return tab_not_found(id, &target.tab_id);
         };
-        self.state.focus_session_tab(ws_idx, tab_idx);
-        let tab = self.tab_info(ws_idx, tab_idx).unwrap();
+        if !self.state.focus_session_tab(ws_idx, tab_idx) {
+            return tab_not_found(id, &target.tab_id);
+        }
+        let Some(focused_ws_idx) = self.state.session_container_index() else {
+            return tab_not_found(id, &target.tab_id);
+        };
+        let focused_tab_idx = self.state.workspaces[focused_ws_idx].active_tab;
+        let tab = self.tab_info(focused_ws_idx, focused_tab_idx).unwrap();
 
         encode_success(id, ResponseResult::TabInfo { tab })
     }
@@ -207,25 +214,24 @@ impl App {
         let Some((ws_idx, tab_idx)) = self.parse_tab_id(&target.tab_id) else {
             return tab_not_found(id, &target.tab_id);
         };
-        let terminal_ids = self.state.terminal_ids_for_tab(ws_idx, tab_idx);
-        let Some(ws) = self.state.workspaces.get_mut(ws_idx) else {
+        if self.state.flattened_tab_index(ws_idx, tab_idx).is_none() {
             return tab_not_found(id, &target.tab_id);
-        };
-        if ws.tabs.len() <= 1 {
+        }
+        if !self.state.focus_session_tab(ws_idx, tab_idx) {
+            return tab_not_found(id, &target.tab_id);
+        }
+        if self
+            .state
+            .session_container()
+            .is_none_or(|ws| ws.tabs.len() <= 1)
+        {
             return encode_error(
                 id,
                 "tab_close_failed",
                 "cannot close the last tab in a session",
             );
         }
-        if !ws.close_tab(tab_idx) {
-            return encode_error(
-                id,
-                "tab_close_failed",
-                format!("tab {} could not be closed", target.tab_id),
-            );
-        }
-        self.state.remove_unattached_terminal_ids(terminal_ids);
+        self.state.close_tab();
         self.shutdown_detached_terminal_runtimes();
         self.schedule_session_save();
         self.emit_event(EventEnvelope {

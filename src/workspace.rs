@@ -500,34 +500,6 @@ impl Workspace {
         self.active_tab().map(|tab| tab.layout.focused())
     }
 
-    pub fn close_pane(&mut self, pane_id: PaneId) -> bool {
-        let tab_idx = match self.find_tab_index_for_pane(pane_id) {
-            Some(idx) => idx,
-            None => return false,
-        };
-        let pane_count = self.tabs[tab_idx].layout.pane_count();
-        let tab_count = self.tabs.len();
-        if pane_count <= 1 {
-            if tab_count <= 1 {
-                return true;
-            }
-            self.tabs.remove(tab_idx);
-            self.unregister_pane(pane_id);
-            self.renumber_tabs();
-            if self.active_tab >= self.tabs.len() {
-                self.active_tab = self.tabs.len() - 1;
-            } else if tab_idx <= self.active_tab && self.active_tab > 0 {
-                self.active_tab -= 1;
-            }
-            return false;
-        }
-
-        if let Some((removed, _terminal_id)) = self.tabs[tab_idx].close_pane(pane_id) {
-            self.unregister_pane(removed);
-        }
-        false
-    }
-
     fn register_new_pane(&mut self, pane_id: PaneId) {
         self.public_pane_numbers
             .insert(pane_id, self.next_public_pane_number);

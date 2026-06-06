@@ -47,7 +47,7 @@ impl AppState {
             })
     }
 
-    fn flattened_tab_index(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
+    pub(crate) fn flattened_tab_index(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
         let ws = self.workspaces.get(ws_idx)?;
         if tab_idx >= ws.tabs.len() {
             return None;

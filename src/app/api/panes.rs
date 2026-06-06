@@ -285,34 +285,25 @@ impl App {
         let Some((ws_idx, pane_id)) = self.parse_pane_id(&target.pane_id) else {
             return pane_not_found(id, &target.pane_id);
         };
-        let terminal_id = self.state.terminal_id_for_pane(ws_idx, pane_id);
-        let should_close_workspace = {
-            let Some(ws) = self.state.workspaces.get_mut(ws_idx) else {
-                return pane_not_found(id, &target.pane_id);
-            };
-            ws.close_pane(pane_id)
-        };
-        if should_close_workspace {
-            self.state.focus_session_container(ws_idx);
-            self.state.close_session_container();
-            self.shutdown_detached_terminal_runtimes();
-            self.emit_event(EventEnvelope {
-                event: EventKind::PaneClosed,
-                data: EventData::PaneClosed {
-                    pane_id: target.pane_id.clone(),
-                },
-            });
-        } else {
-            self.state.remove_unattached_terminal_ids(terminal_id);
-            self.shutdown_detached_terminal_runtimes();
-            self.schedule_session_save();
-            self.emit_event(EventEnvelope {
-                event: EventKind::PaneClosed,
-                data: EventData::PaneClosed {
-                    pane_id: target.pane_id,
-                },
-            });
+        let pane_exists = self
+            .state
+            .workspaces
+            .get(ws_idx)
+            .is_some_and(|ws| ws.find_tab_index_for_pane(pane_id).is_some());
+        if !pane_exists {
+            return pane_not_found(id, &target.pane_id);
         }
+
+        self.state.focus_pane_in_session_container(ws_idx, pane_id);
+        self.state.close_pane();
+        self.shutdown_detached_terminal_runtimes();
+        self.schedule_session_save();
+        self.emit_event(EventEnvelope {
+            event: EventKind::PaneClosed,
+            data: EventData::PaneClosed {
+                pane_id: target.pane_id,
+            },
+        });
 
         encode_success(id, ResponseResult::Ok {})
     }
