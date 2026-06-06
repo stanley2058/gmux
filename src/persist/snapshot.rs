@@ -613,9 +613,12 @@ mod tests {
 
     #[test]
     fn current_session_fixture_parses() {
-        let snap = parse_snapshot(session_fixture("current-gmux")).unwrap();
+        let fixture = session_fixture("current-gmux");
+        assert!(!fixture.contains("\"workspaces\""));
 
-        assert_eq!(snap.version, 3);
+        let snap = parse_snapshot(fixture).unwrap();
+
+        assert_eq!(snap.version, SNAPSHOT_VERSION);
         assert_eq!(snap.tabs.len(), 3);
         assert_eq!(snap.active_tab, 0);
         assert_eq!(snap.tabs[0].custom_name.as_deref(), Some("separate-pane"));
@@ -628,9 +631,12 @@ mod tests {
 
     #[test]
     fn current_dev_session_fixture_parses_additive_fields() {
-        let snap = parse_snapshot(session_fixture("current-gmux-dev")).unwrap();
+        let fixture = session_fixture("current-gmux-dev");
+        assert!(!fixture.contains("\"workspaces\""));
 
-        assert_eq!(snap.version, 3);
+        let snap = parse_snapshot(fixture).unwrap();
+
+        assert_eq!(snap.version, SNAPSHOT_VERSION);
         assert_eq!(snap.tabs.len(), 3);
         assert_eq!(snap.active_tab, 1);
         assert_eq!(snap.tabs[2].panes.len(), 2);
