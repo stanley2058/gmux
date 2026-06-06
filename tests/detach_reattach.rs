@@ -130,69 +130,21 @@ fn send_json_request(socket_path: &PathBuf, request: &str) -> Value {
     serde_json::from_str(&response).expect("response should be valid JSON")
 }
 
-fn workspace_create(socket_path: &PathBuf, label: &str) -> Value {
-    let mut response = send_json_request(
+fn tab_create(socket_path: &PathBuf, label: &str) -> Value {
+    send_json_request(
         socket_path,
-        &format!(
-            r#"{{"id":"workspace_create","method":"tab.create","params":{{"label":"{label}"}}}}"#
-        ),
-    );
-    if let Some(result) = response.get_mut("result").and_then(Value::as_object_mut) {
-        if let Some(tab_id) = result
-            .get("tab")
-            .and_then(|tab| tab.get("tab_id"))
-            .and_then(|tab_id| tab_id.as_str())
-            .map(str::to_string)
-        {
-            let workspace_id = tab_id
-                .rsplit_once(':')
-                .map(|(workspace_id, _)| workspace_id.to_string())
-                .unwrap_or_else(|| "1".to_string());
-            result.insert(
-                "workspace".to_string(),
-                serde_json::json!({
-                    "workspace_id": workspace_id,
-                    "active_tab_id": tab_id,
-                    "label": label,
-                }),
-            );
-        }
-    }
-    response
+        &format!(r#"{{"id":"tab_create","method":"tab.create","params":{{"label":"{label}"}}}}"#),
+    )
 }
 
-fn workspace_list(socket_path: &PathBuf) -> Value {
-    let tabs = send_json_request(
+fn tab_list(socket_path: &PathBuf) -> Value {
+    send_json_request(
         socket_path,
-        r#"{"id":"workspace_list","method":"tab.list","params":{}}"#,
-    );
-    let mut workspaces = Vec::new();
-    if let Some(tabs) = tabs["result"]["tabs"].as_array() {
-        for tab in tabs {
-            let Some(tab_id) = tab["tab_id"].as_str() else {
-                continue;
-            };
-            let workspace_id = tab_id
-                .rsplit_once(':')
-                .map(|(workspace_id, _)| workspace_id.to_string())
-                .unwrap_or_else(|| "1".to_string());
-            workspaces.push(serde_json::json!({
-                "workspace_id": workspace_id,
-                "active_tab_id": tab["tab_id"],
-                "label": tab["label"],
-            }));
-        }
-    }
-    serde_json::json!({
-        "id": "workspace_list",
-        "result": {
-            "type": "workspace_list",
-            "workspaces": workspaces,
-        },
-    })
+        r#"{"id":"tab_list","method":"tab.list","params":{}}"#,
+    )
 }
 
-fn pane_list(socket_path: &PathBuf, _workspace_id: &str) -> Value {
+fn pane_list(socket_path: &PathBuf) -> Value {
     send_json_request(
         socket_path,
         r#"{"id":"pane_list","method":"pane.list","params":{}}"#,
@@ -268,14 +220,14 @@ fn read_pane_tty_size_after_marker(
     panic!("did not observe tty size after marker {marker}. pane output:\n{last_text}");
 }
 
-fn workspace_id_by_label(response: &Value, label: &str) -> String {
-    response["result"]["workspaces"]
+fn tab_id_by_label(response: &Value, label: &str) -> String {
+    response["result"]["tabs"]
         .as_array()
         .expect("tab.list should return an array")
         .iter()
-        .find(|workspace| workspace["label"] == label)
-        .and_then(|workspace| workspace["workspace_id"].as_str())
-        .expect("workspace with expected label should exist")
+        .find(|tab| tab["label"] == label)
+        .and_then(|tab| tab["tab_id"].as_str())
+        .expect("tab with expected label should exist")
         .to_string()
 }
 
@@ -419,10 +371,10 @@ fn explicit_detach_message_causes_clean_disconnect() {
 fn reattach_after_detach_shows_current_state() {
     // Flow:
     // 1. Start server
-    // 2. Connect client A, create a workspace via API
+    // 2. Connect client A, create a tab via API
     // 3. Client A detaches
     // 4. Connect client B (reattach), verify it receives a frame
-    // 5. Verify client B can see the workspace created by client A
+    // 5. Verify client B can see the tab created by client A
     let _lock = test_lock();
     let base = unique_test_dir();
     let config_home = base.join("config");
@@ -485,7 +437,7 @@ fn reattach_after_detach_shows_current_state() {
     );
 
     // Client B should receive a frame with the current state,
-    // including the workspace created while client A was attached.
+    // including the tab created while client A was attached.
     stream_b.set_nonblocking(false).unwrap();
     stream_b
         .set_read_timeout(Some(Duration::from_secs(5)))
@@ -542,7 +494,7 @@ fn processes_survive_during_and_after_detach() {
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_file(&client_socket, Duration::from_secs(10));
 
-    // Verify server starts with a workspace (session restore or fresh state).
+    // Verify server starts with a tab (session restore or fresh state).
     let response = ping_socket(&api_socket);
     assert!(
         response.contains("pong"),
@@ -694,7 +646,7 @@ fn detached_output_preserves_last_attached_pty_size() {
     assert!(error.is_none(), "{:?}", error);
     drain_messages(&mut stream);
 
-    let create = workspace_create(&api_socket, "detached-size");
+    let create = tab_create(&api_socket, "detached-size");
     let pane_id = create["result"]["root_pane"]["pane_id"]
         .as_str()
         .expect("root pane id")
@@ -781,15 +733,22 @@ fn output_accumulated_while_detached_visible_on_reattach() {
 
     // Use API to send text to a pane while no client is attached.
     // First create a tab and find its pane.
-    let ws_create_response = workspace_create(&api_socket, "scrollback-test");
-    assert_eq!(ws_create_response["result"]["type"], "tab_created");
+    let tab_create_response = tab_create(&api_socket, "scrollback-test");
+    assert_eq!(tab_create_response["result"]["type"], "tab_created");
+    let created_tab_id = tab_create_response["result"]["tab"]["tab_id"]
+        .as_str()
+        .expect("tab.create should return tab id")
+        .to_string();
 
-    // Find the workspace and pane IDs.
-    let ws_response = workspace_list(&api_socket);
-    let ws_id = workspace_id_by_label(&ws_response, "scrollback-test");
+    // Find the tab and pane IDs.
+    let tab_response = tab_list(&api_socket);
+    assert_eq!(
+        created_tab_id,
+        tab_id_by_label(&tab_response, "scrollback-test")
+    );
 
-    // Get pane list for this workspace.
-    let pane_response = pane_list(&api_socket, &ws_id);
+    // Get pane list for this session.
+    let pane_response = pane_list(&api_socket);
     let pane_id = first_pane_id(&pane_response);
 
     // Send text to the pane via API while detached.
