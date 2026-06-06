@@ -28,19 +28,24 @@ impl AppState {
 
     fn pane_focus_target_indices(&self, target: &PaneFocusTarget) -> Option<(usize, usize)> {
         if let Some(ws_idx) = self
-            .workspaces
+            .session_containers()
             .iter()
             .position(|ws| ws.id == target.workspace_id)
         {
-            if let Some(tab_idx) = self.workspaces[ws_idx].find_tab_index_for_pane(target.pane_id) {
+            if let Some(tab_idx) =
+                self.session_containers()[ws_idx].find_tab_index_for_pane(target.pane_id)
+            {
                 return Some((ws_idx, tab_idx));
             }
         }
 
-        self.workspaces.iter().enumerate().find_map(|(ws_idx, ws)| {
-            ws.find_tab_index_for_pane(target.pane_id)
-                .map(|tab_idx| (ws_idx, tab_idx))
-        })
+        self.session_containers()
+            .iter()
+            .enumerate()
+            .find_map(|(ws_idx, ws)| {
+                ws.find_tab_index_for_pane(target.pane_id)
+                    .map(|tab_idx| (ws_idx, tab_idx))
+            })
     }
 
     pub(crate) fn flattened_tab_index(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
@@ -56,7 +61,7 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) {
-        let Some(ws) = self.workspaces.get(ws_idx) else {
+        let Some(ws) = self.session_containers().get(ws_idx) else {
             return;
         };
         let target = PaneFocusTarget {
@@ -80,7 +85,7 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) -> bool {
-        let Some(ws) = self.workspaces.get(ws_idx) else {
+        let Some(ws) = self.session_containers().get(ws_idx) else {
             return false;
         };
         let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) else {
@@ -91,7 +96,7 @@ impl AppState {
             workspace_id: ws.id.clone(),
             pane_id,
         };
-        if self.workspaces.len() == 1
+        if self.session_containers().len() == 1
             && self.active == Some(ws_idx)
             && previous.as_ref() == Some(&target)
         {
@@ -105,7 +110,7 @@ impl AppState {
             return false;
         };
         if let Some(tab) = self
-            .workspaces
+            .session_containers_mut()
             .get_mut(ws_idx)
             .and_then(|ws| ws.tabs.get_mut(tab_idx))
         {
@@ -119,7 +124,7 @@ impl AppState {
 
     pub(crate) fn focus_session_pane(&mut self, pane_id: PaneId) -> bool {
         let Some(ws_idx) = self
-            .workspaces
+            .session_containers()
             .iter()
             .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
         else {
@@ -180,7 +185,7 @@ impl AppState {
         });
         let multi_tab = self.session_tab_count() > 1;
 
-        for ws_idx in 0..self.workspaces.len() {
+        for ws_idx in 0..self.session_containers().len() {
             let child_query_kind = if session_matches {
                 NavigatorQueryKind::Empty
             } else {
@@ -203,7 +208,7 @@ impl AppState {
         query: &str,
         multi_tab: bool,
     ) -> Vec<NavigatorRow> {
-        let Some(ws) = self.workspaces.get(ws_idx) else {
+        let Some(ws) = self.session_containers().get(ws_idx) else {
             return Vec::new();
         };
         let mut rows = Vec::new();
@@ -234,7 +239,7 @@ impl AppState {
     }
 
     fn navigator_tab_row(&self, ws_idx: usize, tab_idx: usize) -> NavigatorRow {
-        let ws = &self.workspaces[ws_idx];
+        let ws = &self.session_containers()[ws_idx];
         let tab = &ws.tabs[tab_idx];
         let label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
         let pane_count = tab.panes.len();
@@ -258,7 +263,7 @@ impl AppState {
         tab_idx: usize,
         multi_tab: bool,
     ) -> Vec<NavigatorRow> {
-        let Some(ws) = self.workspaces.get(ws_idx) else {
+        let Some(ws) = self.session_containers().get(ws_idx) else {
             return Vec::new();
         };
         let Some(tab) = ws.tabs.get(tab_idx) else {
@@ -396,11 +401,11 @@ impl AppState {
     pub(crate) fn focus_navigator_target(&mut self, target: NavigatorTarget) -> bool {
         match target {
             NavigatorTarget::Tab { ws_idx, tab_idx } => {
-                if ws_idx >= self.workspaces.len() {
+                if ws_idx >= self.session_containers().len() {
                     return false;
                 }
                 let tab_exists = self
-                    .workspaces
+                    .session_containers()
                     .get(ws_idx)
                     .is_some_and(|ws| tab_idx < ws.tabs.len());
                 if !tab_exists {
@@ -415,11 +420,11 @@ impl AppState {
                 tab_idx,
                 pane_id,
             } => {
-                if ws_idx >= self.workspaces.len() {
+                if ws_idx >= self.session_containers().len() {
                     return false;
                 }
                 if self
-                    .workspaces
+                    .session_containers()
                     .get(ws_idx)
                     .and_then(|ws| ws.tabs.get(tab_idx))
                     .is_some_and(|tab| tab.panes.contains_key(&pane_id))
@@ -616,7 +621,7 @@ impl AppState {
     }
 
     pub(crate) fn ensure_session_container_visible(&mut self, idx: usize) {
-        if idx >= self.workspaces.len() {
+        if idx >= self.session_containers().len() {
             return;
         }
 
