@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::layout::Node;
 use crate::terminal::TerminalRuntimeRegistry;
-use crate::workspace::Workspace;
+use crate::workspace::SessionUiState;
 
 /// Current snapshot format version.
 pub(super) const SNAPSHOT_VERSION: u32 = 4;
@@ -254,7 +254,7 @@ fn first_pane_id_in_layout(layout: &LayoutSnapshot) -> Option<u32> {
 
 /// Capture the current app state into a serializable snapshot.
 pub fn capture(
-    session_containers: &[Workspace],
+    session_containers: &[SessionUiState],
     terminals: &std::collections::HashMap<
         crate::terminal::TerminalId,
         crate::terminal::TerminalState,
@@ -282,7 +282,7 @@ pub fn capture(
 }
 
 fn capture_session_container(
-    ws: &Workspace,
+    ws: &SessionUiState,
     terminals: &std::collections::HashMap<
         crate::terminal::TerminalId,
         crate::terminal::TerminalState,
@@ -348,7 +348,7 @@ fn capture_tab(
 
 /// Capture pane screen history separately from the structural session snapshot.
 pub fn capture_history(
-    session_containers: &[Workspace],
+    session_containers: &[SessionUiState],
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionHistorySnapshot {
     let tabs = session_containers

@@ -77,7 +77,7 @@ pub(crate) fn session_tab_is_auto_named(
     tab.is_auto_named() && !(ws_idx > 0 && tab_idx == 0 && ws.custom_name.is_some())
 }
 
-/// A named workspace containing tabs.
+/// A named legacy workspace containing tabs.
 pub struct Workspace {
     /// Stable public workspace identity, independent of display order.
     pub id: String,
@@ -94,6 +94,12 @@ pub struct Workspace {
     #[cfg(test)]
     pub(crate) test_runtimes: HashMap<PaneId, TerminalRuntime>,
 }
+
+/// UI state for one gmux session.
+///
+/// This is currently backed by the legacy `Workspace` implementation while
+/// the workspace layer is collapsed into `sessions -> tabs -> panes`.
+pub(crate) type SessionUiState = Workspace;
 
 impl Deref for Workspace {
     type Target = Tab;

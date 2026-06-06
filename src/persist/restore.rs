@@ -11,7 +11,7 @@ use crate::events::AppEvent;
 use crate::layout::{Node, PaneId, TileLayout};
 use crate::pane::PaneState;
 use crate::terminal::{TerminalId, TerminalRuntime, TerminalState};
-use crate::workspace::Workspace;
+use crate::workspace::SessionUiState;
 
 use super::snapshot::{PaneHistorySnapshot, TabHistorySnapshot};
 use super::{
@@ -31,12 +31,12 @@ struct RestoreRuntimeContext<'a> {
 }
 
 type RestoredSession = (
-    Vec<Workspace>,
+    Vec<SessionUiState>,
     HashMap<TerminalId, TerminalState>,
     HashMap<TerminalId, TerminalRuntime>,
 );
 type RestoredSessionContainer = (
-    Workspace,
+    SessionUiState,
     Vec<TerminalState>,
     HashMap<TerminalId, TerminalRuntime>,
 );
@@ -103,7 +103,7 @@ pub fn restore_handoff(
 #[cfg(unix)]
 pub fn handoff_pane_aliases(
     snapshot: &SessionSnapshot,
-    session_containers: &[Workspace],
+    session_containers: &[SessionUiState],
 ) -> HashMap<u32, PaneId> {
     let mut aliases = HashMap::new();
     if let Some(container) = session_containers.first() {
@@ -296,7 +296,7 @@ fn restore_session_container(
     }
 
     (
-        Some(Workspace {
+        Some(SessionUiState {
             id: crate::workspace::generate_workspace_id(),
             custom_name: None,
             identity_cwd: identity_cwd_from_tabs(tab_snaps),

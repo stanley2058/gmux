@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tracing::error;
 
 use super::{App, Mode};
-use crate::{config::NewTerminalCwdConfig, workspace::Workspace};
+use crate::{config::NewTerminalCwdConfig, workspace::SessionUiState};
 
 pub(crate) fn resolve_new_terminal_cwd(
     policy: &NewTerminalCwdConfig,
@@ -127,7 +127,7 @@ impl App {
 
         let should_focus = focus || self.state.session_container_index().is_none();
         let (rows, cols) = self.state.estimate_pane_size();
-        let (ws, terminal, runtime) = Workspace::new(
+        let (ws, terminal, runtime) = SessionUiState::new(
             initial_cwd,
             rows,
             cols,

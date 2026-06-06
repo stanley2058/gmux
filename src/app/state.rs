@@ -37,13 +37,7 @@ pub(crate) struct RightClickPassthroughGesture {
     pub modifiers: KeyModifiers,
 }
 use crate::terminal_theme::TerminalTheme;
-use crate::workspace::Workspace;
-
-/// UI state for one gmux session.
-///
-/// This is currently backed by the legacy `Workspace` implementation while
-/// the workspace layer is collapsed into `sessions -> tabs -> panes`.
-pub(crate) type SessionUiState = Workspace;
+use crate::workspace::SessionUiState;
 
 // ---------------------------------------------------------------------------
 // Theme palette — all UI colors in one place, ready for theming
