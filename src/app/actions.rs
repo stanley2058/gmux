@@ -468,6 +468,10 @@ impl AppState {
             .or_else(|| (!self.sessions().is_empty()).then_some(0))
     }
 
+    pub(crate) fn has_session(&self) -> bool {
+        self.session_index().is_some()
+    }
+
     pub(crate) fn session(&self) -> Option<&SessionUiState> {
         self.session_index()
             .and_then(|idx| self.sessions().get(idx))
@@ -840,7 +844,7 @@ impl AppState {
     }
 
     pub fn close_session(&mut self) {
-        if self.sessions().is_empty() {
+        if !self.has_session() {
             return;
         }
         self.collapse_to_single_session();

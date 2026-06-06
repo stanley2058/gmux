@@ -754,7 +754,7 @@ impl App {
     }
 
     pub(crate) fn ensure_default_session(&mut self) -> bool {
-        if !self.state.sessions().is_empty() || self.state.mode == Mode::Onboarding {
+        if self.state.has_session() || self.state.mode == Mode::Onboarding {
             return false;
         }
 

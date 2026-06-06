@@ -76,7 +76,7 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if !self.state.sessions().is_empty() {
+        if self.state.has_session() {
             self.state.collapse_to_single_session();
         }
         let Some(session_idx) = self.state.session_index() else {
@@ -120,7 +120,7 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if !self.state.sessions().is_empty() {
+        if self.state.has_session() {
             self.state.collapse_to_single_session();
             return Ok(self.state.session_index().unwrap_or(0));
         }
