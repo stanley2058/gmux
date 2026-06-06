@@ -225,20 +225,24 @@ impl App {
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let session = self.state.sessions().get(ws_idx)?;
-        let pane = session.pane_state(pane_id)?;
+        let entry = self
+            .state
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab.panes.contains_key(&pane_id))?;
+        let tab = entry.tab;
+        let tab_idx = entry.tab_idx;
+        let pane = tab.panes.get(&pane_id)?;
         let terminal = self.state.terminals.get(&pane.attached_terminal_id)?;
-        let tab_idx = session.find_tab_index_for_pane(pane_id)?;
         let focused = self.state.is_active_pane(ws_idx, tab_idx, pane_id);
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             focused,
-            cwd: session.tabs[tab_idx]
+            cwd: tab
                 .cwd_for_pane(pane_id, &self.state.terminals, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
-            foreground_cwd: session.tabs[tab_idx]
+            foreground_cwd: tab
                 .foreground_cwd_for_pane(pane_id, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
             label: terminal.manual_label.clone(),
