@@ -103,10 +103,7 @@ pub(crate) fn api_request_completed(
 }
 
 fn is_routine_api_method(method: &str) -> bool {
-    matches!(
-        method,
-        "pane.get" | "pane.read" | "pane.list" | "workspace.list" | "tab.list"
-    )
+    matches!(method, "pane.get" | "pane.read" | "pane.list" | "tab.list")
 }
 
 pub(crate) fn api_request_failed(request_id: &str, method: &'static str, err: &str) {
@@ -206,87 +203,87 @@ pub(crate) fn pane_exit_failed(pane_id: u32, err: &str) {
     );
 }
 
-pub(crate) fn workspace_created(workspace_id: &str, root_pane_id: u32) {
+pub(crate) fn session_created(session_id: &str, root_pane_id: u32) {
     tracing::info!(
-        event = "workspace.create",
-        subsystem = "workspace",
+        event = "session.create",
+        subsystem = "session",
         outcome = "ok",
-        workspace_id,
+        session_id,
         pane_id = root_pane_id,
-        "workspace created"
+        "session created"
     );
 }
 
-pub(crate) fn workspace_focused(workspace_id: &str) {
+pub(crate) fn session_focused(session_id: &str) {
     tracing::info!(
-        event = "workspace.focus",
-        subsystem = "workspace",
+        event = "session.focus",
+        subsystem = "session",
         outcome = "ok",
-        workspace_id,
-        "workspace focused"
+        session_id,
+        "session focused"
     );
 }
 
-pub(crate) fn workspace_closed(workspace_id: &str) {
+pub(crate) fn session_closed(session_id: &str) {
     tracing::info!(
-        event = "workspace.close",
-        subsystem = "workspace",
+        event = "session.close",
+        subsystem = "session",
         outcome = "ok",
-        workspace_id,
-        "workspace closed"
+        session_id,
+        "session closed"
     );
 }
 
-pub(crate) fn workspace_renamed(workspace_id: &str) {
+pub(crate) fn session_renamed(session_id: &str) {
     tracing::info!(
-        event = "workspace.rename",
-        subsystem = "workspace",
+        event = "session.rename",
+        subsystem = "session",
         outcome = "ok",
-        workspace_id,
-        "workspace renamed"
+        session_id,
+        "session renamed"
     );
 }
 
-pub(crate) fn tab_created(workspace_id: &str, tab_id: &str, root_pane_id: u32) {
+pub(crate) fn tab_created(session_id: &str, tab_id: &str, root_pane_id: u32) {
     tracing::info!(
         event = "tab.create",
         subsystem = "tab",
         outcome = "ok",
-        workspace_id,
+        session_id,
         tab_id,
         pane_id = root_pane_id,
         "tab created"
     );
 }
 
-pub(crate) fn tab_focused(workspace_id: &str, tab_id: &str) {
+pub(crate) fn tab_focused(session_id: &str, tab_id: &str) {
     tracing::info!(
         event = "tab.focus",
         subsystem = "tab",
         outcome = "ok",
-        workspace_id,
+        session_id,
         tab_id,
         "tab focused"
     );
 }
 
-pub(crate) fn tab_closed(workspace_id: &str, tab_id: &str) {
+pub(crate) fn tab_closed(session_id: &str, tab_id: &str) {
     tracing::info!(
         event = "tab.close",
         subsystem = "tab",
         outcome = "ok",
-        workspace_id,
+        session_id,
         tab_id,
         "tab closed"
     );
 }
 
-pub(crate) fn tab_renamed(workspace_id: &str, tab_id: &str) {
+pub(crate) fn tab_renamed(session_id: &str, tab_id: &str) {
     tracing::info!(
         event = "tab.rename",
         subsystem = "tab",
         outcome = "ok",
-        workspace_id,
+        session_id,
         tab_id,
         "tab renamed"
     );

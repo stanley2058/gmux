@@ -387,7 +387,7 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                 Mode::RenameWorkspace if !state.workspaces.is_empty() && !new_name.is_empty() => {
                     let workspace_id = state.workspaces[state.selected].id.clone();
                     state.workspaces[state.selected].set_custom_name(new_name);
-                    crate::logging::workspace_renamed(&workspace_id);
+                    crate::logging::session_renamed(&workspace_id);
                     state.mark_session_dirty();
                 }
                 Mode::RenameTab if state.creating_new_tab => {

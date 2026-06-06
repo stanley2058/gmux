@@ -481,7 +481,7 @@ impl AppState {
             self.active = Some(idx);
             self.selected = idx;
             let workspace_id = self.workspaces[idx].id.clone();
-            crate::logging::workspace_focused(&workspace_id);
+            crate::logging::session_focused(&workspace_id);
             self.mark_session_dirty();
             if matches!(
                 self.pane_panel_scope,
@@ -522,7 +522,7 @@ impl AppState {
         self.selected = ws_idx;
         let workspace_id = self.workspaces[ws_idx].id.clone();
         if workspace_changed {
-            crate::logging::workspace_focused(&workspace_id);
+            crate::logging::session_focused(&workspace_id);
         }
         self.mark_session_dirty();
         if workspace_changed
@@ -924,7 +924,7 @@ impl AppState {
         for idx in &close_indices {
             terminal_ids.extend(self.terminal_ids_for_workspace(*idx));
             if let Some(workspace_id) = self.workspaces.get(*idx).map(|ws| ws.id.clone()) {
-                crate::logging::workspace_closed(&workspace_id);
+                crate::logging::session_closed(&workspace_id);
             }
         }
         for idx in close_indices.iter().rev() {
