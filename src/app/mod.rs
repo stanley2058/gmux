@@ -763,7 +763,7 @@ impl App {
         );
         let cwd = self.resolve_new_terminal_cwd(None);
 
-        match self.create_session_container_with_options(cwd, true) {
+        match self.create_session_with_options(cwd, true) {
             Ok(_) => {
                 if preserve_mode {
                     self.state.mode = previous_mode;
@@ -1345,7 +1345,7 @@ mod tests {
         app.state.selected = 1;
 
         let idx = app
-            .create_session_container_with_options(std::path::PathBuf::from("/tmp"), true)
+            .create_session_with_options(std::path::PathBuf::from("/tmp"), true)
             .expect("existing session should be reused");
 
         assert_eq!(idx, 0);

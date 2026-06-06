@@ -40,7 +40,7 @@ fn expand_tilde_path(path: &str) -> PathBuf {
 }
 
 impl App {
-    pub(super) fn seed_cwd_from_session_container(&self) -> Option<PathBuf> {
+    pub(super) fn seed_cwd_from_session(&self) -> Option<PathBuf> {
         self.state
             .session()?
             .resolved_identity_cwd_from(&self.state.terminals, &self.terminal_runtimes)
@@ -52,7 +52,7 @@ impl App {
 
     pub(crate) fn create_tab(&mut self) {
         let custom_name = self.state.requested_new_tab_name.take();
-        let follow_cwd = self.seed_cwd_from_session_container();
+        let follow_cwd = self.seed_cwd_from_session();
         let initial_cwd = self.resolve_new_terminal_cwd(follow_cwd);
         match self.create_tab_with_options(initial_cwd, true) {
             Ok(tab_idx) => {
@@ -79,17 +79,17 @@ impl App {
         if !self.state.session_containers().is_empty() {
             self.state.collapse_to_single_session_container();
         }
-        let Some(container_idx) = self.state.session_container_index() else {
-            return self.create_session_container_with_options(initial_cwd, focus);
+        let Some(session_idx) = self.state.session_container_index() else {
+            return self.create_session_with_options(initial_cwd, focus);
         };
         let (rows, cols) = self.state.estimate_pane_size();
         let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
         let host_terminal_theme = self.state.host_terminal_theme;
         let default_shell = self.state.default_shell.clone();
         let shell_mode = self.state.shell_mode;
-        let (idx, terminal, runtime, container_id, root_pane) = {
-            let container = &mut self.state.session_containers_mut()[container_idx];
-            let (idx, terminal, runtime) = container.create_tab(
+        let (idx, terminal, runtime, session_id, root_pane) = {
+            let session = &mut self.state.session_containers_mut()[session_idx];
+            let (idx, terminal, runtime) = session.create_tab(
                 rows,
                 cols,
                 initial_cwd,
@@ -97,25 +97,25 @@ impl App {
                 host_terminal_theme,
                 crate::pane::PaneShellConfig::new(&default_shell, shell_mode),
             )?;
-            let root_pane = container.tabs[idx].root_pane;
-            (idx, terminal, runtime, container.id.clone(), root_pane)
+            let root_pane = session.tabs[idx].root_pane;
+            (idx, terminal, runtime, session.id.clone(), root_pane)
         };
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
         if focus {
-            self.state.focus_session_tab(container_idx, idx);
+            self.state.focus_session_tab(session_idx, idx);
             self.state.mode = Mode::Terminal;
         }
         let tab_id = self
-            .public_tab_id(container_idx, idx)
-            .unwrap_or_else(|| format!("{}:{}", container_id, idx + 1));
-        crate::logging::tab_created(&container_id, &tab_id, root_pane.raw());
+            .public_tab_id(session_idx, idx)
+            .unwrap_or_else(|| format!("{}:{}", session_id, idx + 1));
+        crate::logging::tab_created(&session_id, &tab_id, root_pane.raw());
         self.schedule_session_save();
         Ok(idx)
     }
 
-    pub(crate) fn create_session_container_with_options(
+    pub(crate) fn create_session_with_options(
         &mut self,
         initial_cwd: PathBuf,
         focus: bool,
@@ -144,8 +144,8 @@ impl App {
         let idx = self.state.session_containers().len() - 1;
         let root_pane = self.state.session_containers()[idx].tabs[0].root_pane;
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
-        let container_id = self.state.session_containers()[idx].id.clone();
-        crate::logging::session_created(&container_id, root_pane.raw());
+        let session_id = self.state.session_containers()[idx].id.clone();
+        crate::logging::session_created(&session_id, root_pane.raw());
         if should_focus {
             self.state.focus_session_container(idx);
             self.state.mode = Mode::Terminal;
