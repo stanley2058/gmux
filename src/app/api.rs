@@ -250,8 +250,11 @@ impl App {
         event: crate::ghostty::FocusEvent,
     ) {
         let Some(runtime) = self.state.workspaces.get(ws_idx).and_then(|_| {
-            self.state
-                .runtime_for_pane_in_session_container(&self.terminal_runtimes, ws_idx, pane_id)
+            self.state.runtime_for_pane_in_session_container(
+                &self.terminal_runtimes,
+                ws_idx,
+                pane_id,
+            )
         }) else {
             return;
         };

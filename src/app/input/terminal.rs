@@ -89,9 +89,11 @@ impl App {
         let ws_idx = self.state.session_container_index()?;
         let ws = self.state.session_container()?;
         let pane_id = ws.focused_pane_id()?;
-        let rt =
-            self.state
-                .runtime_for_pane_in_session_container(&self.terminal_runtimes, ws_idx, pane_id)?;
+        let rt = self.state.runtime_for_pane_in_session_container(
+            &self.terminal_runtimes,
+            ws_idx,
+            pane_id,
+        )?;
 
         // Intercept plain PageUp/PageDown presses for pane scrollback when the
         // focused pane doesn't handle its own scrolling (e.g., a plain shell

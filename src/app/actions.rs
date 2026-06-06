@@ -1119,7 +1119,8 @@ impl AppState {
         }
 
         // Leave mouse input to terminal apps that requested it.
-        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+        let Some(rt) =
+            self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
         else {
             return false;
         };

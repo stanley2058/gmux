@@ -4802,7 +4802,11 @@ next_tab = ""
         full_server
             .app
             .state
-            .runtime_for_pane_in_session_container(&full_server.app.terminal_runtimes, 0, full_pane_id)
+            .runtime_for_pane_in_session_container(
+                &full_server.app.terminal_runtimes,
+                0,
+                full_pane_id,
+            )
             .expect("full runtime")
             .test_process_pty_bytes(update);
 
@@ -4851,7 +4855,11 @@ next_tab = ""
         full_server
             .app
             .state
-            .runtime_for_pane_in_session_container(&full_server.app.terminal_runtimes, 0, full_pane_id)
+            .runtime_for_pane_in_session_container(
+                &full_server.app.terminal_runtimes,
+                0,
+                full_pane_id,
+            )
             .expect("full runtime")
             .test_process_pty_bytes(update);
 

@@ -956,7 +956,8 @@ impl AppState {
         lines: usize,
     ) {
         if let Some(ws_idx) = self.session_container_index() {
-            if let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+            if let Some(rt) =
+                self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
                 rt.scroll_up(lines);
             }
@@ -970,7 +971,8 @@ impl AppState {
         lines: usize,
     ) {
         if let Some(ws_idx) = self.session_container_index() {
-            if let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+            if let Some(rt) =
+                self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
                 rt.scroll_down(lines);
             }
@@ -1118,7 +1120,8 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) =
+            self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1143,7 +1146,8 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) =
+            self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1167,7 +1171,8 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) =
+            self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1199,7 +1204,8 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) =
+            self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1239,7 +1245,8 @@ impl AppState {
         offset_from_bottom: usize,
     ) {
         if let Some(ws_idx) = self.session_container_index() {
-            if let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+            if let Some(rt) =
+                self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
                 rt.set_scroll_offset_from_bottom(offset_from_bottom);
             }
