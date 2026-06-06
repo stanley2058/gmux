@@ -3217,7 +3217,7 @@ new_tab = "prefix+t"
             r#"
 [keys]
 prefix = "ctrl+a"
-new_workspace = "prefix+n"
+new_tab = "prefix+n"
 next_tab = ""
 "#,
         )
@@ -3252,7 +3252,7 @@ next_tab = ""
             .app
             .state
             .keybinds
-            .new_workspace
+            .new_tab
             .bindings
             .iter()
             .any(|binding| binding.label == "prefix+n"));
@@ -3276,7 +3276,7 @@ next_tab = ""
         ));
         std::fs::write(
             &path,
-            "onboarding = false\n[keys]\nnew_workspace = \"x\"\n[ui.toast]\ndelivery = \"off\"\n",
+            "onboarding = false\n[keys]\nnew_tab = \"x\"\n[ui.toast]\ndelivery = \"off\"\n",
         )
         .unwrap();
         let _guard = crate::config::test_config_env_lock().lock().unwrap();
@@ -3284,13 +3284,13 @@ next_tab = ""
 
         let mut server = test_headless_server();
         let previous_server_config: crate::config::Config =
-            toml::from_str("[keys]\nprefix = \"ctrl+c\"\nnew_workspace = \"prefix+m\"\n").unwrap();
+            toml::from_str("[keys]\nprefix = \"ctrl+c\"\nnew_tab = \"prefix+m\"\n").unwrap();
         server.server_keybindings = previous_server_config.live_keybinds().unwrap();
         let local_config: crate::config::Config = toml::from_str(
             r#"
 [keys]
 prefix = "ctrl+a"
-new_workspace = "prefix+n"
+new_tab = "prefix+n"
 next_tab = ""
 "#,
         )
@@ -3337,7 +3337,7 @@ next_tab = ""
             .app
             .state
             .keybinds
-            .new_workspace
+            .new_tab
             .bindings
             .iter()
             .any(|binding| binding.label == "prefix+m"));

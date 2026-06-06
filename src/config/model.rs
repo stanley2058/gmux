@@ -230,20 +230,8 @@ pub struct KeysConfig {
     pub help: BindingConfig,
     /// Open settings. Default: "prefix+s"
     pub settings: BindingConfig,
-    /// Legacy internal container creation binding. Unset by default.
-    pub new_workspace: BindingConfig,
-    /// Legacy internal container rename binding. Unset by default.
-    pub rename_workspace: BindingConfig,
-    /// Legacy internal container close binding. Unset by default.
-    pub close_workspace: BindingConfig,
-    /// Legacy internal container navigation surface. Unset by default.
-    pub workspace_picker: BindingConfig,
     /// Open the session navigator. Default: "prefix+g"
     pub goto: BindingConfig,
-    /// Legacy internal container selection up in navigate mode. Unset by default.
-    pub navigate_workspace_up: BindingConfig,
-    /// Legacy internal container selection down in navigate mode. Unset by default.
-    pub navigate_workspace_down: BindingConfig,
     /// Focus the pane to the left in navigate mode. Default: "h". Left arrow is always an alias.
     pub navigate_pane_left: BindingConfig,
     /// Focus the pane below in navigate mode. Default: "j".
@@ -258,10 +246,6 @@ pub struct KeysConfig {
     pub reload_config: BindingConfig,
     /// Focus the currently visible notification target. Default: "prefix+o".
     pub open_notification_target: BindingConfig,
-    /// Legacy internal container previous binding. Unset by default.
-    pub previous_workspace: BindingConfig,
-    /// Legacy internal container next binding. Unset by default.
-    pub next_workspace: BindingConfig,
     /// Focus the previous pane shown in the pane panel. Unset by default.
     pub previous_pane_panel_entry: BindingConfig,
     /// Focus the next pane shown in the pane panel. Unset by default.
@@ -278,8 +262,6 @@ pub struct KeysConfig {
     pub next_tab: BindingConfig,
     /// Switch to tab 1-9. Default: "prefix+1..9".
     pub switch_tab: BindingConfig,
-    /// Legacy internal container indexed switch binding. Unset by default.
-    pub switch_workspace: BindingConfig,
     /// Close the active tab. Default: "prefix+ampersand" with "prefix+shift+x" as a legacy alias.
     pub close_tab: BindingConfig,
     /// Rename the focused pane. Default: "prefix+shift+p".
@@ -327,8 +309,6 @@ pub struct KeysConfig {
 pub struct IndexedKeysConfig {
     /// Modifier combo for tab shortcuts 1-9. Unset by default.
     pub tabs: String,
-    /// Legacy internal container shortcuts 1-9. Unset by default.
-    pub workspaces: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -450,13 +430,7 @@ impl Default for KeysConfig {
             prefix: "ctrl+b".into(),
             help: BindingConfig::one("prefix+?"),
             settings: BindingConfig::one("prefix+s"),
-            new_workspace: BindingConfig::empty(),
-            rename_workspace: BindingConfig::empty(),
-            close_workspace: BindingConfig::empty(),
-            workspace_picker: BindingConfig::empty(),
             goto: BindingConfig::one("prefix+g"),
-            navigate_workspace_up: BindingConfig::empty(),
-            navigate_workspace_down: BindingConfig::empty(),
             navigate_pane_left: BindingConfig::one("h"),
             navigate_pane_down: BindingConfig::one("j"),
             navigate_pane_up: BindingConfig::one("k"),
@@ -464,8 +438,6 @@ impl Default for KeysConfig {
             detach: BindingConfig::Many(vec!["prefix+d".into(), "prefix+q".into()]),
             reload_config: BindingConfig::one("prefix+shift+r"),
             open_notification_target: BindingConfig::one("prefix+o"),
-            previous_workspace: BindingConfig::empty(),
-            next_workspace: BindingConfig::empty(),
             previous_pane_panel_entry: BindingConfig::empty(),
             next_pane_panel_entry: BindingConfig::empty(),
             focus_pane_panel_entry: BindingConfig::empty(),
@@ -474,7 +446,6 @@ impl Default for KeysConfig {
             previous_tab: BindingConfig::one("prefix+p"),
             next_tab: BindingConfig::one("prefix+n"),
             switch_tab: BindingConfig::one("prefix+1..9"),
-            switch_workspace: BindingConfig::empty(),
             close_tab: BindingConfig::Many(vec![
                 "prefix+ampersand".into(),
                 "prefix+shift+x".into(),

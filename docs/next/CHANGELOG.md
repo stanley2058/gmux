@@ -40,6 +40,7 @@
 - Removed public `workspace.*` socket API methods; use `tab.create`, `tab.list`, `tab.focus`, `tab.rename`, `tab.close`, and pane methods instead.
 - Removed `workspace_id` fields from successful tab, pane, pane-read, and tab/pane event socket API payloads.
 - Changed public tab and pane ids returned by the socket API to neutral `t_N` and `p_N` forms while keeping previous workspace-prefixed ids accepted as inputs.
+- Removed user-configurable workspace keybinding entries; session, tab, pane, and pane-panel keybindings remain configurable.
 
 ## [0.6.8] - 2026-06-04
 

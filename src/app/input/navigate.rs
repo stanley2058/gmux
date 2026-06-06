@@ -1157,7 +1157,7 @@ mod tests {
     }
 
     #[test]
-    fn navigate_workspace_keys_are_configurable() {
+    fn removed_navigate_workspace_keys_do_not_move_selection() {
         let mut state = state_with_workspaces(&["a", "b"]);
         let config: Config = toml::from_str(
             r#"
@@ -1175,7 +1175,7 @@ navigate_pane_down = "ctrl+j"
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 1);
+        assert_eq!(state.selected, 0);
         assert_eq!(state.mode, Mode::Navigate);
     }
 
@@ -1193,7 +1193,6 @@ navigate_pane_down = "ctrl+j"
         let config: Config = toml::from_str(
             r#"
 [keys]
-navigate_workspace_down = "j"
 navigate_pane_down = "ctrl+j"
 "#,
         )

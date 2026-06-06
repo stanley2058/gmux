@@ -395,18 +395,8 @@ impl Config {
 
         let mut keybinds = Keybinds {
             navigate: NavigateKeybinds {
-                workspace_up: parse_navigate_bindings(
-                    "keys.navigate_workspace_up",
-                    &self.keys.navigate_workspace_up,
-                    &mut navigate_registry,
-                    &mut diagnostics,
-                ),
-                workspace_down: parse_navigate_bindings(
-                    "keys.navigate_workspace_down",
-                    &self.keys.navigate_workspace_down,
-                    &mut navigate_registry,
-                    &mut diagnostics,
-                ),
+                workspace_up: ActionKeybinds::default(),
+                workspace_down: ActionKeybinds::default(),
                 pane_left: parse_navigate_bindings(
                     "keys.navigate_pane_left",
                     &self.keys.navigate_pane_left,
@@ -434,10 +424,10 @@ impl Config {
             },
             help: action!("keys.help", &self.keys.help),
             settings: action!("keys.settings", &self.keys.settings),
-            new_workspace: action!("keys.new_workspace", &self.keys.new_workspace),
-            rename_workspace: action!("keys.rename_workspace", &self.keys.rename_workspace),
-            close_workspace: action!("keys.close_workspace", &self.keys.close_workspace),
-            workspace_picker: action!("keys.workspace_picker", &self.keys.workspace_picker),
+            new_workspace: ActionKeybinds::default(),
+            rename_workspace: ActionKeybinds::default(),
+            close_workspace: ActionKeybinds::default(),
+            workspace_picker: ActionKeybinds::default(),
             goto: action!("keys.goto", &self.keys.goto),
             detach: action!("keys.detach", &self.keys.detach),
             reload_config: action!("keys.reload_config", &self.keys.reload_config),
@@ -445,8 +435,8 @@ impl Config {
                 "keys.open_notification_target",
                 &self.keys.open_notification_target
             ),
-            previous_workspace: action!("keys.previous_workspace", &self.keys.previous_workspace),
-            next_workspace: action!("keys.next_workspace", &self.keys.next_workspace),
+            previous_workspace: ActionKeybinds::default(),
+            next_workspace: ActionKeybinds::default(),
             previous_pane_panel_entry: action!(
                 "keys.previous_pane_panel_entry",
                 &self.keys.previous_pane_panel_entry
@@ -464,7 +454,7 @@ impl Config {
             previous_tab: action!("keys.previous_tab", &self.keys.previous_tab),
             next_tab: action!("keys.next_tab", &self.keys.next_tab),
             switch_tab: indexed!("keys.switch_tab", &self.keys.switch_tab),
-            switch_workspace: indexed!("keys.switch_workspace", &self.keys.switch_workspace),
+            switch_workspace: Vec::new(),
             close_tab: action!("keys.close_tab", &self.keys.close_tab),
             rename_pane: action!("keys.rename_pane", &self.keys.rename_pane),
             edit_scrollback: action!("keys.edit_scrollback", &self.keys.edit_scrollback),
@@ -492,13 +482,6 @@ impl Config {
             &mut keybinds.switch_tab,
             "keys.indexed.tabs",
             &self.keys.indexed.tabs,
-            &mut registry,
-            &mut diagnostics,
-        );
-        append_legacy_indexed_bindings(
-            &mut keybinds.switch_workspace,
-            "keys.indexed.workspaces",
-            &self.keys.indexed.workspaces,
             &mut registry,
             &mut diagnostics,
         );
@@ -1285,7 +1268,7 @@ next_tab = "prefix+n"
     }
 
     #[test]
-    fn workspace_keybind_is_unset_by_default_but_still_parses() {
+    fn removed_workspace_keybind_config_is_ignored() {
         let kb = Config::default().keybinds();
         assert!(kb.new_workspace.bindings.is_empty());
 
@@ -1293,17 +1276,30 @@ next_tab = "prefix+n"
             r#"
 [keys]
 new_workspace = "prefix+shift+n"
+rename_workspace = "prefix+shift+r"
+close_workspace = "prefix+shift+x"
+workspace_picker = "prefix+w"
+previous_workspace = "prefix+shift+p"
+next_workspace = "prefix+shift+n"
+switch_workspace = "prefix+shift+1..9"
+navigate_workspace_up = "u"
+navigate_workspace_down = "d"
+
+[keys.indexed]
+workspaces = "prefix+shift"
 "#,
         )
         .unwrap();
         let kb = config.keybinds();
-        assert_eq!(
-            binding_triggers(&kb.new_workspace),
-            vec![BindingTrigger::Prefix((
-                KeyCode::Char('n'),
-                KeyModifiers::SHIFT
-            ))]
-        );
+        assert!(kb.new_workspace.bindings.is_empty());
+        assert!(kb.rename_workspace.bindings.is_empty());
+        assert!(kb.close_workspace.bindings.is_empty());
+        assert!(kb.workspace_picker.bindings.is_empty());
+        assert!(kb.previous_workspace.bindings.is_empty());
+        assert!(kb.next_workspace.bindings.is_empty());
+        assert!(kb.switch_workspace.is_empty());
+        assert!(kb.navigate.workspace_up.bindings.is_empty());
+        assert!(kb.navigate.workspace_down.bindings.is_empty());
     }
 
     #[test]
@@ -1511,9 +1507,9 @@ help = "prefix+ctrl+b"
         let config: Config = toml::from_str(
             r#"
 [keys]
-navigate_workspace_up = "j"
-navigate_workspace_down = "j"
-navigate_pane_down = "ctrl+j"
+navigate_pane_left = "j"
+navigate_pane_down = "j"
+navigate_pane_up = "ctrl+j"
 "#,
         )
         .unwrap();
@@ -1522,16 +1518,16 @@ navigate_pane_down = "ctrl+j"
 
         assert!(keybinds
             .navigate
-            .workspace_up
+            .pane_left
             .matches_direct_key(TerminalKey::new(KeyCode::Char('j'), KeyModifiers::empty())));
-        assert!(keybinds.navigate.workspace_down.bindings.is_empty());
+        assert!(keybinds.navigate.pane_down.bindings.is_empty());
         assert!(keybinds
             .navigate
-            .pane_down
+            .pane_up
             .matches_direct_key(TerminalKey::new(KeyCode::Char('j'), KeyModifiers::CONTROL)));
         assert!(diagnostics.iter().any(|diag| {
-            diag.contains("kept keys.navigate_workspace_up")
-                && diag.contains("disabled keys.navigate_workspace_down")
+            diag.contains("kept keys.navigate_pane_left")
+                && diag.contains("disabled keys.navigate_pane_down")
         }));
     }
 
@@ -1540,21 +1536,21 @@ navigate_pane_down = "ctrl+j"
         let config: Config = toml::from_str(
             r#"
 [keys]
-navigate_workspace_up = ["esc", "alt+esc", "enter", "1", "tab", "shift+tab", "left", "right"]
+navigate_pane_left = ["esc", "alt+esc", "enter", "1", "tab", "shift+tab", "left", "right"]
 "#,
         )
         .unwrap();
         let keybinds = config.keybinds();
         let diagnostics = config.collect_diagnostics();
 
-        assert!(keybinds.navigate.workspace_up.bindings.is_empty());
+        assert!(keybinds.navigate.pane_left.bindings.is_empty());
         assert_eq!(
             diagnostics
                 .iter()
                 .filter(|diag| {
                     (diag.contains("navigate reserved keys")
                         || diag.contains("navigate keybinding cannot use esc"))
-                        && diag.contains("keys.navigate_workspace_up")
+                        && diag.contains("keys.navigate_pane_left")
                 })
                 .count(),
             8
@@ -1566,7 +1562,7 @@ navigate_workspace_up = ["esc", "alt+esc", "enter", "1", "tab", "shift+tab", "le
         let config: Config = toml::from_str(
             r#"
 [keys]
-navigate_workspace_down = ["n", "f"]
+navigate_pane_down = ["n", "f"]
 
 [[keys.command]]
 key = "prefix+f"
@@ -1579,15 +1575,15 @@ command = "echo hi"
 
         assert!(keybinds
             .navigate
-            .workspace_down
+            .pane_down
             .matches_direct_key(TerminalKey::new(KeyCode::Char('n'), KeyModifiers::empty())));
         assert!(keybinds
             .navigate
-            .workspace_down
+            .pane_down
             .matches_direct_key(TerminalKey::new(KeyCode::Char('f'), KeyModifiers::empty())));
         assert!(!keybinds.custom_commands.is_empty());
         assert!(!diagnostics.iter().any(|diag| {
-            diag.contains("disabled keys.navigate_workspace_down")
+            diag.contains("disabled keys.navigate_pane_down")
                 && (diag.contains("keys.next_tab") || diag.contains("keys.command"))
         }));
     }
@@ -1615,22 +1611,22 @@ navigate_pane_down = "j"
             r#"
 [keys]
 prefix = "ctrl+a"
-navigate_workspace_up = "prefix+j"
-navigate_workspace_down = "ctrl+a"
+navigate_pane_left = "prefix+j"
+navigate_pane_down = "ctrl+a"
 "#,
         )
         .unwrap();
         let keybinds = config.keybinds();
         let diagnostics = config.collect_diagnostics();
 
-        assert!(keybinds.navigate.workspace_up.bindings.is_empty());
-        assert!(keybinds.navigate.workspace_down.bindings.is_empty());
+        assert!(keybinds.navigate.pane_left.bindings.is_empty());
+        assert!(keybinds.navigate.pane_down.bindings.is_empty());
         assert!(diagnostics.iter().any(|diag| {
             diag.contains("navigate keybinding must not include prefix")
-                && diag.contains("keys.navigate_workspace_up")
+                && diag.contains("keys.navigate_pane_left")
         }));
         assert!(diagnostics.iter().any(|diag| {
-            diag.contains("kept keys.prefix") && diag.contains("keys.navigate_workspace_down")
+            diag.contains("kept keys.prefix") && diag.contains("keys.navigate_pane_down")
         }));
     }
 
@@ -1696,21 +1692,21 @@ command = "echo no"
     }
 
     #[test]
-    fn prefixed_indexed_bindings_support_modifiers() {
+    fn prefixed_tab_indexed_bindings_support_modifiers() {
         let config: Config = toml::from_str(
             r#"
 [keys]
-switch_workspace = "prefix+shift+1..9"
+switch_tab = "prefix+shift+1..9"
 "#,
         )
         .unwrap();
         let kb = config.keybinds();
-        assert_eq!(kb.switch_workspace.len(), 9);
+        assert_eq!(kb.switch_tab.len(), 9);
         assert_eq!(
-            kb.switch_workspace[0].trigger,
+            kb.switch_tab[0].trigger,
             BindingTrigger::Prefix((KeyCode::Char('1'), KeyModifiers::SHIFT))
         );
-        assert_eq!(kb.switch_workspace[0].label, "prefix+shift+1");
+        assert_eq!(kb.switch_tab[0].label, "prefix+shift+1");
     }
 
     #[test]
@@ -1796,16 +1792,16 @@ switch_workspace = "prefix+shift+1..9"
         let config: Config = toml::from_str(
             r#"
 [keys]
+new_tab = "prefix+n"
 next_tab = "prefix+n"
-new_workspace = "prefix+n"
 "#,
         )
         .unwrap();
         let diagnostics = config.collect_diagnostics();
         let kb = config.keybinds();
-        assert!(kb.next_tab.bindings.is_empty() || kb.new_workspace.bindings.is_empty());
+        assert!(kb.next_tab.bindings.is_empty() || kb.new_tab.bindings.is_empty());
         assert!(diagnostics.iter().any(|diag| {
-            diag.contains("kept keys.new_workspace") && diag.contains("disabled keys.next_tab")
+            diag.contains("kept keys.new_tab") && diag.contains("disabled keys.next_tab")
         }));
     }
 

@@ -552,7 +552,7 @@ mod tests {
             preview: false,
         });
         app.config_diagnostic = Some(
-            "unsafe direct keybinding: keys.new_workspace = \"n\"\nunsafe direct keybinding: keys.new_tab = \"c\""
+            "unsafe direct keybinding: keys.new_tab = \"n\"\nunsafe direct keybinding: keys.close_tab = \"c\""
                 .into(),
         );
 
