@@ -260,20 +260,16 @@ fn tab_detail(
     let Some(tab) = ws.tabs.get(tab_idx) else {
         return String::new();
     };
-    let mut parts = vec![
-        ws.display_name_from(&app.terminals, terminal_runtimes),
-        format!("tab: {}", tab.display_name()),
+    let session_label = app
+        .session_container()
+        .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
+        .unwrap_or_else(|| "session".to_string());
+    let tab_label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
+    let parts = vec![
+        session_label,
+        format!("tab: {tab_label}"),
         format!("{} panes", tab.panes.len()),
     ];
-    let rows = app.navigator_rows_from(terminal_runtimes);
-    if let Some(meta) = rows
-        .into_iter()
-        .find(|row| matches!(row.target, NavigatorTarget::Tab { ws_idx: row_ws_idx, tab_idx: row_tab_idx } if row_ws_idx == ws_idx && row_tab_idx == tab_idx))
-        .map(|row| row.meta)
-        .filter(|meta| !meta.is_empty())
-    {
-        parts.push(meta);
-    }
     parts.join(" · ")
 }
 
@@ -290,9 +286,15 @@ fn pane_detail(
     let Some(tab) = ws.tabs.get(tab_idx) else {
         return String::new();
     };
-    let mut parts = vec![ws.display_name_from(&app.terminals, terminal_runtimes)];
-    if ws.tabs.len() > 1 {
-        parts.push(format!("tab: {}", tab.display_name()));
+    let session_label = app
+        .session_container()
+        .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
+        .unwrap_or_else(|| "session".to_string());
+    let mut parts = vec![session_label];
+    let multi_tab = app.workspaces.iter().map(|ws| ws.tabs.len()).sum::<usize>() > 1;
+    if multi_tab {
+        let tab_label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
+        parts.push(format!("tab: {tab_label}"));
     }
     if let Some(pane_number) = ws.public_pane_number(pane_id) {
         parts.push(format!("pane {pane_number}"));
@@ -364,4 +366,32 @@ fn truncate_text(text: &str, max_width: usize) -> String {
     }
     let prefix: String = text.chars().take(max_width.saturating_sub(1)).collect();
     format!("{prefix}…")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn details_describe_legacy_container_as_session_tab() {
+        let first = crate::workspace::Workspace::test_new("one");
+        let second = crate::workspace::Workspace::test_new("two");
+        let pane_id = second.tabs[0].root_pane;
+
+        let mut app = AppState::test_new();
+        app.workspaces = vec![first, second];
+        app.active = Some(0);
+        app.selected = 0;
+
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+
+        assert_eq!(
+            tab_detail(&app, &terminal_runtimes, 1, 0),
+            "one · tab: two · 1 panes"
+        );
+        assert_eq!(
+            pane_detail(&app, &terminal_runtimes, 1, 0, pane_id),
+            "one · tab: two · pane 1"
+        );
+    }
 }
