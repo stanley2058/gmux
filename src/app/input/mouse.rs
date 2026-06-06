@@ -928,13 +928,7 @@ impl AppState {
     }
 
     pub(super) fn focus_pane(&mut self, pane_id: crate::layout::PaneId) {
-        if let Some(ws_idx) = self
-            .workspaces
-            .iter()
-            .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
-        {
-            self.focus_pane_in_session_container(ws_idx, pane_id);
-        }
+        self.focus_session_pane(pane_id);
     }
 
     fn clickable_toast_at(&self, col: u16, row: u16) -> bool {
@@ -948,32 +942,8 @@ impl AppState {
         let Some(target) = self.toast.as_ref().and_then(|toast| toast.target.clone()) else {
             return;
         };
-        let ws_idx = self
-            .workspaces
-            .iter()
-            .position(|workspace| {
-                workspace.id == target.workspace_id
-                    && workspace.find_tab_index_for_pane(target.pane_id).is_some()
-            })
-            .or_else(|| {
-                self.workspaces.iter().position(|workspace| {
-                    workspace.find_tab_index_for_pane(target.pane_id).is_some()
-                })
-            });
-        let Some(ws_idx) = ws_idx else {
+        if !self.focus_session_pane(target.pane_id) {
             return;
-        };
-
-        let focused = self.focus_pane_in_session_container(ws_idx, target.pane_id);
-        if !focused {
-            self.collapse_to_single_session_workspace();
-            if self
-                .session_container()
-                .and_then(|ws| ws.pane_state(target.pane_id))
-                .is_none()
-            {
-                return;
-            }
         }
         self.toast = None;
         self.mode = Mode::Terminal;

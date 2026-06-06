@@ -125,6 +125,25 @@ impl AppState {
         false
     }
 
+    pub(crate) fn focus_session_pane(&mut self, pane_id: PaneId) -> bool {
+        let Some(ws_idx) = self
+            .workspaces
+            .iter()
+            .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
+        else {
+            return false;
+        };
+
+        if self.focus_pane_in_session_container(ws_idx, pane_id) {
+            return true;
+        }
+
+        self.collapse_to_single_session_workspace();
+        self.session_container()
+            .and_then(|ws| ws.pane_state(pane_id))
+            .is_some()
+    }
+
     #[cfg(test)]
     pub(crate) fn open_navigator(&mut self) {
         let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();

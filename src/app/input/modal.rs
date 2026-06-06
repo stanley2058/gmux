@@ -581,26 +581,6 @@ pub(crate) fn handle_confirm_close_key(state: &mut AppState, key: KeyEvent) {
     }
 }
 
-fn focus_context_pane(state: &mut AppState, pane_id: crate::layout::PaneId) -> bool {
-    let Some(ws_idx) = state
-        .workspaces
-        .iter()
-        .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
-    else {
-        return false;
-    };
-
-    if state.focus_pane_in_session_container(ws_idx, pane_id) {
-        return true;
-    }
-
-    state.collapse_to_single_session_workspace();
-    state
-        .session_container()
-        .and_then(|ws| ws.pane_state(pane_id))
-        .is_some()
-}
-
 pub(super) fn apply_context_menu_action(
     state: &mut AppState,
     terminal_runtimes: &mut crate::terminal::TerminalRuntimeRegistry,
@@ -627,7 +607,7 @@ pub(super) fn apply_context_menu_action(
             open_rename_pane(state, pane_id);
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Clear pane name")) => {
-            if focus_context_pane(state, pane_id) {
+            if state.focus_session_pane(pane_id) {
                 if let Some(ws) = state.session_container() {
                     if let Some(terminal_id) = ws
                         .pane_state(pane_id)
@@ -643,22 +623,22 @@ pub(super) fn apply_context_menu_action(
             state.mode = Mode::Terminal;
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Split vertical")) => {
-            focus_context_pane(state, pane_id);
+            state.focus_session_pane(pane_id);
             state.split_pane(terminal_runtimes, Direction::Horizontal);
             state.mode = Mode::Terminal;
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Split horizontal")) => {
-            focus_context_pane(state, pane_id);
+            state.focus_session_pane(pane_id);
             state.split_pane(terminal_runtimes, Direction::Vertical);
             state.mode = Mode::Terminal;
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Zoom")) => {
-            focus_context_pane(state, pane_id);
+            state.focus_session_pane(pane_id);
             state.toggle_zoom();
             state.mode = Mode::Terminal;
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Close pane")) => {
-            focus_context_pane(state, pane_id);
+            state.focus_session_pane(pane_id);
             if !state.close_pane() {
                 leave_modal(state);
             }
