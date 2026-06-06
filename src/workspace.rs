@@ -425,7 +425,7 @@ impl SessionUiState {
         Some(Ok((tab_idx, new_pane)))
     }
 
-    /// Close the focused pane. Returns true if the workspace should close.
+    /// Close the focused pane. Returns true if the session should close.
     pub fn close_focused(&mut self) -> bool {
         let pane_count = self
             .active_tab()
@@ -442,8 +442,8 @@ impl SessionUiState {
         false
     }
 
-    /// Remove a specific pane from this workspace without terminating its runtime.
-    /// Returns true if the workspace should close.
+    /// Remove a specific pane from this session without terminating its runtime.
+    /// Returns true if the session should close.
     pub fn remove_pane(&mut self, pane_id: PaneId) -> bool {
         let Some(tab_idx) = self.find_tab_index_for_pane(pane_id) else {
             return false;
@@ -664,7 +664,7 @@ mod tests {
     }
 
     #[test]
-    fn unnamed_workspace_identity_uses_session_label() {
+    fn unnamed_session_identity_uses_session_label() {
         let mut ws = Workspace::test_new("ignored");
         ws.custom_name = None;
         ws.identity_cwd = PathBuf::new();

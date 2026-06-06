@@ -371,9 +371,9 @@ impl AppState {
         terminal_runtimes: &mut crate::terminal::TerminalRuntimeRegistry,
         direction: Direction,
     ) {
-        // Actual PTY spawning happens in Workspace::split_focused
+        // Actual PTY spawning happens in SessionUiState::split_focused
         // which needs events channel — this is called from navigate_key
-        // where we don't have async context, so the workspace handles it
+        // where we don't have async context, so the session handles it
         let (rows, cols) = self.estimate_pane_size();
         let new_rows = (rows / 2).max(4);
         let new_cols = (cols / 2).max(10);

@@ -4,7 +4,7 @@ use super::{TerminalId, TerminalRuntime};
 
 /// Server-owned live terminal runtimes, keyed by durable terminal id.
 ///
-/// This sits outside `AppState` so pure state can stay focused on workspace,
+/// This sits outside `AppState` so pure state can stay focused on session,
 /// pane, and terminal metadata while the server/application layer owns PTYs,
 /// parser backends, detector tasks, and channels.
 #[derive(Default)]

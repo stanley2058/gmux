@@ -1,11 +1,11 @@
-//! BSP tree layout for tiling panes within a workspace.
+//! BSP tree layout for tiling panes within a session tab.
 
 use ratatui::layout::{Direction, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct PaneId(u32);
 
-/// Global atomic counter for unique PaneId generation across all workspaces.
+/// Global atomic counter for unique PaneId generation across all sessions.
 static NEXT_PANE_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 impl PaneId {
