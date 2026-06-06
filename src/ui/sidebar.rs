@@ -58,7 +58,7 @@ pub(crate) fn expanded_pane_panel_rect(area: Rect) -> Rect {
     )
 }
 
-fn pane_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
+fn pane_panel_current_context_idx(app: &AppState) -> Option<usize> {
     if matches!(
         app.mode,
         Mode::Navigate
@@ -125,7 +125,7 @@ fn pane_panel_entries_with_runtimes(
 
     match app.pane_panel_scope {
         PanePanelScope::Current => {
-            let Some(ws_idx) = pane_panel_current_workspace_idx(app) else {
+            let Some(ws_idx) = pane_panel_current_context_idx(app) else {
                 return Vec::new();
             };
             let Some(ws) = app.workspaces.get(ws_idx) else {
@@ -148,14 +148,14 @@ fn pane_panel_entries_with_runtimes(
             .enumerate()
             .flat_map(|(ws_idx, ws)| {
                 let multi_tab = ws.tabs.len() > 1;
-                let workspace_label = ws.display_name_from(&app.terminals, terminal_runtimes);
+                let session_label = ws.display_name_from(&app.terminals, terminal_runtimes);
                 ws.pane_details(&app.terminals)
                     .into_iter()
                     .map(move |detail| PanePanelEntry {
                         ws_idx,
                         tab_idx: detail.tab_idx,
                         pane_id: detail.pane_id,
-                        primary_label: workspace_label.clone(),
+                        primary_label: session_label.clone(),
                         primary_tab_label: multi_tab.then_some(detail.tab_label),
                     })
             })
@@ -194,29 +194,29 @@ fn format_pane_panel_primary_label(entry: &PanePanelEntry, max_width: usize) -> 
 
     let available = max_width.saturating_sub(separator_width);
     let min_tab = 4.min(available.saturating_sub(1)).max(1);
-    let preferred_workspace = ((available * 2) / 3).max(1);
-    let mut workspace_budget = preferred_workspace
+    let preferred_primary = ((available * 2) / 3).max(1);
+    let mut primary_budget = preferred_primary
         .min(available.saturating_sub(min_tab))
         .max(1);
-    let mut tab_budget = available.saturating_sub(workspace_budget);
+    let mut tab_budget = available.saturating_sub(primary_budget);
 
-    let workspace_len = entry.primary_label.chars().count();
+    let primary_len = entry.primary_label.chars().count();
     let tab_len = tab_label.chars().count();
 
-    if workspace_len < workspace_budget {
-        let spare = workspace_budget - workspace_len;
-        workspace_budget = workspace_len;
-        tab_budget = (tab_budget + spare).min(available.saturating_sub(workspace_budget));
+    if primary_len < primary_budget {
+        let spare = primary_budget - primary_len;
+        primary_budget = primary_len;
+        tab_budget = (tab_budget + spare).min(available.saturating_sub(primary_budget));
     }
     if tab_len < tab_budget {
         let spare = tab_budget - tab_len;
         tab_budget = tab_len;
-        workspace_budget = (workspace_budget + spare).min(available.saturating_sub(tab_budget));
+        primary_budget = (primary_budget + spare).min(available.saturating_sub(tab_budget));
     }
 
     format!(
         "{}{}{}",
-        truncate_text(&entry.primary_label, workspace_budget),
+        truncate_text(&entry.primary_label, primary_budget),
         separator,
         truncate_text(tab_label, tab_budget)
     )
@@ -301,7 +301,7 @@ pub(crate) fn collapsed_sidebar_sections(area: Rect) -> (Rect, Option<u16>, Rect
     (ws_area, Some(divider_y), detail_area)
 }
 
-/// Collapsed sidebar: workspace glance on top, compact pane list below.
+/// Collapsed sidebar: session glance on top, compact pane list below.
 pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: Rect) {
     let is_navigating = matches!(app.mode, Mode::Navigate);
 
@@ -661,7 +661,7 @@ mod tests {
     }
 
     #[test]
-    fn all_workspaces_pane_panel_entries_use_workspace_and_optional_tab_labels() {
+    fn all_pane_panel_entries_use_session_and_optional_tab_labels() {
         let mut app = crate::app::state::AppState::test_new();
         let first = Workspace::test_new("one");
         let mut second = Workspace::test_new("two");
@@ -682,7 +682,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_workspaces_pane_panel_entries_use_live_root_runtime_cwd_for_workspace_label() {
+    async fn all_pane_panel_entries_use_live_root_runtime_cwd_for_session_label() {
         let unique = format!(
             "gmux-pane-panel-runtime-cwd-{}-{}",
             std::process::id(),
@@ -748,7 +748,7 @@ mod tests {
     }
 
     #[test]
-    fn all_workspaces_primary_label_truncates_workspace_and_tab() {
+    fn all_primary_label_truncates_session_and_tab() {
         let entry = PanePanelEntry {
             ws_idx: 0,
             tab_idx: 0,
