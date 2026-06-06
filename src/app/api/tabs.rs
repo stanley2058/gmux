@@ -42,7 +42,7 @@ impl App {
             let cwd = cwd
                 .map(PathBuf::from)
                 .unwrap_or_else(|| self.resolve_new_terminal_cwd(None));
-            return match self.create_workspace_with_options(cwd, focus) {
+            return match self.create_session_container_with_options(cwd, focus) {
                 Ok(ws_idx) => {
                     if let Some(label) = label {
                         let workspace_id = self.state.workspaces[ws_idx].id.clone();

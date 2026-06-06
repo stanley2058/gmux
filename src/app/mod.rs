@@ -625,7 +625,7 @@ impl App {
                 needs_render = true;
             }
 
-            if self.ensure_default_workspace() {
+            if self.ensure_default_session_container() {
                 needs_render = true;
             }
 
@@ -752,7 +752,7 @@ impl App {
         Ok(())
     }
 
-    pub(crate) fn ensure_default_workspace(&mut self) -> bool {
+    pub(crate) fn ensure_default_session_container(&mut self) -> bool {
         if !self.state.workspaces.is_empty() || self.state.mode == Mode::Onboarding {
             return false;
         }
@@ -764,7 +764,7 @@ impl App {
         );
         let cwd = self.resolve_new_terminal_cwd(None);
 
-        match self.create_workspace_with_options(cwd, true) {
+        match self.create_session_container_with_options(cwd, true) {
             Ok(_) => {
                 if preserve_mode {
                     self.state.mode = previous_mode;
@@ -1354,14 +1354,14 @@ mod tests {
     }
 
     #[test]
-    fn create_workspace_with_existing_container_collapses_instead_of_appending() {
+    fn create_session_container_with_existing_container_collapses_instead_of_appending() {
         let mut app = test_app();
         app.state.workspaces = vec![Workspace::test_new("one"), Workspace::test_new("two")];
         app.state.active = None;
         app.state.selected = 1;
 
         let idx = app
-            .create_workspace_with_options(std::path::PathBuf::from("/tmp"), true)
+            .create_session_container_with_options(std::path::PathBuf::from("/tmp"), true)
             .expect("existing session container should be reused");
 
         assert_eq!(idx, 0);

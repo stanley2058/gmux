@@ -434,10 +434,12 @@ impl HeadlessServer {
                 crate::render_prof::event("full_render_cause.config_reload");
             }
 
-            if latest_app_client(&self.clients).is_some() && self.app.ensure_default_workspace() {
+            if latest_app_client(&self.clients).is_some()
+                && self.app.ensure_default_session_container()
+            {
                 needs_render = true;
                 needs_full_render = true;
-                crate::render_prof::event("full_render_cause.default_workspace");
+                crate::render_prof::event("full_render_cause.default_session_container");
             }
 
             self.drain_client_config_reload_request();
@@ -1845,7 +1847,7 @@ impl HeadlessServer {
         }
 
         let mut changed = api::request_changes_ui(&msg.request);
-        let skip_default_workspace = matches!(
+        let skip_default_session_container = matches!(
             &msg.request.method,
             api::schema::Method::ServerStop(_) | api::schema::Method::ServerLiveHandoff(_)
         );
@@ -1901,8 +1903,8 @@ impl HeadlessServer {
             }
         }
 
-        if !skip_default_workspace && latest_app_client(&self.clients).is_some() {
-            changed |= self.app.ensure_default_workspace();
+        if !skip_default_session_container && latest_app_client(&self.clients).is_some() {
+            changed |= self.app.ensure_default_session_container();
         }
 
         changed

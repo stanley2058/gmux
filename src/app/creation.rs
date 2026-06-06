@@ -88,7 +88,7 @@ impl App {
             self.state.collapse_to_single_session_workspace();
         }
         let Some(ws_idx) = self.state.active else {
-            return self.create_workspace_with_options(initial_cwd, focus);
+            return self.create_session_container_with_options(initial_cwd, focus);
         };
         let (rows, cols) = self.state.estimate_pane_size();
         let ws = &mut self.state.workspaces[ws_idx];
@@ -118,7 +118,7 @@ impl App {
         Ok(idx)
     }
 
-    pub(crate) fn create_workspace_with_options(
+    pub(crate) fn create_session_container_with_options(
         &mut self,
         initial_cwd: PathBuf,
         focus: bool,
