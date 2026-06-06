@@ -590,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn collapsed_sidebar_keeps_active_workspace_highlight_in_terminal_mode() {
+    fn collapsed_sidebar_renders_only_session_container_glance() {
         let mut app = crate::app::state::AppState::test_new();
         app.sidebar_collapsed = true;
         app.workspaces = vec![Workspace::test_new("one"), Workspace::test_new("two")];
@@ -606,10 +606,15 @@ mod tests {
         let buffer = terminal.backend().buffer();
 
         let (ws_area, _, _) = collapsed_sidebar_sections(app.view.sidebar_rect);
-        let active_row = ws_area.y + 1;
-        let active_style = buffer[(ws_area.x, active_row)].style();
+        let active_style = buffer[(ws_area.x, ws_area.y)].style();
 
+        assert_eq!(buffer[(ws_area.x, ws_area.y)].symbol(), "2");
         assert_eq!(active_style.bg, Some(app.palette.surface_dim));
+        assert_eq!(buffer[(ws_area.x, ws_area.y + 1)].symbol(), " ");
+        assert_ne!(
+            buffer[(ws_area.x, ws_area.y + 1)].style().bg,
+            Some(app.palette.surface_dim)
+        );
     }
 
     #[test]

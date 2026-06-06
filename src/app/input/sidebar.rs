@@ -1,6 +1,6 @@
 use ratatui::layout::Rect;
 
-use crate::app::state::{AppState, Mode, ViewLayout};
+use crate::app::state::{AppState, ViewLayout};
 
 use super::ScrollbarClickTarget;
 
@@ -190,20 +190,7 @@ impl AppState {
     }
 
     fn collapsed_detail_workspace_idx(&self) -> Option<usize> {
-        if matches!(
-            self.mode,
-            Mode::Navigate
-                | Mode::Resize
-                | Mode::ConfirmClose
-                | Mode::ContextMenu
-                | Mode::Settings
-                | Mode::GlobalMenu
-                | Mode::KeybindHelp
-        ) {
-            Some(self.selected)
-        } else {
-            self.session_container_index()
-        }
+        self.session_container_index()
     }
 
     pub(super) fn collapsed_pane_detail_target_at(
@@ -653,6 +640,41 @@ mod tests {
         assert_eq!(
             app.state.workspaces[0].tabs[1].layout.focused(),
             second_pane
+        );
+        assert_eq!(app.state.mode, Mode::Terminal);
+    }
+
+    #[test]
+    fn clicking_collapsed_pane_row_uses_session_container_not_selected_workspace() {
+        let mut app = app_for_mouse_test();
+        let mut first = Workspace::test_new("one");
+        let second_tab = first.test_add_tab(Some("logs"));
+        let target_pane = first.tabs[second_tab].root_pane;
+        let second = Workspace::test_new("two");
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 1;
+        app.state.mode = Mode::Navigate;
+        app.state.sidebar_collapsed = true;
+        app.state.view.sidebar_rect = Rect::new(0, 0, 4, 20);
+        app.state.view.terminal_area = Rect::new(4, 0, 80, 20);
+
+        let (_, _, detail_area) =
+            crate::ui::collapsed_sidebar_sections(app.state.view.sidebar_rect);
+        app.handle_mouse(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            detail_area.x,
+            detail_area.y + 1,
+        ));
+
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
+        assert_eq!(
+            app.state.workspaces[0].tabs[1].layout.focused(),
+            target_pane
         );
         assert_eq!(app.state.mode, Mode::Terminal);
     }

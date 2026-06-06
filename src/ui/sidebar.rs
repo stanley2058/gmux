@@ -324,13 +324,10 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         return;
     }
 
-    for visible_idx in 0..app.workspaces.len() {
-        let y = ws_area.y + visible_idx as u16;
-        if y >= ws_area.y + ws_area.height {
-            break;
-        }
-        let is_selected = visible_idx == app.selected && is_navigating;
-        let is_active = Some(visible_idx) == app.active;
+    if let Some(visible_idx) = app.session_container_index() {
+        let y = ws_area.y;
+        let is_selected = is_navigating;
+        let is_active = true;
         let (icon, icon_style) = session_dot(is_active, is_selected, p);
         let row_style = if is_selected {
             Style::default().bg(p.surface0)
@@ -372,11 +369,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
         }
     }
 
-    let detail_ws_idx = if is_navigating {
-        Some(app.selected)
-    } else {
-        app.active
-    };
+    let detail_ws_idx = app.session_container_index();
     let detail_content_area = Rect::new(
         detail_area.x,
         detail_area.y,
