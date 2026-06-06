@@ -109,25 +109,32 @@ pub(super) fn render_rename_overlay(app: &AppState, frame: &mut Frame, area: Rec
 }
 
 fn confirm_close_overlay_text(app: &AppState) -> (String, String) {
-    let ws_name = app
-        .workspaces
-        .get(app.selected)
-        .map(|ws| ws.display_name())
-        .unwrap_or_else(|| "?".to_string());
-    let pane_count = app
-        .workspaces
-        .get(app.selected)
-        .map(|ws| ws.layout.pane_count())
-        .unwrap_or(0);
+    let Some(ws) = app.session_container() else {
+        return (
+            "Close session?".to_string(),
+            "? — 0 tabs · 0 panes".to_string(),
+        );
+    };
+    let ws_name = ws.display_name();
+    let tab_count = ws.tabs.len();
+    let pane_count = ws
+        .tabs
+        .iter()
+        .map(|tab| tab.layout.pane_count())
+        .sum::<usize>();
 
+    let tab_text = if tab_count == 1 {
+        "1 tab".to_string()
+    } else {
+        format!("{tab_count} tabs")
+    };
     let pane_text = if pane_count == 1 {
         "1 pane".to_string()
     } else {
         format!("{pane_count} panes")
     };
-    let session_text = String::new();
     let title = "Close session?";
-    let detail = format!("{ws_name} — {session_text}{pane_text}");
+    let detail = format!("{ws_name} — {tab_text} · {pane_text}");
     (title.to_string(), detail)
 }
 
@@ -225,4 +232,25 @@ pub(crate) fn confirm_close_button_rects(inner: Rect) -> (Rect, Rect) {
         3,
     );
     (rects[0], rects[1])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn confirm_close_text_counts_session_tabs_and_ignores_stale_selection() {
+        let mut workspace = crate::workspace::Workspace::test_new("main");
+        workspace.test_add_tab(Some("logs"));
+
+        let mut app = AppState::test_new();
+        app.workspaces = vec![workspace];
+        app.active = Some(0);
+        app.selected = 99;
+
+        let (title, detail) = confirm_close_overlay_text(&app);
+
+        assert_eq!(title, "Close session?");
+        assert_eq!(detail, "main — 2 tabs · 2 panes");
+    }
 }
