@@ -235,7 +235,7 @@ impl App {
         // Try to restore previous session
         let mut restored_terminals = std::collections::HashMap::new();
         let mut restored_terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-        let (workspaces, active, selected) = if no_session {
+        let (session_containers, active, selected) = if no_session {
             (Vec::new(), None, 0)
         } else if let Some(snap) = crate::persist::load() {
             let history = config
@@ -243,7 +243,7 @@ impl App {
                 .pane_history
                 .then(crate::persist::load_history)
                 .flatten();
-            let (ws, terminals, terminal_runtimes) = crate::persist::restore(
+            let (restored_containers, terminals, terminal_runtimes) = crate::persist::restore(
                 &snap,
                 history.as_ref(),
                 24,
@@ -257,13 +257,16 @@ impl App {
             );
             restored_terminals = terminals;
             restored_terminal_runtimes = terminal_runtimes.into();
-            if ws.is_empty() {
+            if restored_containers.is_empty() {
                 crate::logging::session_restored(0, "empty");
                 (Vec::new(), None, 0)
             } else {
-                let restored_tabs = ws.first().map(|ws| ws.tabs.len()).unwrap_or(0);
+                let restored_tabs = restored_containers
+                    .first()
+                    .map(|container| container.tabs.len())
+                    .unwrap_or(0);
                 crate::logging::session_restored(restored_tabs, "ok");
-                (ws, Some(0), 0)
+                (restored_containers, Some(0), 0)
             }
         } else {
             (Vec::new(), None, 0)
@@ -316,7 +319,7 @@ impl App {
             terminals: std::collections::HashMap::new(),
             direct_attach_resize_locks: std::collections::HashSet::new(),
             pane_id_aliases: std::collections::HashMap::new(),
-            workspaces,
+            workspaces: session_containers,
             active,
             previous_pane_focus: None,
             selected,
@@ -498,7 +501,7 @@ impl App {
         >,
     ) -> io::Result<Self> {
         let mut app = Self::new(config, true, config_diagnostic, api_rx, event_hub);
-        let (workspaces, terminals, runtimes) = crate::persist::restore_handoff(
+        let (session_containers, terminals, runtimes) = crate::persist::restore_handoff(
             snapshot,
             config.advanced.scrollback_limit_bytes,
             &config.terminal.default_shell,
@@ -508,12 +511,12 @@ impl App {
             app.render_notify.clone(),
             app.render_dirty.clone(),
         )?;
-        let pane_id_aliases = crate::persist::handoff_pane_aliases(snapshot, &workspaces);
+        let pane_id_aliases = crate::persist::handoff_pane_aliases(snapshot, &session_containers);
 
         app.no_session = false;
         app.state.detach_exits = false;
         app.state.pane_id_aliases = pane_id_aliases;
-        app.state.workspaces = workspaces;
+        app.state.workspaces = session_containers;
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
         app.state.selected = 0;
