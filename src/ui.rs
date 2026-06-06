@@ -60,8 +60,8 @@ pub(crate) use self::{
         expanded_sidebar_sections, expanded_sidebar_toggle_rect, normalized_workspace_scroll,
         pane_panel_body_rect, pane_panel_entries, pane_panel_scroll_metrics,
         pane_panel_scrollbar_rect, pane_panel_toggle_rect, sidebar_section_divider_rect,
-        workspace_drop_indicator_row, workspace_list_entries, workspace_list_rect,
-        workspace_list_scroll_metrics, workspace_list_scrollbar_rect, WorkspaceListEntry,
+        workspace_list_entries, workspace_list_rect, workspace_list_scroll_metrics,
+        workspace_list_scrollbar_rect, WorkspaceListEntry,
     },
 };
 pub(crate) use self::{
@@ -373,7 +373,7 @@ pub fn render_with_runtime_registry(
             render_context_menu(app, frame);
         }
         Mode::Settings => render_settings_overlay(app, frame, frame.area()),
-        Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
+        Mode::RenameTab | Mode::RenamePane => {
             render_rename_overlay(app, frame, frame.area())
         }
         Mode::GlobalMenu => render_global_launcher_menu(app, frame),

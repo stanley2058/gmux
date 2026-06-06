@@ -259,19 +259,6 @@ pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {
     }
 }
 
-pub(super) fn open_rename_workspace(
-    state: &mut AppState,
-    terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,
-    ws_idx: usize,
-) {
-    state.selected = ws_idx;
-    state.rename_pane_target = None;
-    state.name_input =
-        state.workspaces[ws_idx].display_name_from(&state.terminals, terminal_runtimes);
-    state.name_input_replace_on_type = false;
-    state.mode = Mode::RenameWorkspace;
-}
-
 pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool) {
     state.creating_new_tab = false;
     state.requested_new_tab_name = None;
@@ -384,12 +371,6 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                 state.name_input.trim().to_string()
             };
             match state.mode {
-                Mode::RenameWorkspace if !state.workspaces.is_empty() && !new_name.is_empty() => {
-                    let workspace_id = state.workspaces[state.selected].id.clone();
-                    state.workspaces[state.selected].set_custom_name(new_name);
-                    crate::logging::session_renamed(&workspace_id);
-                    state.mark_session_dirty();
-                }
                 Mode::RenameTab if state.creating_new_tab => {
                     state.request_new_tab = true;
                     let default_name = next_new_tab_default_name(state);
@@ -582,10 +563,6 @@ pub(crate) fn handle_resize_key(state: &mut AppState, raw_key: TerminalKey) {
     }
 }
 
-pub(super) fn open_confirm_close(state: &mut AppState) {
-    state.mode = Mode::ConfirmClose;
-}
-
 pub(super) fn confirm_close_accept(state: &mut AppState) {
     state.close_selected_workspace();
     if state.workspaces.is_empty() {
@@ -615,18 +592,6 @@ pub(super) fn apply_context_menu_action(
 ) {
     let item = menu.items().get(idx).copied();
     match (menu.kind, item) {
-        (ContextMenuKind::Workspace { ws_idx }, Some("Rename")) => {
-            open_rename_workspace(state, terminal_runtimes, ws_idx);
-        }
-        (ContextMenuKind::Workspace { ws_idx }, Some("Close")) => {
-            state.selected = ws_idx;
-            if state.confirm_close {
-                open_confirm_close(state);
-            } else {
-                state.close_selected_workspace();
-                state.mode = Mode::Navigate;
-            }
-        }
         (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("New tab")) => {
             state.selected = ws_idx;
             state.active = Some(ws_idx);
@@ -861,7 +826,7 @@ mod tests {
     #[test]
     fn rename_modal_keyboard_and_mouse_share_actions() {
         let mut state = state_with_workspaces(&["test"]);
-        state.mode = Mode::RenameWorkspace;
+        state.mode = Mode::RenameTab;
         state.name_input = "hello".into();
 
         handle_rename_key(
@@ -876,13 +841,13 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
         assert_eq!(state.mode, Mode::Terminal);
-        assert_eq!(state.workspaces[0].display_name(), "renamed");
+        assert_eq!(state.workspaces[0].tabs[0].display_name(), "renamed");
         let snapshot = capture_snapshot(&state);
         assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("renamed"));
 
         state.view.sidebar_rect = Rect::new(0, 0, 26, 20);
         state.view.terminal_area = Rect::new(26, 0, 80, 20);
-        state.mode = Mode::RenameWorkspace;
+        state.mode = Mode::RenameTab;
         state.name_input = "mouse".into();
         let inner = state.rename_modal_inner().unwrap();
         let (save, _, _) = crate::ui::rename_button_rects(inner);
@@ -944,7 +909,7 @@ mod tests {
     #[test]
     fn rename_modal_handles_line_editing_shortcuts() {
         let mut state = state_with_workspaces(&["test"]);
-        state.mode = Mode::RenameWorkspace;
+        state.mode = Mode::RenameTab;
         state.name_input = "website zero".into();
 
         handle_rename_key(
@@ -997,7 +962,7 @@ mod tests {
     #[test]
     fn rename_modal_does_not_insert_modified_shortcut_chars() {
         let mut state = state_with_workspaces(&["test"]);
-        state.mode = Mode::RenameWorkspace;
+        state.mode = Mode::RenameTab;
         state.name_input = "website".into();
 
         handle_rename_key(

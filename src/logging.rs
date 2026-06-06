@@ -234,16 +234,6 @@ pub(crate) fn session_closed(session_id: &str) {
     );
 }
 
-pub(crate) fn session_renamed(session_id: &str) {
-    tracing::info!(
-        event = "session.rename",
-        subsystem = "session",
-        outcome = "ok",
-        session_id,
-        "session renamed"
-    );
-}
-
 pub(crate) fn tab_created(session_id: &str, tab_id: &str, root_pane_id: u32) {
     tracing::info!(
         event = "tab.create",

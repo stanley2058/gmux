@@ -608,7 +608,6 @@ pub enum Mode {
     Prefix,
     Copy,
     Terminal,
-    RenameWorkspace,
     RenameTab,
     RenamePane,
     Resize,
@@ -819,10 +818,6 @@ pub struct SettingsState {
 }
 
 pub(crate) enum DragTarget {
-    WorkspaceReorder {
-        source_ws_idx: usize,
-        insert_idx: Option<usize>,
-    },
     TabReorder {
         ws_idx: usize,
         source_tab_idx: usize,
@@ -861,12 +856,6 @@ pub(crate) struct DragState {
     pub target: DragTarget,
 }
 
-pub(crate) struct WorkspacePressState {
-    pub ws_idx: usize,
-    pub start_col: u16,
-    pub start_row: u16,
-}
-
 pub(crate) struct TabPressState {
     pub ws_idx: usize,
     pub tab_idx: usize,
@@ -876,9 +865,6 @@ pub(crate) struct TabPressState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextMenuKind {
-    Workspace {
-        ws_idx: usize,
-    },
     Tab {
         ws_idx: usize,
         tab_idx: usize,
@@ -900,7 +886,6 @@ pub struct ContextMenuState {
 impl ContextMenuState {
     pub fn items(&self) -> &'static [&'static str] {
         match self.kind {
-            ContextMenuKind::Workspace { .. } => &["Rename", "Close"],
             ContextMenuKind::Tab { .. } => &["New tab", "Rename", "Close"],
             ContextMenuKind::Pane {
                 has_manual_label: true,
@@ -1033,7 +1018,6 @@ pub struct AppState {
     // View geometry (computed before render, consumed by render + mouse)
     pub view: ViewState,
     pub(crate) drag: Option<DragState>,
-    pub(crate) workspace_press: Option<WorkspacePressState>,
     pub(crate) tab_press: Option<TabPressState>,
     pub selection: Option<Selection>,
     pub selection_autoscroll: Option<SelectionAutoscroll>,
@@ -1325,7 +1309,6 @@ impl AppState {
                 split_borders: Vec::new(),
             },
             drag: None,
-            workspace_press: None,
             tab_press: None,
             selection: None,
             selection_autoscroll: None,

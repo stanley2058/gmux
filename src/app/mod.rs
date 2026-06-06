@@ -371,7 +371,6 @@ impl App {
                 split_borders: Vec::new(),
             },
             drag: None,
-            workspace_press: None,
             tab_press: None,
             selection: None,
             selection_autoscroll: None,
@@ -1178,7 +1177,7 @@ impl App {
             Mode::Copy => {
                 self.handle_copy_mode_key(key);
             }
-            Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
+            Mode::RenameTab | Mode::RenamePane => {
                 input::handle_rename_key(&mut self.state, key_event);
             }
             Mode::Resize => {

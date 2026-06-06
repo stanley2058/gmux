@@ -7,7 +7,6 @@ use crate::{
     app::state::{
         AppState, ContextMenuKind, ContextMenuState, DragState, DragTarget, MenuListState, Mode,
         PanePanelScope, RightClickPassthroughGesture, TabPressState, ViewLayout,
-        WorkspacePressState,
     },
     layout::{PaneInfo, SplitBorder},
     selection::Selection,
@@ -23,7 +22,7 @@ use super::{
         modal_action_from_buttons, open_global_menu, open_new_tab_dialog, ModalAction,
     },
     settings::SettingsAction,
-    ScrollbarClickTarget, TAB_DRAG_THRESHOLD, WORKSPACE_DRAG_THRESHOLD,
+    ScrollbarClickTarget, TAB_DRAG_THRESHOLD,
 };
 
 impl AppState {
@@ -152,7 +151,6 @@ impl AppState {
             MouseEventKind::Down(MouseButton::Left) => {
                 self.selection = None;
                 self.selection_autoscroll = None;
-                self.workspace_press = None;
 
                 if self.mode == Mode::ConfirmClose {
                     let popup = self.confirm_close_rect();
@@ -178,10 +176,7 @@ impl AppState {
                     return None;
                 }
 
-                if matches!(
-                    self.mode,
-                    Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane
-                ) {
+                if matches!(self.mode, Mode::RenameTab | Mode::RenamePane) {
                     let action = self
                         .rename_modal_inner()
                         .map(crate::ui::rename_button_rects)
@@ -300,12 +295,6 @@ impl AppState {
                     }
 
                     if self.sidebar_collapsed {
-                        if let Some(idx) = self.collapsed_workspace_at_row(mouse.row) {
-                            self.switch_workspace(idx);
-                            self.mode = Mode::Terminal;
-                            return None;
-                        }
-
                         if let Some((ws_idx, _tab_idx, pane_id)) =
                             self.collapsed_pane_detail_target_at(mouse.row)
                         {
@@ -338,15 +327,6 @@ impl AppState {
                                 self.set_workspace_list_offset_from_bottom(offset_from_bottom);
                             }
                         }
-                        return None;
-                    }
-
-                    if let Some(idx) = self.workspace_at_row(mouse.row) {
-                        self.workspace_press = Some(WorkspacePressState {
-                            ws_idx: idx,
-                            start_col: mouse.column,
-                            start_row: mouse.row,
-                        });
                         return None;
                     }
 
@@ -434,21 +414,9 @@ impl AppState {
                     }
                 }
 
-                let workspace_drop_index = self.workspace_drop_index_at_row(mouse.row);
                 let tab_drop_index = self.tab_drop_index_at(mouse.column, mouse.row);
                 if self.drag.is_none() {
-                    if let Some(press) = &self.workspace_press {
-                        let delta_col = mouse.column.abs_diff(press.start_col);
-                        let delta_row = mouse.row.abs_diff(press.start_row);
-                        if delta_col.max(delta_row) >= WORKSPACE_DRAG_THRESHOLD {
-                            self.drag = Some(DragState {
-                                target: DragTarget::WorkspaceReorder {
-                                    source_ws_idx: press.ws_idx,
-                                    insert_idx: workspace_drop_index,
-                                },
-                            });
-                        }
-                    } else if let Some(press) = &self.tab_press {
+                    if let Some(press) = &self.tab_press {
                         let delta_col = mouse.column.abs_diff(press.start_col);
                         let delta_row = mouse.row.abs_diff(press.start_row);
                         if delta_col.max(delta_row) >= TAB_DRAG_THRESHOLD {
@@ -464,11 +432,6 @@ impl AppState {
                 }
 
                 if let Some(DragState {
-                    target: DragTarget::WorkspaceReorder { insert_idx, .. },
-                }) = &mut self.drag
-                {
-                    *insert_idx = workspace_drop_index;
-                } else if let Some(DragState {
                     target:
                         DragTarget::TabReorder {
                             ws_idx, insert_idx, ..
@@ -480,7 +443,7 @@ impl AppState {
                     }
                 } else if let Some(drag) = &self.drag {
                     match &drag.target {
-                        DragTarget::WorkspaceReorder { .. } | DragTarget::TabReorder { .. } => {}
+                        DragTarget::TabReorder { .. } => {}
                         DragTarget::WorkspaceListScrollbar { grab_row_offset } => {
                             if let Some(offset_from_bottom) =
                                 self.workspace_list_offset_for_drag_row(mouse.row, *grab_row_offset)
@@ -554,7 +517,6 @@ impl AppState {
                     let was_click = selection.was_just_click();
                     let was_already_copied = selection.is_done();
 
-                    self.workspace_press = None;
                     self.tab_press = None;
                     self.drag = None;
                     self.selection_autoscroll = None;
@@ -571,7 +533,6 @@ impl AppState {
                         if self.forward_pane_mouse_button(terminal_runtimes, &info, mouse) {
                             self.selection = None;
                             self.selection_autoscroll = None;
-                            self.workspace_press = None;
                             self.tab_press = None;
                             self.drag = None;
                             return None;
@@ -579,18 +540,8 @@ impl AppState {
                     }
                 }
 
-                let workspace_press = self.workspace_press.take();
                 let tab_press = self.tab_press.take();
                 match self.drag.take() {
-                    Some(DragState {
-                        target:
-                            DragTarget::WorkspaceReorder {
-                                source_ws_idx,
-                                insert_idx: Some(insert_idx),
-                            },
-                    }) => {
-                        self.move_workspace(source_ws_idx, insert_idx);
-                    }
                     Some(DragState {
                         target:
                             DragTarget::TabReorder {
@@ -606,11 +557,6 @@ impl AppState {
                     }
                     Some(_) => {}
                     None => {
-                        if let Some(press) = workspace_press {
-                            self.switch_workspace(press.ws_idx);
-                            self.mode = Mode::Terminal;
-                            return None;
-                        }
                         if let Some(press) = tab_press {
                             if self.active == Some(press.ws_idx) {
                                 self.switch_tab(press.tab_idx);
@@ -665,8 +611,6 @@ impl AppState {
                     crate::ui::workspace_list_scroll_metrics(self, self.workspace_list_rect()),
                 ) {
                     self.scroll_workspace_list(-1);
-                } else {
-                    self.move_selected_workspace_by_visible_delta(-1);
                 }
             }
             MouseEventKind::ScrollDown if in_sidebar => {
@@ -685,8 +629,6 @@ impl AppState {
                     crate::ui::workspace_list_scroll_metrics(self, self.workspace_list_rect()),
                 ) {
                     self.scroll_workspace_list(1);
-                } else {
-                    self.move_selected_workspace_by_visible_delta(1);
                 }
             }
 
@@ -704,24 +646,12 @@ impl AppState {
             }
 
             MouseEventKind::Down(MouseButton::Right) if in_sidebar && !self.sidebar_collapsed => {
-                self.workspace_press = None;
                 self.tab_press = None;
                 if self
                     .workspace_list_scrollbar_target_at(mouse.column, mouse.row)
                     .is_some()
                 {
                     return None;
-                }
-                if let Some(idx) = self.workspace_at_row(mouse.row) {
-                    self.selected = idx;
-                    let kind = ContextMenuKind::Workspace { ws_idx: idx };
-                    self.context_menu = Some(ContextMenuState {
-                        kind,
-                        x: mouse.column,
-                        y: mouse.row,
-                        list: MenuListState::new(0),
-                    });
-                    self.mode = Mode::ContextMenu;
                 }
             }
 
@@ -1168,7 +1098,6 @@ impl AppState {
 
         self.selection = None;
         self.selection_autoscroll = None;
-        self.workspace_press = None;
         self.tab_press = None;
         self.drag = None;
         self.context_menu = None;
@@ -1857,7 +1786,10 @@ mod tests {
     fn hovering_context_menu_updates_highlight() {
         let mut app = app_for_mouse_test();
         app.state.context_menu = Some(ContextMenuState {
-            kind: ContextMenuKind::Workspace { ws_idx: 0 },
+            kind: ContextMenuKind::Tab {
+                ws_idx: 0,
+                tab_idx: 0,
+            },
             x: 2,
             y: 2,
             list: MenuListState::new(0),
@@ -1958,47 +1890,6 @@ mod tests {
 
         assert_eq!(app.state.workspaces.len(), 1);
         assert_eq!(app.state.mode, Mode::Terminal);
-    }
-
-    #[test]
-    fn clicking_confirm_close_accepts_after_workspace_context_menu_close() {
-        let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![Workspace::test_new("a"), Workspace::test_new("b")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
-        app.state.mode = Mode::Terminal;
-
-        app.state.context_menu = Some(ContextMenuState {
-            kind: ContextMenuKind::Workspace { ws_idx: 1 },
-            x: 2,
-            y: 2,
-            list: MenuListState::new(1),
-        });
-        app.state.mode = Mode::ContextMenu;
-        handle_context_menu_key(
-            &mut app.state,
-            &mut app.terminal_runtimes,
-            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
-        );
-        assert_eq!(app.state.mode, Mode::ConfirmClose);
-        assert_eq!(app.state.selected, 1);
-
-        let popup = app.state.confirm_close_rect();
-        let inner = Rect::new(
-            popup.x + 1,
-            popup.y + 1,
-            popup.width.saturating_sub(2),
-            popup.height.saturating_sub(2),
-        );
-        let (confirm, _) = crate::ui::confirm_close_button_rects(inner);
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            confirm.x + 1,
-            confirm.y,
-        ));
-
-        assert_eq!(app.state.workspaces.len(), 1);
-        assert_eq!(app.state.workspaces[0].display_name(), "a");
     }
 
     #[tokio::test]

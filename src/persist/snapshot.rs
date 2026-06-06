@@ -719,10 +719,9 @@ mod tests {
     #[test]
     fn capture_contract_tracks_flattened_workspace_tab_order() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
-        state.active = Some(1);
+        state.workspaces.swap(0, 1);
+        state.active = Some(0);
         state.selected = 2;
-
-        state.move_workspace(1, 0);
 
         let snapshot = capture_from_state(&state);
         let names: Vec<_> = snapshot
@@ -737,7 +736,7 @@ mod tests {
     #[test]
     fn capture_contract_tracks_workspace_and_tab_names_and_active_tab() {
         let mut state = state_with_workspaces(&["one"]);
-        state.workspaces[0].set_custom_name("renamed-workspace".into());
+        state.workspaces[0].custom_name = Some("renamed-workspace".into());
         let second_tab = state.workspaces[0].test_add_tab(Some("logs"));
         state.workspaces[0].switch_tab(second_tab);
         state.workspaces[0].tabs[0].set_custom_name("main".into());

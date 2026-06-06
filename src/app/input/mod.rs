@@ -20,7 +20,6 @@ enum WheelRouting {
     AlternateScroll,
 }
 
-const WORKSPACE_DRAG_THRESHOLD: u16 = 1;
 const TAB_DRAG_THRESHOLD: u16 = 1;
 
 mod copy_mode;
@@ -67,7 +66,7 @@ impl App {
                     Mode::ReleaseNotes => self.handle_release_notes_key(key_event),
                     Mode::ProductAnnouncement => self.handle_product_announcement_key(key_event),
                     Mode::Prefix | Mode::Navigate | Mode::Copy => unreachable!(),
-                    Mode::RenameWorkspace | Mode::RenameTab | Mode::RenamePane => {
+                    Mode::RenameTab | Mode::RenamePane => {
                         handle_rename_key(&mut self.state, key_event)
                     }
                     Mode::Resize => handle_resize_key(&mut self.state, key),

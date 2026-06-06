@@ -436,10 +436,6 @@ impl Workspace {
         self.public_pane_numbers.get(&pane_id).copied()
     }
 
-    pub fn set_custom_name(&mut self, name: String) {
-        self.custom_name = Some(name);
-    }
-
     pub fn resolved_identity_cwd(&self) -> Option<PathBuf> {
         Some(self.identity_cwd.clone())
     }

@@ -299,42 +299,10 @@ impl AppState {
         self.mark_session_dirty();
     }
 
-    pub(super) fn workspace_at_row(&self, row: u16) -> Option<usize> {
-        let footer = self.sidebar_footer_rect();
-        if footer == Rect::default() {
-            return None;
-        }
-
-        let cards = if self.view.workspace_card_areas.is_empty() {
-            crate::ui::compute_workspace_card_areas(self, self.view.sidebar_rect)
-        } else {
-            self.view.workspace_card_areas.clone()
-        };
-
-        cards.iter().find_map(|card| {
-            (row >= card.rect.y && row < card.rect.y + card.rect.height).then_some(card.ws_idx)
-        })
-    }
-
-    pub(super) fn collapsed_workspace_at_row(&self, row: u16) -> Option<usize> {
-        if !self.sidebar_collapsed {
-            return None;
-        }
-
-        let (ws_area, _, _) = crate::ui::collapsed_sidebar_sections(self.view.sidebar_rect);
-        if ws_area == Rect::default() || row < ws_area.y || row >= ws_area.y + ws_area.height {
-            return None;
-        }
-
-        let idx = (row - ws_area.y) as usize;
-        (idx < self.workspaces.len()).then_some(idx)
-    }
-
     fn collapsed_detail_workspace_idx(&self) -> Option<usize> {
         if matches!(
             self.mode,
             Mode::Navigate
-                | Mode::RenameWorkspace
                 | Mode::Resize
                 | Mode::ConfirmClose
                 | Mode::ContextMenu
@@ -376,43 +344,6 @@ impl AppState {
         let details = ws.pane_details(&self.terminals);
         let detail = details.get(detail_idx)?;
         Some((ws_idx, detail.tab_idx, detail.pane_id))
-    }
-
-    pub(super) fn workspace_drop_index_at_row(&self, row: u16) -> Option<usize> {
-        let area = self.workspace_list_rect();
-        let footer = self.sidebar_footer_rect();
-        if area == Rect::default() || row < area.y || row >= footer.y {
-            return None;
-        }
-
-        let cards = if self.view.workspace_card_areas.is_empty() {
-            crate::ui::compute_workspace_card_areas(self, self.view.sidebar_rect)
-        } else {
-            self.view.workspace_card_areas.clone()
-        };
-        if cards.is_empty() {
-            return Some(0);
-        }
-
-        let mut insert_indices = cards.iter().map(|card| card.ws_idx).collect::<Vec<_>>();
-        insert_indices.push(cards.last().map(|card| card.ws_idx + 1).unwrap_or(0));
-
-        let mut best: Option<(usize, u16)> = None;
-        for insert_idx in insert_indices {
-            let Some(slot_row) = crate::ui::workspace_drop_indicator_row(&cards, area, insert_idx)
-            else {
-                continue;
-            };
-            let distance = row.abs_diff(slot_row);
-            match best {
-                Some((best_idx, best_distance))
-                    if distance > best_distance
-                        || (distance == best_distance && insert_idx < best_idx) => {}
-                _ => best = Some((insert_idx, distance)),
-            }
-        }
-
-        best.map(|(insert_idx, _)| insert_idx)
     }
 
     pub(super) fn on_pane_panel_scope_toggle(&self, col: u16, row: u16) -> bool {
@@ -470,12 +401,10 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use crossterm::event::{MouseButton, MouseEventKind};
     use ratatui::layout::Rect;
 
-    use super::super::{app_for_mouse_test, capture_snapshot, mouse, unique_temp_path};
+    use super::super::{app_for_mouse_test, capture_snapshot, mouse};
     use crate::{
         app::state::{DragTarget, Mode, PanePanelScope},
         workspace::Workspace,
@@ -876,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_workspace_switches_on_mouse_up() {
+    fn clicking_workspace_row_does_not_switch_sessions() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![Workspace::test_new("a"), Workspace::test_new("b")];
         app.state.active = Some(0);
@@ -890,19 +819,14 @@ mod tests {
             target_row,
         ));
         assert_eq!(app.state.active, Some(0));
-        assert!(app.state.workspace_press.is_some());
 
         app.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left), 2, target_row));
-        assert_eq!(app.state.active, Some(1));
-        assert_eq!(app.state.selected, 1);
-        assert!(app.state.workspace_press.is_none());
-        let snapshot = capture_snapshot(&app.state);
-        assert_eq!(snapshot.tabs.len(), 2);
-        assert_eq!(snapshot.active_tab, 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
     }
 
     #[test]
-    fn wheel_workspace_selection_follows_visual_order_without_scrollbar() {
+    fn wheel_over_workspace_rows_does_not_select_sessions() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![
             Workspace::test_new("main"),
@@ -920,29 +844,22 @@ mod tests {
 
         app.handle_mouse(mouse(MouseEventKind::ScrollDown, list.x + 1, list.y + 1));
 
-        assert_eq!(app.state.selected, 1);
+        assert_eq!(app.state.selected, 0);
     }
 
     #[test]
-    fn dragging_workspace_reorders_without_changing_identity() {
+    fn dragging_workspace_rows_does_not_reorder_sessions() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![
             Workspace::test_new("a"),
             Workspace::test_new("b"),
             Workspace::test_new("c"),
         ];
-        let active_id = app.state.workspaces[1].id.clone();
-        let selected_id = app.state.workspaces[2].id.clone();
         app.state.active = Some(1);
         app.state.selected = 2;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let source_row = app.state.view.workspace_card_areas[1].rect.y;
-        let target_row = crate::ui::workspace_drop_indicator_row(
-            &app.state.view.workspace_card_areas,
-            app.state.workspace_list_rect(),
-            0,
-        )
-        .unwrap();
+        let target_row = source_row.saturating_sub(1);
 
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
@@ -954,13 +871,7 @@ mod tests {
             2,
             target_row,
         ));
-        assert!(matches!(
-            app.state.drag.as_ref().map(|drag| &drag.target),
-            Some(DragTarget::WorkspaceReorder {
-                source_ws_idx: 1,
-                insert_idx: Some(0),
-            })
-        ));
+        assert!(app.state.drag.is_none());
         app.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left), 2, target_row));
 
         let names: Vec<_> = app
@@ -969,18 +880,9 @@ mod tests {
             .iter()
             .map(|ws| ws.display_name())
             .collect();
-        assert_eq!(names, vec!["b", "a", "c"]);
-        assert_eq!(app.state.active, Some(0));
+        assert_eq!(names, vec!["a", "b", "c"]);
+        assert_eq!(app.state.active, Some(1));
         assert_eq!(app.state.selected, 2);
-        assert_eq!(app.state.workspaces[0].id, active_id);
-        assert_eq!(app.state.workspaces[2].id, selected_id);
-        let snapshot = capture_snapshot(&app.state);
-        let captured_names: Vec<_> = snapshot
-            .tabs
-            .iter()
-            .map(|tab| tab.custom_name.clone().unwrap())
-            .collect();
-        assert_eq!(captured_names, vec!["b", "a", "c"]);
     }
 
     #[test]
@@ -1107,74 +1009,6 @@ mod tests {
         assert!(app.state.workspaces[0].tabs[2].custom_name.is_none());
         assert_eq!(app.state.workspaces[0].tabs[2].root_pane, moved_root);
         assert_eq!(app.state.workspaces[0].active_tab, 2);
-    }
-
-    fn temp_workspace_dir() -> std::path::PathBuf {
-        let dir = unique_temp_path("sidebar-drop-slot-workspace");
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn top_drop_slot_is_distinct_from_gap_below_first_workspace() {
-        let mut app = app_for_mouse_test();
-        let first_dir = temp_workspace_dir();
-        let second_dir = temp_workspace_dir();
-
-        let mut first = Workspace::test_new("a");
-        let first_root = first.tabs[0].root_pane;
-        first.identity_cwd = first_dir.clone();
-
-        let mut second = Workspace::test_new("b");
-        let second_root = second.tabs[0].root_pane;
-        second.identity_cwd = second_dir.clone();
-
-        app.state.workspaces = vec![first, second];
-        app.state.ensure_test_terminals();
-        let first_terminal_id = app.state.workspaces[0].tabs[0].panes[&first_root]
-            .attached_terminal_id
-            .clone();
-        app.state.terminals.get_mut(&first_terminal_id).unwrap().cwd = first_dir.clone();
-        let second_terminal_id = app.state.workspaces[1].tabs[0].panes[&second_root]
-            .attached_terminal_id
-            .clone();
-        app.state
-            .terminals
-            .get_mut(&second_terminal_id)
-            .unwrap()
-            .cwd = second_dir.clone();
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-
-        assert_eq!(app.state.workspace_drop_index_at_row(0), Some(0));
-        assert_eq!(app.state.workspace_drop_index_at_row(1), Some(0));
-        assert_eq!(app.state.workspace_drop_index_at_row(2), Some(1));
-        assert_eq!(app.state.workspace_drop_index_at_row(3), Some(1));
-
-        let _ = fs::remove_dir_all(first_dir);
-        let _ = fs::remove_dir_all(second_dir);
-    }
-
-    #[test]
-    fn bottom_drop_slot_stays_below_last_workspace_not_footer() {
-        let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![
-            Workspace::test_new("a"),
-            Workspace::test_new("b"),
-            Workspace::test_new("c"),
-        ];
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-
-        let cards = &app.state.view.workspace_card_areas;
-        let bottom_slot = crate::ui::workspace_drop_indicator_row(
-            cards,
-            app.state.workspace_list_rect(),
-            cards.len(),
-        )
-        .unwrap();
-
-        let last = cards.last().unwrap().rect;
-        assert_eq!(bottom_slot, last.y + last.height);
-        assert!(bottom_slot < app.state.sidebar_footer_rect().y.saturating_sub(1));
     }
 
     #[test]

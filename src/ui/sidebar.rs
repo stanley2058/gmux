@@ -65,7 +65,6 @@ fn pane_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
     if matches!(
         app.mode,
         Mode::Navigate
-            | Mode::RenameWorkspace
             | Mode::RenamePane
             | Mode::Resize
             | Mode::ConfirmClose
@@ -590,37 +589,6 @@ fn session_dot(active: bool, selected: bool, p: &Palette) -> (&'static str, Styl
     }
 }
 
-pub(crate) fn workspace_drop_indicator_row(
-    cards: &[crate::app::state::WorkspaceCardArea],
-    area: Rect,
-    insert_idx: usize,
-) -> Option<u16> {
-    if area.height == 0 {
-        return None;
-    }
-    let list_bottom = area.y + area.height.saturating_sub(1);
-
-    let first = cards.first()?;
-    if insert_idx == first.ws_idx {
-        return first.rect.y.checked_sub(1).filter(|y| *y < list_bottom);
-    }
-
-    if let Some(row) = cards
-        .last()
-        .filter(|card| insert_idx == card.ws_idx.saturating_add(1))
-        .map(|card| card.rect.y.saturating_add(card.rect.height))
-        .filter(|y| *y < list_bottom)
-    {
-        return Some(row);
-    }
-
-    if let Some(card) = cards.iter().find(|card| card.ws_idx == insert_idx) {
-        return card.rect.y.checked_sub(1).filter(|y| *y < list_bottom);
-    }
-
-    None
-}
-
 pub(super) fn render_sidebar(
     app: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
@@ -657,20 +625,6 @@ fn render_workspace_list(
     is_navigating: bool,
 ) {
     let p = &app.palette;
-    let dragged_ws_idx = match app.drag.as_ref().map(|drag| &drag.target) {
-        Some(crate::app::state::DragTarget::WorkspaceReorder { source_ws_idx, .. }) => {
-            Some(*source_ws_idx)
-        }
-        _ => None,
-    };
-    let insertion_row = match app.drag.as_ref().map(|drag| &drag.target) {
-        Some(crate::app::state::DragTarget::WorkspaceReorder {
-            insert_idx: Some(insert_idx),
-            ..
-        }) => workspace_drop_indicator_row(&app.view.workspace_card_areas, area, *insert_idx),
-        _ => None,
-    };
-
     let list_bottom = area.y + area.height.saturating_sub(1);
     if area.height > 0 {
         frame.render_widget(
@@ -693,13 +647,10 @@ fn render_workspace_list(
         let row_height = card.rect.height;
         let selected = i == app.selected && is_navigating;
         let is_active = Some(i) == app.active;
-        let is_dragged = dragged_ws_idx == Some(i);
-        let highlighted = selected || is_active || is_dragged;
+        let highlighted = selected || is_active;
         if highlighted {
             let bg = if selected {
                 p.surface0
-            } else if is_dragged {
-                p.surface1
             } else {
                 p.surface_dim
             };
@@ -714,7 +665,7 @@ fn render_workspace_list(
             }
         }
 
-        let name_style = if selected || is_active || is_dragged {
+        let name_style = if selected || is_active {
             Style::default().fg(p.text).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(p.subtext0)
@@ -732,17 +683,6 @@ fn render_workspace_list(
             Paragraph::new(Line::from(line1)),
             Rect::new(card.rect.x, row_y, card.rect.width, 1),
         );
-    }
-
-    if let Some(y) = insertion_row.filter(|y| *y < list_bottom) {
-        let indicator_right = scrollbar_rect
-            .map(|rect| rect.x)
-            .unwrap_or(area.x + area.width);
-        let buf = frame.buffer_mut();
-        for x in area.x..indicator_right {
-            buf[(x, y)].set_symbol("─");
-            buf[(x, y)].set_style(Style::default().fg(p.accent));
-        }
     }
 
     if let Some(track) = scrollbar_rect {
