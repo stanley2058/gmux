@@ -264,9 +264,8 @@ impl App {
                 .is_some_and(|ws| ws.has_working_pane(&self.state.terminals)),
             crate::app::state::PanePanelScope::All => self
                 .state
-                .sessions()
-                .iter()
-                .any(|ws| ws.has_working_pane(&self.state.terminals)),
+                .session_tab_entries()
+                .any(|entry| entry.tab.has_working_pane(&self.state.terminals)),
         }
     }
 

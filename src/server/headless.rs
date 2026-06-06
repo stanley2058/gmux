@@ -646,11 +646,9 @@ impl HeadlessServer {
         };
 
         let mut pane_by_terminal = HashMap::new();
-        for ws in self.app.state.sessions() {
-            for tab in &ws.tabs {
-                for (pane_id, pane) in &tab.panes {
-                    pane_by_terminal.insert(pane.attached_terminal_id.clone(), pane_id.raw());
-                }
+        for entry in self.app.state.session_tab_entries() {
+            for (pane_id, pane) in &entry.tab.panes {
+                pane_by_terminal.insert(pane.attached_terminal_id.clone(), pane_id.raw());
             }
         }
         if pane_by_terminal.len() > crate::server::handoff::MAX_FDS_PER_HANDOFF {
@@ -1230,12 +1228,12 @@ impl HeadlessServer {
             }
             AppEvent::PaneDied { pane_id } => {
                 let pane_id_val = *pane_id;
-                let terminal_id = self.app.state.sessions().iter().find_map(|ws| {
-                    ws.tabs.iter().find_map(|tab| {
-                        tab.panes
-                            .get(pane_id)
-                            .map(|pane| pane.attached_terminal_id.to_string())
-                    })
+                let terminal_id = self.app.state.session_tab_entries().find_map(|entry| {
+                    entry
+                        .tab
+                        .panes
+                        .get(pane_id)
+                        .map(|pane| pane.attached_terminal_id.to_string())
                 });
 
                 self.app.handle_internal_event(ev);

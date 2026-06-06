@@ -314,14 +314,7 @@ pub(crate) fn visible_hyperlinks(
     app_state: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> Vec<((u16, u16), String, String)> {
-    let Some(ws_idx) = app_state.session_index() else {
-        return Vec::new();
-    };
-    let Some(tab) = app_state
-        .sessions()
-        .get(ws_idx)
-        .and_then(|session| session.active_tab())
-    else {
+    let Some(tab) = app_state.session().and_then(|session| session.active_tab()) else {
         return Vec::new();
     };
 
