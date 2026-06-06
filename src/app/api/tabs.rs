@@ -48,15 +48,17 @@ impl App {
             return match self.create_session_with_options(cwd, focus) {
                 Ok(ws_idx) => {
                     if let Some(label) = label {
-                        let session_id = self.state.sessions()[ws_idx].id.clone();
+                        let session_id = self
+                            .state
+                            .session()
+                            .expect("new session should be active")
+                            .id
+                            .clone();
                         let tab_id = self
                             .public_tab_id(ws_idx, 0)
                             .unwrap_or_else(|| format!("{session_id}:1"));
-                        if let Some(tab) = self
-                            .state
-                            .sessions_mut()
-                            .get_mut(ws_idx)
-                            .and_then(|ws| ws.tabs.get_mut(0))
+                        if let Some(tab) =
+                            self.state.session_mut().and_then(|ws| ws.tabs.get_mut(0))
                         {
                             tab.set_custom_name(label);
                             crate::logging::tab_renamed(&session_id, &tab_id);
@@ -102,8 +104,7 @@ impl App {
         let host_terminal_theme = self.state.host_terminal_theme;
         let result = self
             .state
-            .sessions_mut()
-            .get_mut(ws_idx)
+            .session_mut()
             .ok_or_else(|| std::io::Error::other("session state disappeared"))
             .and_then(|ws| {
                 ws.create_tab(
@@ -119,17 +120,22 @@ impl App {
             Ok((tab_idx, terminal, runtime)) => {
                 self.terminal_runtimes.insert(terminal.id.clone(), runtime);
                 self.state.terminals.insert(terminal.id.clone(), terminal);
-                let root_pane = self.state.sessions()[ws_idx].tabs[tab_idx].root_pane;
+                let Some((root_pane, session_id)) = self.state.session().and_then(|session| {
+                    session
+                        .tabs
+                        .get(tab_idx)
+                        .map(|tab| (tab.root_pane, session.id.clone()))
+                }) else {
+                    return encode_error(id, "tab_create_failed", "session state disappeared");
+                };
                 self.state.remove_alias_shadowed_by_new_pane(root_pane);
                 if let Some(label) = label {
-                    let session_id = self.state.sessions()[ws_idx].id.clone();
                     let tab_id = self
                         .public_tab_id(ws_idx, tab_idx)
                         .unwrap_or_else(|| format!("{}:{}", session_id, tab_idx + 1));
                     if let Some(tab) = self
                         .state
-                        .sessions_mut()
-                        .get_mut(ws_idx)
+                        .session_mut()
                         .and_then(|ws| ws.tabs.get_mut(tab_idx))
                     {
                         tab.set_custom_name(label);
@@ -175,7 +181,9 @@ impl App {
         let Some(focused_ws_idx) = self.state.session_index() else {
             return tab_not_found(id, &target.tab_id);
         };
-        let focused_tab_idx = self.state.sessions()[focused_ws_idx].active_tab;
+        let Some(focused_tab_idx) = self.state.session().map(|session| session.active_tab) else {
+            return tab_not_found(id, &target.tab_id);
+        };
         let tab = self.tab_info(focused_ws_idx, focused_tab_idx).unwrap();
 
         encode_success(id, ResponseResult::TabInfo { tab })
