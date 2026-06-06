@@ -902,8 +902,10 @@ mod tests {
         assert_eq!(app.state.selected, 1);
         assert!(app.state.workspace_press.is_none());
         let snapshot = capture_snapshot(&app.state);
-        assert_eq!(snapshot.active, Some(1));
-        assert_eq!(snapshot.selected, 1);
+        assert_eq!(snapshot.active, Some(0));
+        assert_eq!(snapshot.selected, 0);
+        assert_eq!(snapshot.tabs.len(), 2);
+        assert_eq!(snapshot.active_tab, 1);
     }
 
     #[test]

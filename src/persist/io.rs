@@ -90,7 +90,7 @@ pub fn save(snapshot: &SessionSnapshot, history: Option<&SessionHistorySnapshot>
         crate::logging::session_save_failed(&path, &err.to_string());
         return;
     }
-    crate::logging::session_saved(&path, snapshot.workspaces.len());
+    crate::logging::session_saved(&path, snapshot.tabs.len());
 }
 
 pub fn clear() {
@@ -202,6 +202,8 @@ mod tests {
     fn empty_snapshot() -> SessionSnapshot {
         SessionSnapshot {
             version: SNAPSHOT_VERSION,
+            tabs: vec![],
+            active_tab: 0,
             workspaces: vec![],
             active: None,
             selected: 0,
@@ -215,6 +217,15 @@ mod tests {
     fn history_snapshot(secret: &str) -> SessionHistorySnapshot {
         SessionHistorySnapshot {
             version: SNAPSHOT_VERSION,
+            tabs: vec![TabHistorySnapshot {
+                panes: std::collections::HashMap::from([(
+                    0,
+                    PaneHistorySnapshot {
+                        ansi: secret.to_string(),
+                        lines: 1,
+                    },
+                )]),
+            }],
             workspaces: vec![WorkspaceHistorySnapshot {
                 tabs: vec![TabHistorySnapshot {
                     panes: std::collections::HashMap::from([(
@@ -293,7 +304,7 @@ mod tests {
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
         let mut snap = empty_snapshot();
-        snap.selected = 7;
+        snap.sidebar_width = Some(31);
         save_to_path(&link, &snap).unwrap();
 
         assert!(std::fs::symlink_metadata(&link)
@@ -301,7 +312,7 @@ mod tests {
             .file_type()
             .is_symlink());
         let parsed = parse_snapshot(&std::fs::read_to_string(&target).unwrap()).unwrap();
-        assert_eq!(parsed.selected, 7);
+        assert_eq!(parsed.sidebar_width, Some(31));
     }
 
     #[cfg(unix)]

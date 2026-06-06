@@ -289,13 +289,13 @@ pub(crate) fn tab_renamed(session_id: &str, tab_id: &str) {
     );
 }
 
-pub(crate) fn session_saved(path: &Path, workspaces: usize) {
+pub(crate) fn session_saved(path: &Path, tabs: usize) {
     tracing::info!(
         event = "persist.save",
         subsystem = "persist",
         outcome = "ok",
         path = %path.display(),
-        workspaces,
+        tabs,
         "session saved"
     );
 }

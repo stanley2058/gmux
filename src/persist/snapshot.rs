@@ -17,8 +17,18 @@ pub struct SessionSnapshot {
     /// Format version — used to detect incompatible changes.
     #[serde(default)]
     pub version: u32,
+    #[serde(default)]
+    pub tabs: Vec<TabSnapshot>,
+    #[serde(default)]
+    pub active_tab: usize,
+    /// Compatibility view for old in-memory tests and callers. New snapshots serialize tabs
+    /// directly and do not write workspace containers.
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
     pub workspaces: Vec<WorkspaceSnapshot>,
+    #[serde(default, skip_serializing)]
     pub active: Option<usize>,
+    #[serde(default, skip_serializing)]
     pub selected: usize,
     #[serde(default)]
     pub pane_panel_scope: crate::app::state::PanePanelScope,
@@ -26,29 +36,37 @@ pub struct SessionSnapshot {
     pub sidebar_width: Option<u16>,
     #[serde(default)]
     pub sidebar_section_split: Option<f32>,
-    #[serde(default)]
+    #[serde(
+        default,
+        rename = "collapsed_pane_keys",
+        alias = "collapsed_space_keys"
+    )]
     pub collapsed_space_keys: std::collections::HashSet<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SessionHistorySnapshot {
     /// Format version follows the matching session snapshot version.
     #[serde(default)]
     pub version: u32,
+    #[serde(default)]
+    pub tabs: Vec<TabHistorySnapshot>,
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
     pub workspaces: Vec<WorkspaceHistorySnapshot>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkspaceHistorySnapshot {
     pub tabs: Vec<TabHistorySnapshot>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TabHistorySnapshot {
     pub panes: HashMap<u32, PaneHistorySnapshot>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkspaceSnapshot {
     #[serde(default)]
     pub id: Option<String>,
@@ -73,7 +91,7 @@ struct LegacyWorkspaceSnapshot {
     root_pane: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TabSnapshot {
     #[serde(default)]
     pub custom_name: Option<String>,
@@ -86,7 +104,7 @@ pub struct TabSnapshot {
     pub root_pane: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PaneSnapshot {
     pub cwd: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -95,14 +113,14 @@ pub struct PaneSnapshot {
     pub launch_argv: Option<Vec<String>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PaneHistorySnapshot {
     pub ansi: String,
     pub lines: usize,
 }
 
 /// Serializable BSP tree.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum LayoutSnapshot {
     Pane(u32),
     Split {
@@ -113,7 +131,7 @@ pub enum LayoutSnapshot {
     },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum DirectionSnapshot {
     Horizontal,
     Vertical,
@@ -146,36 +164,122 @@ struct RawSessionSnapshot {
     #[serde(default)]
     version: u32,
     #[serde(default)]
+    tabs: Option<Vec<TabSnapshot>>,
+    #[serde(default)]
+    active_tab: usize,
+    #[serde(default)]
     workspaces: Vec<serde_json::Value>,
     #[serde(default)]
     active: Option<usize>,
-    #[serde(default)]
-    selected: usize,
     #[serde(default)]
     pane_panel_scope: crate::app::state::PanePanelScope,
     #[serde(default)]
     sidebar_width: Option<u16>,
     #[serde(default)]
     sidebar_section_split: Option<f32>,
-    #[serde(default)]
+    #[serde(
+        default,
+        rename = "collapsed_pane_keys",
+        alias = "collapsed_space_keys"
+    )]
     collapsed_space_keys: std::collections::HashSet<String>,
 }
 
 fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> {
-    Ok(SessionSnapshot {
-        version: raw.version,
-        workspaces: raw
+    let (tabs, workspaces, active_tab) = if let Some(tabs) = raw.tabs {
+        let active_tab = raw.active_tab.min(tabs.len().saturating_sub(1));
+        let workspaces = compatibility_workspaces_from_tabs(&tabs, active_tab);
+        (tabs, workspaces, active_tab)
+    } else {
+        let workspaces = raw
             .workspaces
             .into_iter()
             .map(migrate_workspace)
-            .collect::<Result<Vec<_>, _>>()?,
-        active: raw.active,
-        selected: raw.selected,
+            .collect::<Result<Vec<_>, _>>()?;
+        let active_tab = active_tab_from_workspaces(&workspaces, raw.active);
+        let tabs = flatten_workspace_tabs(&workspaces);
+        (tabs, workspaces, active_tab)
+    };
+    let active = (!tabs.is_empty()).then_some(0);
+    Ok(SessionSnapshot {
+        version: raw.version,
+        tabs,
+        active_tab,
+        workspaces,
+        active,
+        selected: 0,
         pane_panel_scope: raw.pane_panel_scope,
         sidebar_width: raw.sidebar_width,
         sidebar_section_split: raw.sidebar_section_split,
         collapsed_space_keys: raw.collapsed_space_keys,
     })
+}
+
+fn compatibility_workspaces_from_tabs(
+    tabs: &[TabSnapshot],
+    active_tab: usize,
+) -> Vec<WorkspaceSnapshot> {
+    if tabs.is_empty() {
+        return Vec::new();
+    }
+
+    vec![WorkspaceSnapshot {
+        id: None,
+        custom_name: None,
+        identity_cwd: identity_cwd_from_tabs(tabs),
+        tabs: tabs.to_vec(),
+        active_tab,
+    }]
+}
+
+fn flatten_workspace_tabs(workspaces: &[WorkspaceSnapshot]) -> Vec<TabSnapshot> {
+    let mut tabs = Vec::new();
+    for workspace in workspaces {
+        let mut workspace_tabs = workspace.tabs.clone();
+        if let (Some(name), Some(first_tab)) =
+            (workspace.custom_name.as_ref(), workspace_tabs.first_mut())
+        {
+            if first_tab.custom_name.is_none() {
+                first_tab.custom_name = Some(name.clone());
+            }
+        }
+        tabs.extend(workspace_tabs);
+    }
+    tabs
+}
+
+fn active_tab_from_workspaces(
+    workspaces: &[WorkspaceSnapshot],
+    active_workspace: Option<usize>,
+) -> usize {
+    let Some(active_workspace) = active_workspace else {
+        return 0;
+    };
+    let mut offset = 0;
+    for (idx, workspace) in workspaces.iter().enumerate() {
+        if idx == active_workspace {
+            return offset
+                + workspace
+                    .active_tab
+                    .min(workspace.tabs.len().saturating_sub(1));
+        }
+        offset += workspace.tabs.len();
+    }
+    0
+}
+
+fn identity_cwd_from_tabs(tabs: &[TabSnapshot]) -> PathBuf {
+    tabs.first()
+        .and_then(|tab| tab.root_pane)
+        .and_then(|pane_id| tabs.first()?.panes.get(&pane_id))
+        .map(|pane| pane.cwd.clone())
+        .or_else(|| {
+            tabs.iter()
+                .flat_map(|tab| tab.panes.values())
+                .next()
+                .map(|pane| pane.cwd.clone())
+        })
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()))
 }
 
 fn migrate_workspace(raw: serde_json::Value) -> Result<WorkspaceSnapshot, String> {
@@ -233,20 +337,26 @@ pub fn capture(
     >,
     terminal_runtimes: &TerminalRuntimeRegistry,
     active: Option<usize>,
-    selected: usize,
+    _selected: usize,
     pane_panel_scope: crate::app::state::PanePanelScope,
     sidebar_width: u16,
     sidebar_section_split: f32,
     collapsed_space_keys: std::collections::HashSet<String>,
 ) -> SessionSnapshot {
+    let workspaces: Vec<_> = workspaces
+        .iter()
+        .map(|workspace| capture_workspace(workspace, terminals, terminal_runtimes))
+        .collect();
+    let tabs = flatten_workspace_tabs(&workspaces);
+    let active_tab = active_tab_from_workspaces(&workspaces, active);
+    let has_workspaces = !workspaces.is_empty();
     SessionSnapshot {
         version: SNAPSHOT_VERSION,
-        workspaces: workspaces
-            .iter()
-            .map(|workspace| capture_workspace(workspace, terminals, terminal_runtimes))
-            .collect(),
-        active,
-        selected,
+        tabs,
+        active_tab,
+        workspaces,
+        active: has_workspaces.then_some(0),
+        selected: 0,
         pane_panel_scope,
         sidebar_width: Some(sidebar_width),
         sidebar_section_split: Some(sidebar_section_split),
@@ -324,20 +434,26 @@ pub fn capture_history(
     workspaces: &[Workspace],
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionHistorySnapshot {
+    let workspaces: Vec<_> = workspaces
+        .iter()
+        .map(|workspace| WorkspaceHistorySnapshot {
+            tabs: workspace
+                .tabs
+                .iter()
+                .map(|tab| TabHistorySnapshot {
+                    panes: capture_tab_history(tab, terminal_runtimes),
+                })
+                .collect(),
+        })
+        .collect();
+    let tabs = workspaces
+        .iter()
+        .flat_map(|workspace| workspace.tabs.clone())
+        .collect();
     SessionHistorySnapshot {
         version: SNAPSHOT_VERSION,
-        workspaces: workspaces
-            .iter()
-            .map(|workspace| WorkspaceHistorySnapshot {
-                tabs: workspace
-                    .tabs
-                    .iter()
-                    .map(|tab| TabHistorySnapshot {
-                        panes: capture_tab_history(tab, terminal_runtimes),
-                    })
-                    .collect(),
-            })
-            .collect(),
+        tabs,
+        workspaces,
     }
 }
 
@@ -397,15 +513,44 @@ pub(super) fn parse_snapshot(content: &str) -> Result<SessionSnapshot, String> {
 }
 
 pub(super) fn parse_history_snapshot(content: &str) -> Result<SessionHistorySnapshot, String> {
-    let snapshot =
-        serde_json::from_str::<SessionHistorySnapshot>(content).map_err(|e| e.to_string())?;
-    if snapshot.version > SNAPSHOT_VERSION {
+    #[derive(Deserialize)]
+    struct RawSessionHistorySnapshot {
+        #[serde(default)]
+        version: u32,
+        #[serde(default)]
+        tabs: Option<Vec<TabHistorySnapshot>>,
+        #[serde(default)]
+        workspaces: Vec<WorkspaceHistorySnapshot>,
+    }
+
+    let raw =
+        serde_json::from_str::<RawSessionHistorySnapshot>(content).map_err(|e| e.to_string())?;
+    if raw.version > SNAPSHOT_VERSION {
         return Err(format!(
             "history snapshot version {} is newer than supported {}",
-            snapshot.version, SNAPSHOT_VERSION
+            raw.version, SNAPSHOT_VERSION
         ));
     }
-    Ok(snapshot)
+    let (tabs, workspaces) = if let Some(tabs) = raw.tabs {
+        let workspaces = if tabs.is_empty() {
+            Vec::new()
+        } else {
+            vec![WorkspaceHistorySnapshot { tabs: tabs.clone() }]
+        };
+        (tabs, workspaces)
+    } else {
+        let tabs = raw
+            .workspaces
+            .iter()
+            .flat_map(|workspace| workspace.tabs.clone())
+            .collect();
+        (tabs, raw.workspaces)
+    };
+    Ok(SessionHistorySnapshot {
+        version: raw.version,
+        tabs,
+        workspaces,
+    })
 }
 
 pub(super) fn snapshot_file_version(content: &str) -> Option<u32> {
@@ -493,6 +638,8 @@ mod tests {
     fn round_trip_empty_session() {
         let snap = SessionSnapshot {
             version: SNAPSHOT_VERSION,
+            tabs: vec![],
+            active_tab: 0,
             workspaces: vec![],
             active: None,
             selected: 0,
@@ -551,24 +698,27 @@ mod tests {
             },
         );
 
+        let tabs = vec![TabSnapshot {
+            custom_name: Some("api".to_string()),
+            layout: LayoutSnapshot::Split {
+                direction: DirectionSnapshot::Horizontal,
+                ratio: 0.5,
+                first: Box::new(LayoutSnapshot::Pane(0)),
+                second: Box::new(LayoutSnapshot::Pane(1)),
+            },
+            panes,
+            zoomed: false,
+            focused: Some(0),
+            root_pane: Some(0),
+        }];
         let snap = SessionSnapshot {
+            tabs: tabs.clone(),
+            active_tab: 0,
             workspaces: vec![WorkspaceSnapshot {
                 id: Some("wproj".to_string()),
                 custom_name: Some("pi-mono".to_string()),
                 identity_cwd: PathBuf::from("/home/can/Projects/gmux"),
-                tabs: vec![TabSnapshot {
-                    custom_name: Some("api".to_string()),
-                    layout: LayoutSnapshot::Split {
-                        direction: DirectionSnapshot::Horizontal,
-                        ratio: 0.5,
-                        first: Box::new(LayoutSnapshot::Pane(0)),
-                        second: Box::new(LayoutSnapshot::Pane(1)),
-                    },
-                    panes,
-                    zoomed: false,
-                    focused: Some(0),
-                    root_pane: Some(0),
-                }],
+                tabs,
                 active_tab: 0,
             }],
             active: Some(0),
@@ -581,14 +731,14 @@ mod tests {
         };
 
         let json = serde_json::to_string_pretty(&snap).unwrap();
+        assert!(!json.contains("\"workspaces\""));
+        assert!(json.contains("\"tabs\""));
         let restored = parse_snapshot(&json).unwrap();
 
         assert_eq!(restored.workspaces.len(), 1);
-        assert_eq!(restored.workspaces[0].id.as_deref(), Some("wproj"));
-        assert_eq!(
-            restored.workspaces[0].custom_name.as_deref(),
-            Some("pi-mono")
-        );
+        assert_eq!(restored.workspaces[0].id.as_deref(), None);
+        assert_eq!(restored.workspaces[0].custom_name.as_deref(), None);
+        assert_eq!(restored.tabs.len(), 1);
         assert_eq!(restored.workspaces[0].tabs.len(), 1);
         assert_eq!(restored.workspaces[0].tabs[0].panes.len(), 2);
         assert_eq!(
@@ -720,8 +870,9 @@ mod tests {
             .map(|ws| ws.id.clone().unwrap())
             .collect();
         assert_eq!(captured_ids, ids);
-        assert_eq!(snapshot.active, state.active);
-        assert_eq!(snapshot.selected, state.selected);
+        assert_eq!(snapshot.active, Some(0));
+        assert_eq!(snapshot.selected, 0);
+        assert_eq!(snapshot.active_tab, 0);
     }
 
     #[test]
@@ -989,6 +1140,20 @@ mod tests {
 
         let snap = SessionSnapshot {
             version: SNAPSHOT_VERSION,
+            tabs: vec![TabSnapshot {
+                custom_name: None,
+                layout: LayoutSnapshot::Split {
+                    direction: DirectionSnapshot::Horizontal,
+                    ratio: 0.5,
+                    first: Box::new(LayoutSnapshot::Pane(0)),
+                    second: Box::new(LayoutSnapshot::Pane(1)),
+                },
+                panes: panes.clone(),
+                zoomed: false,
+                focused: Some(0),
+                root_pane: Some(0),
+            }],
+            active_tab: 0,
             workspaces: vec![WorkspaceSnapshot {
                 id: Some("test-ws".to_string()),
                 custom_name: Some("fallback test".to_string()),

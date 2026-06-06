@@ -13,10 +13,9 @@ use crate::pane::PaneState;
 use crate::terminal::{TerminalId, TerminalRuntime, TerminalState};
 use crate::workspace::Workspace;
 
-use super::snapshot::{PaneHistorySnapshot, TabHistorySnapshot, WorkspaceHistorySnapshot};
+use super::snapshot::{PaneHistorySnapshot, TabHistorySnapshot};
 use super::{
     DirectionSnapshot, LayoutSnapshot, SessionHistorySnapshot, SessionSnapshot, TabSnapshot,
-    WorkspaceSnapshot,
 };
 
 struct PaneRestoreStartup<'a> {
@@ -107,8 +106,8 @@ pub fn handoff_pane_aliases(
     workspaces: &[Workspace],
 ) -> HashMap<u32, PaneId> {
     let mut aliases = HashMap::new();
-    for (ws_snap, workspace) in snapshot.workspaces.iter().zip(workspaces) {
-        for (tab_snap, tab) in ws_snap.tabs.iter().zip(&workspace.tabs) {
+    if let Some(workspace) = workspaces.first() {
+        for (tab_snap, tab) in snapshot.tabs.iter().zip(&workspace.tabs) {
             let old_ids = collect_snapshot_pane_ids(&tab_snap.layout);
             let new_ids = tab.layout.pane_ids();
             for (old_id, new_id) in old_ids.into_iter().zip(new_ids) {
@@ -221,7 +220,7 @@ fn restore_with_imports_and_failures(
     let mut terminals = HashMap::new();
     let mut terminal_runtimes = HashMap::new();
     let mut failed_imports = 0;
-    for (idx, ws_snap) in snapshot.workspaces.iter().enumerate() {
+    if !snapshot.tabs.is_empty() {
         let runtime_context = RestoreRuntimeContext {
             scrollback_limit_bytes,
             shell_config,
@@ -229,9 +228,10 @@ fn restore_with_imports_and_failures(
             render_notify: render_notify.clone(),
             render_dirty: render_dirty.clone(),
         };
-        let (restored, workspace_failed_imports) = restore_workspace(
-            ws_snap,
-            history.and_then(|history| history.workspaces.get(idx)),
+        let (restored, workspace_failed_imports) = restore_session_tabs(
+            &snapshot.tabs,
+            snapshot.active_tab,
+            history,
             rows,
             cols,
             &runtime_context,
@@ -249,9 +249,10 @@ fn restore_with_imports_and_failures(
     ((workspaces, terminals, terminal_runtimes), failed_imports)
 }
 
-fn restore_workspace(
-    snap: &WorkspaceSnapshot,
-    history: Option<&WorkspaceHistorySnapshot>,
+fn restore_session_tabs(
+    tab_snaps: &[TabSnapshot],
+    active_tab: usize,
+    history: Option<&SessionHistorySnapshot>,
     rows: u16,
     cols: u16,
     runtime_context: &RestoreRuntimeContext<'_>,
@@ -264,7 +265,7 @@ fn restore_workspace(
     let mut next_public_pane_number = 1;
     let mut failed_imports = 0;
 
-    for (idx, tab_snap) in snap.tabs.iter().enumerate() {
+    for (idx, tab_snap) in tab_snaps.iter().enumerate() {
         let (restored_tab, tab_failed_imports) = restore_tab(
             tab_snap,
             history.and_then(|history| history.tabs.get(idx)),
@@ -293,15 +294,12 @@ fn restore_workspace(
 
     (
         Some(Workspace {
-            id: snap
-                .id
-                .clone()
-                .unwrap_or_else(crate::workspace::generate_workspace_id),
-            custom_name: snap.custom_name.clone(),
-            identity_cwd: snap.identity_cwd.clone(),
+            id: crate::workspace::generate_workspace_id(),
+            custom_name: None,
+            identity_cwd: identity_cwd_from_tabs(tab_snaps),
             public_pane_numbers,
             next_public_pane_number,
-            active_tab: snap.active_tab.min(tabs.len().saturating_sub(1)),
+            active_tab: active_tab.min(tabs.len().saturating_sub(1)),
             tabs,
             #[cfg(test)]
             test_runtimes: HashMap::new(),
@@ -309,6 +307,20 @@ fn restore_workspace(
         .map(|workspace| (workspace, terminals, terminal_runtimes)),
         failed_imports,
     )
+}
+
+fn identity_cwd_from_tabs(tabs: &[TabSnapshot]) -> PathBuf {
+    tabs.first()
+        .and_then(|tab| tab.root_pane)
+        .and_then(|pane_id| tabs.first()?.panes.get(&pane_id))
+        .map(|pane| pane.cwd.clone())
+        .or_else(|| {
+            tabs.iter()
+                .flat_map(|tab| tab.panes.values())
+                .next()
+                .map(|pane| pane.cwd.clone())
+        })
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()))
 }
 
 fn restore_tab(
@@ -737,7 +749,16 @@ mod tests {
         );
         let history = SessionHistorySnapshot {
             version: super::super::snapshot::SNAPSHOT_VERSION,
-            workspaces: vec![WorkspaceHistorySnapshot {
+            tabs: vec![super::super::snapshot::TabHistorySnapshot {
+                panes: HashMap::from([(
+                    0,
+                    super::super::snapshot::PaneHistorySnapshot {
+                        ansi: "RESTORED_HISTORY\r\n".to_string(),
+                        lines: 1,
+                    },
+                )]),
+            }],
+            workspaces: vec![super::super::snapshot::WorkspaceHistorySnapshot {
                 tabs: vec![super::super::snapshot::TabHistorySnapshot {
                     panes: HashMap::from([(
                         0,
@@ -749,20 +770,23 @@ mod tests {
                 }],
             }],
         };
+        let tabs = vec![TabSnapshot {
+            custom_name: None,
+            layout: LayoutSnapshot::Pane(0),
+            panes,
+            zoomed: false,
+            focused: Some(0),
+            root_pane: Some(0),
+        }];
         let snapshot = SessionSnapshot {
             version: super::super::snapshot::SNAPSHOT_VERSION,
-            workspaces: vec![WorkspaceSnapshot {
+            tabs: tabs.clone(),
+            active_tab: 0,
+            workspaces: vec![super::super::snapshot::WorkspaceSnapshot {
                 id: Some("workspace".into()),
                 custom_name: None,
                 identity_cwd: cwd,
-                tabs: vec![TabSnapshot {
-                    custom_name: None,
-                    layout: LayoutSnapshot::Pane(0),
-                    panes,
-                    zoomed: false,
-                    focused: Some(0),
-                    root_pane: Some(0),
-                }],
+                tabs,
                 active_tab: 0,
             }],
             active: Some(0),
