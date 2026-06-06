@@ -59,22 +59,7 @@ pub(crate) fn expanded_pane_panel_rect(area: Rect) -> Rect {
 }
 
 fn pane_panel_current_context_idx(app: &AppState) -> Option<usize> {
-    if matches!(
-        app.mode,
-        Mode::Navigate
-            | Mode::RenamePane
-            | Mode::Resize
-            | Mode::ConfirmClose
-            | Mode::ContextMenu
-            | Mode::Settings
-            | Mode::GlobalMenu
-            | Mode::KeybindHelp
-            | Mode::ProductAnnouncement
-    ) {
-        Some(app.selected)
-    } else {
-        app.active
-    }
+    app.session_container_index()
 }
 
 fn pane_panel_toggle_label(scope: PanePanelScope) -> &'static str {
@@ -142,25 +127,52 @@ fn pane_panel_entries_with_runtimes(
                 })
                 .collect()
         }
-        PanePanelScope::All => app
-            .workspaces
-            .iter()
-            .enumerate()
-            .flat_map(|(ws_idx, ws)| {
-                let multi_tab = ws.tabs.len() > 1;
-                let session_label = ws.display_name_from(&app.terminals, terminal_runtimes);
-                ws.pane_details(&app.terminals)
-                    .into_iter()
-                    .map(move |detail| PanePanelEntry {
-                        ws_idx,
-                        tab_idx: detail.tab_idx,
-                        pane_id: detail.pane_id,
-                        primary_label: session_label.clone(),
-                        primary_tab_label: multi_tab.then_some(detail.tab_label),
+        PanePanelScope::All => {
+            let session_label = app
+                .session_container()
+                .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
+                .unwrap_or_else(|| "session".to_string());
+            let multi_tab = app.workspaces.iter().map(|ws| ws.tabs.len()).sum::<usize>() > 1;
+
+            app.workspaces
+                .iter()
+                .enumerate()
+                .flat_map(|(ws_idx, ws)| {
+                    ws.tabs.iter().enumerate().flat_map({
+                        let session_label = session_label.clone();
+                        move |(tab_idx, tab)| {
+                            let tab_label = session_tab_label(ws_idx, ws, tab_idx, tab);
+                            tab.pane_details(&app.terminals).into_iter().map({
+                                let session_label = session_label.clone();
+                                move |detail| PanePanelEntry {
+                                    ws_idx,
+                                    tab_idx,
+                                    pane_id: detail.pane_id,
+                                    primary_label: session_label.clone(),
+                                    primary_tab_label: multi_tab.then_some(tab_label.clone()),
+                                }
+                            })
+                        }
                     })
-            })
-            .collect(),
+                })
+                .collect()
+        }
     }
+}
+
+fn session_tab_label(
+    ws_idx: usize,
+    ws: &crate::workspace::Workspace,
+    tab_idx: usize,
+    tab: &crate::workspace::Tab,
+) -> String {
+    if ws_idx > 0 && tab_idx == 0 && tab.custom_name.is_none() {
+        if let Some(name) = &ws.custom_name {
+            return name.clone();
+        }
+    }
+
+    tab.display_name()
 }
 
 fn truncate_text(text: &str, max_width: usize) -> String {
@@ -654,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn all_pane_panel_entries_use_session_and_optional_tab_labels() {
+    fn all_pane_panel_entries_flatten_legacy_workspaces_into_session_tabs() {
         let mut app = crate::app::state::AppState::test_new();
         let first = Workspace::test_new("one");
         let mut second = Workspace::test_new("two");
@@ -668,10 +680,14 @@ mod tests {
 
         let entries = pane_panel_entries(&app);
         assert_eq!(entries[0].primary_label, "one");
-        assert!(entries[0].primary_tab_label.is_none());
+        assert_eq!(entries[0].primary_tab_label.as_deref(), Some("1"));
         assert!(entries.iter().any(|entry| {
-            entry.primary_label == "two" && entry.primary_tab_label.as_deref() == Some("logs")
+            entry.primary_label == "one" && entry.primary_tab_label.as_deref() == Some("two")
         }));
+        assert!(entries.iter().any(|entry| {
+            entry.primary_label == "one" && entry.primary_tab_label.as_deref() == Some("logs")
+        }));
+        assert!(!entries.iter().any(|entry| entry.primary_label == "two"));
     }
 
     #[tokio::test]
