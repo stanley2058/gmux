@@ -275,7 +275,7 @@ impl AppState {
                     (self.session_index(), self.tab_at(mouse.column, mouse.row))
                 {
                     self.tab_press = Some(TabPressState {
-                        session_container_idx: ws_idx,
+                        session_idx: ws_idx,
                         tab_idx,
                         start_col: mouse.column,
                         start_row: mouse.row,
@@ -400,7 +400,7 @@ impl AppState {
                         if delta_col.max(delta_row) >= TAB_DRAG_THRESHOLD {
                             self.drag = Some(DragState {
                                 target: DragTarget::TabReorder {
-                                    session_container_idx: press.session_container_idx,
+                                    session_idx: press.session_idx,
                                     source_tab_idx: press.tab_idx,
                                     insert_idx: tab_drop_index,
                                 },
@@ -413,13 +413,13 @@ impl AppState {
                 if let Some(DragState {
                     target:
                         DragTarget::TabReorder {
-                            session_container_idx,
+                            session_idx,
                             insert_idx,
                             ..
                         },
                 }) = &mut self.drag
                 {
-                    if current_ws_idx == Some(*session_container_idx) {
+                    if current_ws_idx == Some(*session_idx) {
                         *insert_idx = tab_drop_index;
                     }
                 } else if let Some(drag) = &self.drag {
@@ -516,12 +516,12 @@ impl AppState {
                     Some(DragState {
                         target:
                             DragTarget::TabReorder {
-                                session_container_idx,
+                                session_idx,
                                 source_tab_idx,
                                 insert_idx: Some(insert_idx),
                             },
                     }) => {
-                        if self.session_index() == Some(session_container_idx) {
+                        if self.session_index() == Some(session_idx) {
                             self.move_tab(source_tab_idx, insert_idx);
                             self.mode = Mode::Terminal;
                         }
@@ -529,7 +529,7 @@ impl AppState {
                     Some(_) => {}
                     None => {
                         if let Some(press) = tab_press {
-                            if self.session_index() == Some(press.session_container_idx) {
+                            if self.session_index() == Some(press.session_idx) {
                                 self.switch_tab(press.tab_idx);
                                 self.mode = Mode::Terminal;
                                 return None;
@@ -619,7 +619,7 @@ impl AppState {
                     self.switch_tab(tab_idx);
                     self.context_menu = Some(ContextMenuState {
                         kind: ContextMenuKind::Tab {
-                            session_container_idx: ws_idx,
+                            session_idx: ws_idx,
                             tab_idx,
                         },
                         x: mouse.column,
@@ -699,10 +699,10 @@ impl AppState {
                 open_new_tab_dialog(self);
             }
             Some(crate::ui::MobileSwitcherTarget::Tab {
-                session_container_idx,
+                session_idx,
                 tab_idx,
             }) => {
-                self.focus_session_tab(session_container_idx, tab_idx);
+                self.focus_session_tab(session_idx, tab_idx);
                 self.mode = Mode::Terminal;
             }
             Some(crate::ui::MobileSwitcherTarget::Menu(action_idx)) => {
@@ -1737,7 +1737,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.context_menu = Some(ContextMenuState {
             kind: ContextMenuKind::Tab {
-                session_container_idx: 0,
+                session_idx: 0,
                 tab_idx: 0,
             },
             x: 2,

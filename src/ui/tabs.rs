@@ -238,7 +238,7 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let Some(session_container_idx) = app.session_index() else {
+    let Some(session_idx) = app.session_index() else {
         return;
     };
     let Some(ws) = app.session() else {
@@ -333,13 +333,13 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
     if let Some(crate::app::state::DragState {
         target:
             crate::app::state::DragTarget::TabReorder {
-                session_container_idx: drag_session_container_idx,
+                session_idx: drag_session_idx,
                 insert_idx: Some(insert_idx),
                 ..
             },
     }) = &app.drag
     {
-        if *drag_session_container_idx == session_container_idx {
+        if *drag_session_idx == session_idx {
             if let Some(x) = tab_drop_indicator_x(app, ws, *insert_idx) {
                 frame.buffer_mut()[(x.min(area.x + area.width.saturating_sub(1)), area.y)]
                     .set_symbol("│")

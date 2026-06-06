@@ -384,7 +384,7 @@ mod tests {
     use super::*;
     use crate::{api::schema::SuccessResponse, config::Config, workspace::Workspace};
 
-    fn app_with_session_container() -> App {
+    fn app_with_session() -> App {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &Config::default(),
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn api_pane_close_closes_single_pane_session() {
-        let mut app = app_with_session_container();
+        let mut app = app_with_session();
         let pane_id = app.state.sessions[0].tabs[0].root_pane;
         let public_pane_id = app.public_pane_id(0, pane_id).unwrap();
 
@@ -418,7 +418,7 @@ mod tests {
 
     #[test]
     fn api_pane_focus_targets_pane() {
-        let mut app = app_with_session_container();
+        let mut app = app_with_session();
         let pane_id = app.state.sessions[0].tabs[0].root_pane;
         let public_pane_id = app.public_pane_id(0, pane_id).unwrap();
 
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn api_pane_focus_collapses_legacy_workspace_target() {
-        let mut app = app_with_session_container();
+        let mut app = app_with_session();
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
         let pane_id = second.tabs[0].root_pane;
@@ -476,7 +476,7 @@ mod tests {
 
     #[test]
     fn api_pane_focus_rejects_ambiguous_target() {
-        let mut app = app_with_session_container();
+        let mut app = app_with_session();
 
         let response = app.handle_pane_focus(
             "req".into(),
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn api_pane_resize_rejects_zero_amount() {
-        let mut app = app_with_session_container();
+        let mut app = app_with_session();
 
         let response = app.handle_pane_resize(
             "req".into(),

@@ -189,7 +189,7 @@ impl AppState {
         self.mark_session_dirty();
     }
 
-    fn collapsed_detail_session_container_idx(&self) -> Option<usize> {
+    fn collapsed_detail_session_idx(&self) -> Option<usize> {
         self.session_index()
     }
 
@@ -215,7 +215,7 @@ impl AppState {
             return None;
         }
 
-        let ws_idx = self.collapsed_detail_session_container_idx()?;
+        let ws_idx = self.collapsed_detail_session_idx()?;
         let ws = self.sessions().get(ws_idx)?;
         let detail_idx = (row - detail_content_area.y) as usize;
         let details = ws.pane_details(&self.terminals);
@@ -871,7 +871,7 @@ mod tests {
         assert!(matches!(
             app.state.drag.as_ref().map(|drag| &drag.target),
             Some(DragTarget::TabReorder {
-                session_container_idx: 0,
+                session_idx: 0,
                 source_tab_idx: 0,
                 insert_idx: Some(3),
             })

@@ -591,32 +591,32 @@ pub(super) fn apply_context_menu_action(
     match (menu.kind, item) {
         (
             ContextMenuKind::Tab {
-                session_container_idx,
+                session_idx,
                 tab_idx,
             },
             Some("New tab"),
         ) => {
-            state.focus_session_tab(session_container_idx, tab_idx);
+            state.focus_session_tab(session_idx, tab_idx);
             open_new_tab_dialog(state);
         }
         (
             ContextMenuKind::Tab {
-                session_container_idx,
+                session_idx,
                 tab_idx,
             },
             Some("Rename"),
         ) => {
-            state.focus_session_tab(session_container_idx, tab_idx);
+            state.focus_session_tab(session_idx, tab_idx);
             open_rename_active_tab(state, false);
         }
         (
             ContextMenuKind::Tab {
-                session_container_idx,
+                session_idx,
                 tab_idx,
             },
             Some("Close"),
         ) => {
-            state.focus_session_tab(session_container_idx, tab_idx);
+            state.focus_session_tab(session_idx, tab_idx);
             if !state.close_tab() {
                 leave_modal(state);
             }

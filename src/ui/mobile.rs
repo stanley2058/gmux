@@ -26,16 +26,13 @@ pub(crate) struct MobileSwitcherAreas {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MobileSwitcherTarget {
     NewTab,
-    Tab {
-        session_container_idx: usize,
-        tab_idx: usize,
-    },
+    Tab { session_idx: usize, tab_idx: usize },
     Menu(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MobileSwitcherTabEntry {
-    session_container_idx: usize,
+    session_idx: usize,
     tab_idx: usize,
     flat_idx: usize,
     label: String,
@@ -122,7 +119,7 @@ pub(crate) fn mobile_switcher_target_at(
         if doc_row >= cursor && doc_row < tabs_end {
             let tab = &tabs[doc_row - cursor];
             return Some(MobileSwitcherTarget::Tab {
-                session_container_idx: tab.session_container_idx,
+                session_idx: tab.session_idx,
                 tab_idx: tab.tab_idx,
             });
         }
@@ -372,7 +369,7 @@ fn mobile_switcher_tabs(app: &AppState) -> Vec<MobileSwitcherTabEntry> {
     let mut entries = Vec::new();
     for (flat_idx, (ws_idx, tab_idx, ws, tab)) in app.session_tab_entries().enumerate() {
         entries.push(MobileSwitcherTabEntry {
-            session_container_idx: ws_idx,
+            session_idx: ws_idx,
             tab_idx,
             flat_idx,
             label: crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab),

@@ -805,7 +805,7 @@ pub struct SettingsState {
 
 pub(crate) enum DragTarget {
     TabReorder {
-        session_container_idx: usize,
+        session_idx: usize,
         source_tab_idx: usize,
         insert_idx: Option<usize>,
     },
@@ -839,7 +839,7 @@ pub(crate) struct DragState {
 }
 
 pub(crate) struct TabPressState {
-    pub session_container_idx: usize,
+    pub session_idx: usize,
     pub tab_idx: usize,
     pub start_col: u16,
     pub start_row: u16,
@@ -848,7 +848,7 @@ pub(crate) struct TabPressState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextMenuKind {
     Tab {
-        session_container_idx: usize,
+        session_idx: usize,
         tab_idx: usize,
     },
     Pane {

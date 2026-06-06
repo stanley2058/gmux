@@ -69,7 +69,7 @@ impl App {
         None
     }
 
-    pub(super) fn parse_session_container_id(&self, id: &str) -> Option<usize> {
+    pub(super) fn parse_session_id(&self, id: &str) -> Option<usize> {
         self.state
             .sessions()
             .iter()
@@ -84,15 +84,15 @@ impl App {
                 return self.tab_by_public_number(number);
             }
 
-            let (container_raw, tab_raw) = rest.rsplit_once('_')?;
-            let ws_idx = self.parse_session_container_id(container_raw)?;
+            let (session_raw, tab_raw) = rest.rsplit_once('_')?;
+            let ws_idx = self.parse_session_id(session_raw)?;
             let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
             self.state.sessions().get(ws_idx)?.tabs.get(tab_idx)?;
             return Some((ws_idx, tab_idx));
         }
 
-        let (container_raw, tab_raw) = id.rsplit_once(':')?;
-        let ws_idx = self.parse_session_container_id(container_raw)?;
+        let (session_raw, tab_raw) = id.rsplit_once(':')?;
+        let ws_idx = self.parse_session_id(session_raw)?;
         let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
         self.state.sessions().get(ws_idx)?.tabs.get(tab_idx)?;
         Some((ws_idx, tab_idx))
@@ -111,8 +111,8 @@ impl App {
 
     pub(super) fn parse_pane_id(&self, id: &str) -> Option<(usize, crate::layout::PaneId)> {
         if let Some(rest) = id.strip_prefix("p_") {
-            if let Some((container_raw, pane_raw)) = rest.rsplit_once('_') {
-                let ws_idx = self.parse_session_container_id(container_raw)?;
+            if let Some((session_raw, pane_raw)) = rest.rsplit_once('_') {
+                let ws_idx = self.parse_session_id(session_raw)?;
                 let pane_id = self.resolve_raw_pane_id(pane_raw.parse::<u32>().ok()?)?;
                 self.state.sessions().get(ws_idx)?.pane_state(pane_id)?;
                 return Some((ws_idx, pane_id));
@@ -126,8 +126,8 @@ impl App {
             return self.find_pane(pane_id).map(|(ws_idx, _)| (ws_idx, pane_id));
         }
 
-        let (container_raw, pane_number_raw) = id.rsplit_once('-')?;
-        let ws_idx = self.parse_session_container_id(container_raw)?;
+        let (session_raw, pane_number_raw) = id.rsplit_once('-')?;
+        let ws_idx = self.parse_session_id(session_raw)?;
         let pane_number = pane_number_raw.parse::<usize>().ok()?;
         let ws = self.state.sessions().get(ws_idx)?;
         let pane_id = ws
