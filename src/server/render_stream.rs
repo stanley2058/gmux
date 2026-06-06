@@ -314,7 +314,7 @@ pub(crate) fn visible_hyperlinks(
     app_state: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> Vec<((u16, u16), String, String)> {
-    let Some(ws_idx) = app_state.active else {
+    let Some(ws_idx) = app_state.session_container_index() else {
         return Vec::new();
     };
     let Some(tab) = app_state
@@ -345,7 +345,7 @@ pub(crate) fn focused_terminal_cursor(
         return None;
     }
 
-    let ws_idx = app_state.active?;
+    let ws_idx = app_state.session_container_index()?;
     let info = app_state
         .view
         .pane_infos

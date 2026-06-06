@@ -2014,8 +2014,8 @@ impl HeadlessServer {
         }
         frame.graphics.clear();
 
-        let Some(ws_idx) = self.app.state.active else {
-            retained_fallback!("no_active_workspace");
+        let Some(ws_idx) = self.app.state.session_container_index() else {
+            retained_fallback!("no_session_container");
         };
         let pane_infos = self.app.state.view.pane_infos.clone();
         if pane_infos.is_empty() {
