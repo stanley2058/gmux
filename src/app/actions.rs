@@ -136,7 +136,7 @@ impl AppState {
             return true;
         }
 
-        self.collapse_to_single_session_workspace();
+        self.collapse_to_single_session_container();
         self.session_container()
             .and_then(|ws| ws.pane_state(pane_id))
             .is_some()
@@ -489,7 +489,7 @@ impl AppState {
         self.session_containers_mut().get_mut(idx)
     }
 
-    pub(crate) fn collapse_to_single_session_workspace(&mut self) -> bool {
+    pub(crate) fn collapse_to_single_session_container(&mut self) -> bool {
         match self.session_containers().len() {
             0 => {
                 let changed = self.active.take().is_some() || self.selected != 0;
@@ -593,7 +593,7 @@ impl AppState {
         self.selection = None;
         self.selection_autoscroll = None;
 
-        self.collapse_to_single_session_workspace();
+        self.collapse_to_single_session_container();
         self.active = Some(0);
         self.selected = 0;
         let session_id = self.session_containers()[0].id.clone();
@@ -865,7 +865,7 @@ impl AppState {
         if self.session_containers().is_empty() {
             return;
         }
-        self.collapse_to_single_session_workspace();
+        self.collapse_to_single_session_container();
         let Some(close_idx) = self.session_container_index() else {
             return;
         };
@@ -1036,7 +1036,7 @@ impl AppState {
 
     /// Close the focused pane. Returns true when the close was deferred to confirmation.
     pub fn close_pane(&mut self) -> bool {
-        self.collapse_to_single_session_workspace();
+        self.collapse_to_single_session_container();
         let active = self.session_container_index();
         self.selection = None;
         self.selection_autoscroll = None;
@@ -1063,7 +1063,7 @@ impl AppState {
 
     /// Close the active tab. Returns true when the close was deferred to confirmation.
     pub fn close_tab(&mut self) -> bool {
-        self.collapse_to_single_session_workspace();
+        self.collapse_to_single_session_container();
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
@@ -1541,7 +1541,7 @@ impl AppState {
     }
 
     fn handle_pane_died(&mut self, pane_id: PaneId) {
-        self.collapse_to_single_session_workspace();
+        self.collapse_to_single_session_container();
         let ws_idx = self
             .session_containers()
             .iter()
@@ -2253,7 +2253,7 @@ mod tests {
     }
 
     #[test]
-    fn collapse_to_single_session_workspace_merges_tabs_and_focus() {
+    fn collapse_to_single_session_container_merges_tabs_and_focus() {
         let mut state = app_with_workspaces(&["one", "two"]);
         let second_first_root = state.session_containers[1].tabs[0].root_pane;
         let second_tab = state.session_containers[1].test_add_tab(Some("logs"));
@@ -2262,7 +2262,7 @@ mod tests {
         state.active = Some(1);
         state.selected = 1;
 
-        assert!(state.collapse_to_single_session_workspace());
+        assert!(state.collapse_to_single_session_container());
 
         assert_eq!(state.session_containers.len(), 1);
         assert_eq!(state.active, Some(0));

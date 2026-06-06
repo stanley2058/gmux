@@ -275,7 +275,7 @@ impl App {
         command: &str,
         temp_files: Vec<std::path::PathBuf>,
     ) -> std::io::Result<()> {
-        self.state.collapse_to_single_session_workspace();
+        self.state.collapse_to_single_session_container();
         let Some(ws_idx) = self.state.session_container_index() else {
             return Err(std::io::Error::other("no active session"));
         };
@@ -1008,7 +1008,7 @@ mod tests {
                 pane_id: target_pane,
             }),
         });
-        state.collapse_to_single_session_workspace();
+        state.collapse_to_single_session_container();
         state.session_containers[0].switch_tab(0);
 
         handle_navigate_key(

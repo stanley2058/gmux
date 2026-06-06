@@ -77,7 +77,7 @@ impl App {
         focus: bool,
     ) -> std::io::Result<usize> {
         if !self.state.session_containers().is_empty() {
-            self.state.collapse_to_single_session_workspace();
+            self.state.collapse_to_single_session_container();
         }
         let Some(container_idx) = self.state.session_container_index() else {
             return self.create_session_container_with_options(initial_cwd, focus);
@@ -121,7 +121,7 @@ impl App {
         focus: bool,
     ) -> std::io::Result<usize> {
         if !self.state.session_containers().is_empty() {
-            self.state.collapse_to_single_session_workspace();
+            self.state.collapse_to_single_session_container();
             return Ok(self.state.session_container_index().unwrap_or(0));
         }
 

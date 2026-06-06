@@ -435,7 +435,7 @@ impl App {
         };
 
         state.terminals = restored_terminals;
-        state.collapse_to_single_session_workspace();
+        state.collapse_to_single_session_container();
 
         // Background auto-update is disabled in monolithic no-session mode
         // and in debug/test builds so local development never mutates the
@@ -520,7 +520,7 @@ impl App {
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
         app.state.selected = 0;
-        app.state.collapse_to_single_session_workspace();
+        app.state.collapse_to_single_session_container();
         app.state.mode = app.state.terminal_or_navigate_mode();
         app.last_focus = app.state.session_container_index().and_then(|idx| {
             app.state
