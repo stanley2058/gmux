@@ -209,8 +209,7 @@ impl App {
     pub(crate) fn sync_focus_events(&mut self) {
         let current_focus = self.state.session_index().and_then(|idx| {
             self.state
-                .sessions()
-                .get(idx)
+                .session()
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
         if current_focus == self.last_focus {
@@ -222,7 +221,9 @@ impl App {
         }
         if let Some((ws_idx, pane_id)) = current_focus {
             self.send_pane_focus_event(ws_idx, pane_id, crate::ghostty::FocusEvent::Gained);
-            let active_tab = self.state.sessions()[ws_idx].active_tab;
+            let Some(active_tab) = self.state.session().map(|session| session.active_tab) else {
+                return;
+            };
             if let Some(tab_id) = self.public_tab_id(ws_idx, active_tab) {
                 self.emit_event(crate::api::schema::EventEnvelope {
                     event: crate::api::schema::EventKind::TabFocused,
@@ -248,10 +249,10 @@ impl App {
         pane_id: crate::layout::PaneId,
         event: crate::ghostty::FocusEvent,
     ) {
-        let Some(runtime) = self.state.sessions().get(ws_idx).and_then(|_| {
+        let Some(runtime) =
             self.state
                 .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)
-        }) else {
+        else {
             return;
         };
         runtime.try_send_focus_event(event);
