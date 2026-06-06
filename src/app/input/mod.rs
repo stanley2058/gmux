@@ -378,20 +378,17 @@ impl AppState {
         let new_rows = (rows / 2).max(4);
         let new_cols = (cols / 2).max(10);
 
-        let follow_cwd = self
-            .active
-            .and_then(|i| self.workspaces.get(i))
-            .and_then(|ws| {
-                let tab = ws.active_tab()?;
-                tab.cwd_for_pane(tab.layout.focused(), &self.terminals, terminal_runtimes)
-            });
+        let follow_cwd = self.session_container().and_then(|ws| {
+            let tab = ws.active_tab()?;
+            tab.cwd_for_pane(tab.layout.focused(), &self.terminals, terminal_runtimes)
+        });
         let cwd = Some(super::creation::resolve_new_terminal_cwd(
             &self.new_terminal_cwd,
             follow_cwd,
         ));
 
         let previous_focus = self.current_pane_focus_target();
-        if let Some(ws_idx) = self.active {
+        if let Some(ws_idx) = self.session_container_index() {
             let Some(ws) = self.workspaces.get_mut(ws_idx) else {
                 return;
             };

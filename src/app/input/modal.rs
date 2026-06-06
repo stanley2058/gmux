@@ -262,7 +262,7 @@ pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool
     state.creating_new_tab = false;
     state.requested_new_tab_name = None;
     state.rename_pane_target = None;
-    if let Some(ws) = state.active.and_then(|i| state.workspaces.get(i)) {
+    if let Some(ws) = state.session_container() {
         if let Some(name) = ws.active_tab_display_name() {
             state.name_input = name;
             state.name_input_replace_on_type = replace_on_type;
@@ -272,7 +272,7 @@ pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool
 }
 
 pub(super) fn open_rename_pane(state: &mut AppState, pane_id: crate::layout::PaneId) {
-    let Some(ws) = state.active.and_then(|i| state.workspaces.get(i)) else {
+    let Some(ws) = state.session_container() else {
         return;
     };
     let Some(pane) = ws.pane_state(pane_id) else {
@@ -291,8 +291,7 @@ pub(super) fn open_rename_pane(state: &mut AppState, pane_id: crate::layout::Pan
 
 fn next_new_tab_default_name(state: &AppState) -> String {
     state
-        .active
-        .and_then(|i| state.workspaces.get(i))
+        .session_container()
         .map(|ws| (ws.tabs.len() + 1).to_string())
         .unwrap_or_else(|| "1".to_string())
 }

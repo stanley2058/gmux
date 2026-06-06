@@ -33,14 +33,10 @@ impl App {
 
 impl AppState {
     pub(crate) fn enter_copy_mode(&mut self, terminal_runtimes: &TerminalRuntimeRegistry) {
-        let Some(ws_idx) = self.active else {
+        let Some(ws_idx) = self.session_container_index() else {
             return;
         };
-        let Some(pane_id) = self
-            .workspaces
-            .get(ws_idx)
-            .and_then(|ws| ws.focused_pane_id())
-        else {
+        let Some(pane_id) = self.session_container().and_then(|ws| ws.focused_pane_id()) else {
             return;
         };
         let Some(info) = self.pane_info_by_id(pane_id).cloned() else {
@@ -174,7 +170,7 @@ impl AppState {
             self.set_pane_scroll_offset(terminal_runtimes, pane_id, offset_from_bottom);
         }
         self.copy_mode = None;
-        self.mode = if self.active.is_some() {
+        self.mode = if self.session_container().is_some() {
             Mode::Terminal
         } else {
             Mode::Navigate
@@ -474,7 +470,7 @@ impl AppState {
         viewport_row: u16,
     ) -> Option<String> {
         let copy_mode = self.copy_mode?;
-        let ws_idx = self.active?;
+        let ws_idx = self.session_container_index()?;
         let info = self.pane_info_by_id(copy_mode.pane_id)?;
         if viewport_row >= info.inner_rect.height || info.inner_rect.width == 0 {
             return None;
