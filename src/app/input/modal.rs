@@ -589,16 +589,34 @@ pub(super) fn apply_context_menu_action(
 ) {
     let item = menu.items().get(idx).copied();
     match (menu.kind, item) {
-        (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("New tab")) => {
-            state.focus_session_tab(ws_idx, tab_idx);
+        (
+            ContextMenuKind::Tab {
+                session_container_idx,
+                tab_idx,
+            },
+            Some("New tab"),
+        ) => {
+            state.focus_session_tab(session_container_idx, tab_idx);
             open_new_tab_dialog(state);
         }
-        (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("Rename")) => {
-            state.focus_session_tab(ws_idx, tab_idx);
+        (
+            ContextMenuKind::Tab {
+                session_container_idx,
+                tab_idx,
+            },
+            Some("Rename"),
+        ) => {
+            state.focus_session_tab(session_container_idx, tab_idx);
             open_rename_active_tab(state, false);
         }
-        (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("Close")) => {
-            state.focus_session_tab(ws_idx, tab_idx);
+        (
+            ContextMenuKind::Tab {
+                session_container_idx,
+                tab_idx,
+            },
+            Some("Close"),
+        ) => {
+            state.focus_session_tab(session_container_idx, tab_idx);
             if !state.close_tab() {
                 leave_modal(state);
             }

@@ -620,7 +620,10 @@ impl AppState {
                 ) {
                     self.switch_tab(tab_idx);
                     self.context_menu = Some(ContextMenuState {
-                        kind: ContextMenuKind::Tab { ws_idx, tab_idx },
+                        kind: ContextMenuKind::Tab {
+                            session_container_idx: ws_idx,
+                            tab_idx,
+                        },
                         x: mouse.column,
                         y: mouse.row,
                         list: MenuListState::new(0),
@@ -1737,7 +1740,7 @@ mod tests {
         let mut app = app_for_mouse_test();
         app.state.context_menu = Some(ContextMenuState {
             kind: ContextMenuKind::Tab {
-                ws_idx: 0,
+                session_container_idx: 0,
                 tab_idx: 0,
             },
             x: 2,

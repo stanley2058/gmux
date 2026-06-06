@@ -848,7 +848,7 @@ pub(crate) struct TabPressState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContextMenuKind {
     Tab {
-        ws_idx: usize,
+        session_container_idx: usize,
         tab_idx: usize,
     },
     Pane {
