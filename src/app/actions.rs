@@ -838,21 +838,20 @@ impl AppState {
         if self.workspaces.is_empty() {
             return;
         }
+        self.collapse_to_single_session_workspace();
+        let Some(close_idx) = self.session_container_index() else {
+            return;
+        };
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
-        let close_indices = vec![self.selected];
 
         let mut terminal_ids = Vec::new();
-        for idx in &close_indices {
-            terminal_ids.extend(self.terminal_ids_for_session_container(*idx));
-            if let Some(workspace_id) = self.workspaces.get(*idx).map(|ws| ws.id.clone()) {
-                crate::logging::session_closed(&workspace_id);
-            }
+        terminal_ids.extend(self.terminal_ids_for_session_container(close_idx));
+        if let Some(workspace_id) = self.workspaces.get(close_idx).map(|ws| ws.id.clone()) {
+            crate::logging::session_closed(&workspace_id);
         }
-        for idx in close_indices.iter().rev() {
-            self.workspaces.remove(*idx);
-        }
+        self.workspaces.remove(close_idx);
         self.remove_unattached_terminal_ids(terminal_ids);
         if self.workspaces.is_empty() {
             self.active = None;
@@ -999,6 +998,7 @@ impl AppState {
 
     /// Close the focused pane. Returns true when the close was deferred to confirmation.
     pub fn close_pane(&mut self) -> bool {
+        self.collapse_to_single_session_workspace();
         let active = self.session_container_index();
         self.selection = None;
         self.selection_autoscroll = None;
@@ -1016,9 +1016,6 @@ impl AppState {
             .and_then(|i| self.workspaces.get_mut(i))
             .is_some_and(|ws| ws.close_focused());
         if should_close_workspace {
-            if let Some(active) = active {
-                self.selected = active;
-            }
             self.close_session_container();
         } else {
             self.remove_unattached_terminal_ids(terminal_ids);
@@ -1028,6 +1025,7 @@ impl AppState {
 
     /// Close the active tab. Returns true when the close was deferred to confirmation.
     pub fn close_tab(&mut self) -> bool {
+        self.collapse_to_single_session_workspace();
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
@@ -1035,9 +1033,6 @@ impl AppState {
             .session_container()
             .is_some_and(|ws| ws.tabs.len() <= 1);
         if should_close_workspace {
-            if let Some(idx) = self.session_container_index() {
-                self.selected = idx;
-            }
             self.close_session_container();
             return false;
         }
@@ -2343,17 +2338,16 @@ mod tests {
     }
 
     #[test]
-    fn close_session_container_adjusts_indices() {
+    fn close_session_container_closes_canonical_session() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
         state.selected = 1;
         state.active = Some(1);
 
         state.close_session_container();
 
-        assert_eq!(state.workspaces.len(), 2);
-        assert_eq!(state.selected, 1);
-        assert_eq!(state.active, Some(1));
-        assert_eq!(state.workspaces[1].custom_name.as_deref(), Some("c"));
+        assert!(state.workspaces.is_empty());
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.active, None);
     }
 
     #[test]
@@ -2368,16 +2362,16 @@ mod tests {
     }
 
     #[test]
-    fn close_session_container_at_end_adjusts_selected() {
+    fn close_session_container_ignores_stale_selected_workspace() {
         let mut state = app_with_workspaces(&["a", "b"]);
-        state.selected = 1;
-        state.active = Some(1);
+        state.selected = 99;
+        state.active = Some(0);
 
         state.close_session_container();
 
-        assert_eq!(state.workspaces.len(), 1);
+        assert!(state.workspaces.is_empty());
         assert_eq!(state.selected, 0);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active, None);
     }
 
     #[test]
