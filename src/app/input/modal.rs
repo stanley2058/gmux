@@ -263,7 +263,7 @@ pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool
     state.creating_new_tab = false;
     state.requested_new_tab_name = None;
     state.rename_pane_target = None;
-    if let Some(ws) = state.session_container() {
+    if let Some(ws) = state.session() {
         if let Some(name) = ws.active_tab_display_name() {
             state.name_input = name;
             state.name_input_replace_on_type = replace_on_type;
@@ -274,7 +274,7 @@ pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool
 
 pub(super) fn open_rename_pane(state: &mut AppState, pane_id: crate::layout::PaneId) {
     state.collapse_to_single_session_container();
-    let Some(ws) = state.session_container() else {
+    let Some(ws) = state.session() else {
         return;
     };
     let Some(pane) = ws.pane_state(pane_id) else {
@@ -293,7 +293,7 @@ pub(super) fn open_rename_pane(state: &mut AppState, pane_id: crate::layout::Pan
 
 fn next_new_tab_default_name(state: &AppState) -> String {
     state
-        .session_container()
+        .session()
         .map(|ws| (ws.tabs.len() + 1).to_string())
         .unwrap_or_else(|| "1".to_string())
 }
@@ -308,7 +308,7 @@ pub(super) fn open_new_tab_dialog(state: &mut AppState) {
 }
 
 pub(super) fn leave_modal(state: &mut AppState) {
-    if state.session_container().is_some() {
+    if state.session().is_some() {
         state.mode = Mode::Terminal;
     } else {
         state.mode = Mode::Navigate;
@@ -383,7 +383,7 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                 }
                 Mode::RenameTab => {
                     state.collapse_to_single_session_container();
-                    if let Some(ws) = state.session_container_mut() {
+                    if let Some(ws) = state.session_mut() {
                         let session_id = ws.id.clone();
                         let active_tab = ws.active_tab;
                         if let Some(tab) = ws.active_tab_mut() {
@@ -401,7 +401,7 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                 Mode::RenamePane => {
                     state.collapse_to_single_session_container();
                     if let Some(pane_id) = state.rename_pane_target {
-                        if let Some(ws) = state.session_container() {
+                        if let Some(ws) = state.session() {
                             if let Some(terminal_id) = ws
                                 .pane_state(pane_id)
                                 .map(|pane| pane.attached_terminal_id.clone())
@@ -626,7 +626,7 @@ pub(super) fn apply_context_menu_action(
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Clear pane name")) => {
             if state.focus_session_pane(pane_id) {
-                if let Some(ws) = state.session_container() {
+                if let Some(ws) = state.session() {
                     if let Some(terminal_id) = ws
                         .pane_state(pane_id)
                         .map(|pane| pane.attached_terminal_id.clone())

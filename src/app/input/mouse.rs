@@ -450,7 +450,7 @@ impl AppState {
                             };
                             let ratio = ratio.clamp(0.1, 0.9);
                             let path = path.clone();
-                            if let Some(ws) = self.session_container_mut() {
+                            if let Some(ws) = self.session_mut() {
                                 ws.layout.set_ratio_at(&path, ratio);
                                 self.mark_session_dirty();
                             }
@@ -636,7 +636,7 @@ impl AppState {
                 if let Some(info) = self.pane_mouse_target(mouse.column, mouse.row).cloned() {
                     self.focus_pane(info.id);
                     let has_manual_label = self
-                        .session_container()
+                        .session()
                         .and_then(|ws| ws.pane_state(info.id))
                         .and_then(|pane| self.terminals.get(&pane.attached_terminal_id))
                         .and_then(|terminal| terminal.manual_label.as_ref())

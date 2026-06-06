@@ -254,7 +254,7 @@ fn render_header_status(
         return;
     }
     let p = &app.palette;
-    let Some(ws) = app.session_container() else {
+    let Some(ws) = app.session() else {
         frame.render_widget(Paragraph::new(" no session"), area);
         return;
     };
@@ -669,7 +669,7 @@ fn mobile_screen_rect(app: &AppState) -> Rect {
 }
 
 fn mobile_pane_summary(app: &AppState) -> String {
-    let Some(ws) = app.session_container() else {
+    let Some(ws) = app.session() else {
         return " no session".to_string();
     };
     let pane_count = ws

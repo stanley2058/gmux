@@ -42,7 +42,7 @@ fn expand_tilde_path(path: &str) -> PathBuf {
 impl App {
     pub(super) fn seed_cwd_from_session_container(&self) -> Option<PathBuf> {
         self.state
-            .session_container()?
+            .session()?
             .resolved_identity_cwd_from(&self.state.terminals, &self.terminal_runtimes)
     }
 
@@ -57,7 +57,7 @@ impl App {
         match self.create_tab_with_options(initial_cwd, true) {
             Ok(tab_idx) => {
                 if let Some(name) = custom_name {
-                    if let Some(ws) = self.state.session_container_mut() {
+                    if let Some(ws) = self.state.session_mut() {
                         if let Some(tab) = ws.tabs.get_mut(tab_idx) {
                             tab.set_custom_name(name);
                         }

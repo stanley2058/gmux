@@ -156,7 +156,7 @@ pub(super) fn compute_pane_infos(
     let Some(ws_idx) = app.session_container_index() else {
         return Vec::new();
     };
-    let Some(ws) = app.session_container() else {
+    let Some(ws) = app.session() else {
         return Vec::new();
     };
 
@@ -248,7 +248,7 @@ pub(super) fn render_panes(
         render_empty(app, frame, area);
         return;
     };
-    let Some(ws) = app.session_container() else {
+    let Some(ws) = app.session() else {
         render_empty(app, frame, area);
         return;
     };

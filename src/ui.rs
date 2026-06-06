@@ -167,7 +167,7 @@ fn compute_view_internal(
     let [sidebar_area, main_area] =
         Layout::horizontal([Constraint::Length(sidebar_w), Constraint::Min(1)]).areas(area);
 
-    let has_tabs = app.session_container().is_some();
+    let has_tabs = app.session().is_some();
     let (tab_bar_rect, terminal_area) = if has_tabs && main_area.height > 1 {
         let [tab_bar_rect, terminal_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(main_area);
@@ -186,7 +186,7 @@ fn compute_view_internal(
     }
 
     let tab_bar_view = app
-        .session_container()
+        .session()
         .map(|ws| {
             compute_tab_bar_view(
                 ws,
@@ -200,7 +200,7 @@ fn compute_view_internal(
     app.tab_scroll = tab_bar_view.scroll;
 
     let split_borders = app
-        .session_container()
+        .session()
         .map(|ws| ws.layout.splits(terminal_area))
         .unwrap_or_default();
 
@@ -266,7 +266,7 @@ fn compute_mobile_view(
     }
 
     let split_borders = app
-        .session_container()
+        .session()
         .map(|ws| ws.layout.splits(terminal_area))
         .unwrap_or_default();
 

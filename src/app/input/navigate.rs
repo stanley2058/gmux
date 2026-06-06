@@ -621,9 +621,7 @@ pub(super) fn execute_navigate_action_in_context(
     let previous_mode = state.mode;
     match action {
         NavigateAction::SwitchTab(idx) => {
-            let tab_exists = state
-                .session_container()
-                .is_some_and(|ws| idx < ws.tabs.len());
+            let tab_exists = state.session().is_some_and(|ws| idx < ws.tabs.len());
             if tab_exists {
                 state.switch_tab(idx);
                 leave_navigate_mode(state);
@@ -643,7 +641,7 @@ pub(super) fn execute_navigate_action_in_context(
             leave_navigate_mode(state);
         }
         NavigateAction::NewTab => {
-            if state.session_container().is_some() {
+            if state.session().is_some() {
                 if state.prompt_new_tab_name {
                     super::modal::open_new_tab_dialog(state);
                 } else {
@@ -667,10 +665,7 @@ pub(super) fn execute_navigate_action_in_context(
             }
         }
         NavigateAction::RenamePane => {
-            if let Some(pane_id) = state
-                .session_container()
-                .and_then(|ws| ws.focused_pane_id())
-            {
+            if let Some(pane_id) = state.session().and_then(|ws| ws.focused_pane_id()) {
                 super::modal::open_rename_pane(state, pane_id);
             }
         }
@@ -745,7 +740,7 @@ pub(super) fn execute_navigate_action_in_context(
 }
 
 fn leave_navigate_mode(state: &mut AppState) {
-    if state.session_container().is_some() {
+    if state.session().is_some() {
         state.mode = Mode::Terminal;
     }
 }
@@ -771,7 +766,7 @@ fn finish_custom_command_context(
 }
 
 fn leave_command_mode(state: &mut AppState) {
-    state.mode = if state.session_container().is_some() {
+    state.mode = if state.session().is_some() {
         Mode::Terminal
     } else {
         Mode::Navigate

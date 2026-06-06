@@ -109,7 +109,7 @@ pub(super) fn render_rename_overlay(app: &AppState, frame: &mut Frame, area: Rec
 }
 
 fn confirm_close_overlay_text(app: &AppState) -> (String, String) {
-    let Some(ws) = app.session_container() else {
+    let Some(ws) = app.session() else {
         return (
             "Close session?".to_string(),
             "? — 0 tabs · 0 panes".to_string(),

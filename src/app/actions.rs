@@ -19,7 +19,7 @@ use super::state::{
 
 impl AppState {
     pub(crate) fn current_pane_focus_target(&self) -> Option<PaneFocusTarget> {
-        let ws = self.session_container()?;
+        let ws = self.session()?;
         let pane_id = ws.focused_pane_id()?;
         Some(PaneFocusTarget {
             session_id: ws.id.clone(),
@@ -137,7 +137,7 @@ impl AppState {
         }
 
         self.collapse_to_single_session_container();
-        self.session_container()
+        self.session()
             .and_then(|ws| ws.pane_state(pane_id))
             .is_some()
     }
@@ -176,7 +176,7 @@ impl AppState {
         let query = self.navigator.query.trim().to_lowercase();
         let query_kind = navigator_query_kind(&query);
         let mut rows = Vec::new();
-        let session_matches = self.session_container().is_some_and(|ws| {
+        let session_matches = self.session().is_some_and(|ws| {
             let session_label = ws.display_name_from(&self.terminals, terminal_runtimes);
             let session_search_text = session_label.to_lowercase();
             match query_kind {
@@ -479,12 +479,12 @@ impl AppState {
             .or_else(|| (!self.session_containers().is_empty()).then_some(0))
     }
 
-    pub(crate) fn session_container(&self) -> Option<&SessionUiState> {
+    pub(crate) fn session(&self) -> Option<&SessionUiState> {
         self.session_container_index()
             .and_then(|idx| self.session_containers().get(idx))
     }
 
-    pub(crate) fn session_container_mut(&mut self) -> Option<&mut SessionUiState> {
+    pub(crate) fn session_mut(&mut self) -> Option<&mut SessionUiState> {
         let idx = self.session_container_index()?;
         self.session_containers_mut().get_mut(idx)
     }
@@ -639,16 +639,13 @@ impl AppState {
     }
 
     pub fn switch_tab(&mut self, idx: usize) {
-        if self
-            .session_container()
-            .is_none_or(|ws| idx >= ws.tabs.len())
-        {
+        if self.session().is_none_or(|ws| idx >= ws.tabs.len()) {
             return;
         }
         let previous_focus = self.current_pane_focus_target();
         self.selection = None;
         self.selection_autoscroll = None;
-        let Some(ws) = self.session_container_mut() else {
+        let Some(ws) = self.session_mut() else {
             return;
         };
         ws.switch_tab(idx);
@@ -662,10 +659,7 @@ impl AppState {
     }
 
     pub(crate) fn mark_active_tab_seen(&mut self) -> bool {
-        let Some(tab) = self
-            .session_container_mut()
-            .and_then(SessionUiState::active_tab_mut)
-        else {
+        let Some(tab) = self.session_mut().and_then(SessionUiState::active_tab_mut) else {
             return false;
         };
 
@@ -692,7 +686,7 @@ impl AppState {
     }
 
     pub fn move_tab(&mut self, source_idx: usize, insert_idx: usize) {
-        if let Some(ws) = self.session_container_mut() {
+        if let Some(ws) = self.session_mut() {
             if ws.move_tab(source_idx, insert_idx) {
                 self.mark_session_dirty();
                 self.tab_scroll_follow_active = true;
@@ -702,7 +696,7 @@ impl AppState {
     }
 
     pub fn next_tab(&mut self) {
-        if let Some(ws) = self.session_container() {
+        if let Some(ws) = self.session() {
             if !ws.tabs.is_empty() {
                 let next = (ws.active_tab + 1) % ws.tabs.len();
                 self.switch_tab(next);
@@ -711,7 +705,7 @@ impl AppState {
     }
 
     pub fn previous_tab(&mut self) {
-        if let Some(ws) = self.session_container() {
+        if let Some(ws) = self.session() {
             if !ws.tabs.is_empty() {
                 let prev = if ws.active_tab == 0 {
                     ws.tabs.len() - 1
@@ -763,9 +757,7 @@ impl AppState {
             return;
         }
 
-        let focused = self
-            .session_container()
-            .and_then(SessionUiState::focused_pane_id);
+        let focused = self.session().and_then(SessionUiState::focused_pane_id);
         let current_idx =
             focused.and_then(|pane_id| entries.iter().position(|entry| entry.pane_id == pane_id));
         let target_idx = match (current_idx, forward) {
@@ -902,7 +894,7 @@ impl AppState {
 
     fn refresh_tab_bar_view(&mut self) {
         let area = self.view.tab_bar_rect;
-        let Some(ws) = self.session_container() else {
+        let Some(ws) = self.session() else {
             self.tab_scroll = 0;
             self.view.tab_hit_areas.clear();
             self.view.tab_scroll_left_hit_area = ratatui::layout::Rect::default();
@@ -935,7 +927,7 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(tab) = self.session_container().and_then(|ws| ws.active_tab()) else {
+        let Some(tab) = self.session().and_then(|ws| ws.active_tab()) else {
             return false;
         };
         let panes = if tab.zoomed {
@@ -959,10 +951,7 @@ impl AppState {
                 .pane_infos
                 .iter()
                 .fold(first.rect, |acc, p| acc.union(p.rect));
-            if let Some(tab) = self
-                .session_container_mut()
-                .and_then(|ws| ws.active_tab_mut())
-            {
+            if let Some(tab) = self.session_mut().and_then(|ws| ws.active_tab_mut()) {
                 tab.layout.resize_focused(direction, 0.05, area);
                 self.mark_session_dirty();
                 return true;
@@ -975,7 +964,7 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return;
         };
-        let Some(tab) = self.session_container().and_then(|ws| ws.active_tab()) else {
+        let Some(tab) = self.session().and_then(|ws| ws.active_tab()) else {
             return;
         };
         let ids = tab.layout.pane_ids();
@@ -1023,10 +1012,7 @@ impl AppState {
     }
 
     pub fn toggle_zoom(&mut self) {
-        if let Some(tab) = self
-            .session_container_mut()
-            .and_then(|ws| ws.active_tab_mut())
-        {
+        if let Some(tab) = self.session_mut().and_then(|ws| ws.active_tab_mut()) {
             if tab.layout.pane_count() > 1 {
                 tab.zoomed = !tab.zoomed;
                 self.mark_session_dirty();
@@ -1067,9 +1053,7 @@ impl AppState {
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
-        let should_close_workspace = self
-            .session_container()
-            .is_some_and(|ws| ws.tabs.len() <= 1);
+        let should_close_workspace = self.session().is_some_and(|ws| ws.tabs.len() <= 1);
         if should_close_workspace {
             self.close_session_container();
             return false;

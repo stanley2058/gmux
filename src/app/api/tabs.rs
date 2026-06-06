@@ -226,11 +226,7 @@ impl App {
         if !self.state.focus_session_tab(ws_idx, tab_idx) {
             return tab_not_found(id, &target.tab_id);
         }
-        if self
-            .state
-            .session_container()
-            .is_none_or(|ws| ws.tabs.len() <= 1)
-        {
+        if self.state.session().is_none_or(|ws| ws.tabs.len() <= 1) {
             return encode_error(
                 id,
                 "tab_close_failed",

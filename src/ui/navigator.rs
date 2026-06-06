@@ -259,7 +259,7 @@ fn tab_detail(
         return String::new();
     };
     let session_label = app
-        .session_container()
+        .session()
         .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
         .unwrap_or_else(|| "session".to_string());
     let tab_label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
@@ -285,7 +285,7 @@ fn pane_detail(
         return String::new();
     };
     let session_label = app
-        .session_container()
+        .session()
         .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
         .unwrap_or_else(|| "session".to_string());
     let mut parts = vec![session_label];

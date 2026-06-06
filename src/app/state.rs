@@ -1078,7 +1078,7 @@ impl AppState {
     }
 
     pub(crate) fn terminal_or_navigate_mode(&self) -> Mode {
-        if self.session_container().is_some() {
+        if self.session().is_some() {
             Mode::Terminal
         } else {
             Mode::Navigate

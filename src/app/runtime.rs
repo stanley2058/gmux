@@ -260,7 +260,7 @@ impl App {
         match self.state.pane_panel_scope {
             crate::app::state::PanePanelScope::Current => self
                 .state
-                .session_container()
+                .session()
                 .is_some_and(|ws| ws.has_working_pane(&self.state.terminals)),
             crate::app::state::PanePanelScope::All => self
                 .state

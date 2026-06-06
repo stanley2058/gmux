@@ -129,7 +129,7 @@ fn pane_panel_entries_with_runtimes(
         }
         PanePanelScope::All => {
             let session_label = app
-                .session_container()
+                .session()
                 .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
                 .unwrap_or_else(|| "session".to_string());
             let multi_tab = app.session_tab_count() > 1;

@@ -378,7 +378,7 @@ impl AppState {
         let new_rows = (rows / 2).max(4);
         let new_cols = (cols / 2).max(10);
 
-        let follow_cwd = self.session_container().and_then(|ws| {
+        let follow_cwd = self.session().and_then(|ws| {
             let tab = ws.active_tab()?;
             tab.cwd_for_pane(tab.layout.focused(), &self.terminals, terminal_runtimes)
         });

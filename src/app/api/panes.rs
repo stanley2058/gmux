@@ -368,7 +368,7 @@ impl App {
 
     fn focused_pane_info(&self) -> Option<PaneInfo> {
         let ws_idx = self.state.session_container_index()?;
-        let pane_id = self.state.session_container()?.focused_pane_id()?;
+        let pane_id = self.state.session()?.focused_pane_id()?;
         self.pane_info(ws_idx, pane_id)
     }
 
