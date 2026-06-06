@@ -189,14 +189,15 @@ impl App {
             return tab_not_found(id, &params.tab_id);
         };
         self.state.collapse_to_single_session();
-        let session_id = self.state.sessions()[0].id.clone();
+        let Some(session_id) = self.state.session().map(|session| session.id.clone()) else {
+            return tab_not_found(id, &params.tab_id);
+        };
         let tab_id = self
             .public_tab_id(0, flat_tab_idx)
             .unwrap_or_else(|| format!("{}:{}", session_id, flat_tab_idx + 1));
         let Some(tab) = self
             .state
-            .sessions_mut()
-            .get_mut(0)
+            .session_mut()
             .and_then(|ws| ws.tabs.get_mut(flat_tab_idx))
         else {
             return tab_not_found(id, &params.tab_id);

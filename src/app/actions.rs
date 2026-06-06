@@ -586,7 +586,9 @@ impl AppState {
         self.collapse_to_single_session();
         self.active_session = Some(0);
         self.selected_session = 0;
-        let session_id = self.sessions()[0].id.clone();
+        let Some(session_id) = self.session().map(|session| session.id.clone()) else {
+            return false;
+        };
         if workspace_changed {
             crate::logging::session_focused(&session_id);
         }
@@ -600,7 +602,7 @@ impl AppState {
             self.pane_panel_scroll = 0;
         }
         self.ensure_session_visible(0);
-        if let Some(ws) = self.sessions_mut().get_mut(0) {
+        if let Some(ws) = self.session_mut() {
             ws.switch_tab(flat_tab_idx);
             let tab_id = format!("{}:{}", session_id, flat_tab_idx + 1);
             crate::logging::tab_focused(&session_id, &tab_id);

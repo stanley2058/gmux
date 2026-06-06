@@ -141,17 +141,21 @@ impl App {
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
         self.state.set_session(ws);
-        let idx = 0;
-        let root_pane = self.state.sessions()[idx].tabs[0].root_pane;
+        let (root_pane, session_id) = {
+            let session = self
+                .state
+                .session()
+                .expect("newly set session should be active");
+            (session.tabs[0].root_pane, session.id.clone())
+        };
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
-        let session_id = self.state.sessions()[idx].id.clone();
         crate::logging::session_created(&session_id, root_pane.raw());
         if should_focus {
-            self.state.focus_session(idx);
+            self.state.focus_session(0);
             self.state.mode = Mode::Terminal;
         }
         self.schedule_session_save();
-        Ok(idx)
+        Ok(0)
     }
 
     pub(super) fn collect_panes(&self) -> Vec<crate::api::schema::PaneInfo> {
