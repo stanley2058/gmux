@@ -275,6 +275,7 @@ impl App {
         command: &str,
         temp_files: Vec<std::path::PathBuf>,
     ) -> std::io::Result<()> {
+        self.state.collapse_to_single_session_workspace();
         let Some(ws_idx) = self.state.session_container_index() else {
             return Err(std::io::Error::other("no active session"));
         };
@@ -874,6 +875,25 @@ mod tests {
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
         assert_eq!(state.mode, Mode::Navigate);
+    }
+
+    #[tokio::test]
+    async fn split_pane_collapses_legacy_active_workspace_to_session_tab() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        state.default_shell = "/usr/bin/true".into();
+        state.active = Some(1);
+        state.selected = 1;
+        state.mode = Mode::Navigate;
+        let mut terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
+
+        state.split_pane(&mut terminal_runtimes, Direction::Horizontal);
+
+        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.workspaces[0].active_tab, 1);
+        assert_eq!(state.workspaces[0].tabs[1].layout.pane_count(), 2);
+        assert_eq!(state.mode, Mode::Terminal);
     }
 
     #[test]

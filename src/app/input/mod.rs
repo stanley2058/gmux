@@ -388,6 +388,7 @@ impl AppState {
         ));
 
         let previous_focus = self.current_pane_focus_target();
+        self.collapse_to_single_session_workspace();
         if let Some(ws_idx) = self.session_container_index() {
             let Some(ws) = self.workspaces.get_mut(ws_idx) else {
                 return;
