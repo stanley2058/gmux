@@ -96,14 +96,10 @@ impl AppState {
         if !self.focus_session_tab(ws_idx, tab_idx) {
             return false;
         }
-        let Some((ws_idx, tab_idx)) = self.pane_focus_target_indices(&target) else {
+        let Some((_ws_idx, tab_idx)) = self.pane_focus_target_indices(&target) else {
             return false;
         };
-        if let Some(tab) = self
-            .sessions_mut()
-            .get_mut(ws_idx)
-            .and_then(|ws| ws.tabs.get_mut(tab_idx))
-        {
+        if let Some(tab) = self.session_mut().and_then(|ws| ws.tabs.get_mut(tab_idx)) {
             tab.layout.focus_pane(pane_id);
             self.previous_pane_focus = previous;
             self.mark_session_dirty();
@@ -1013,7 +1009,7 @@ impl AppState {
             .into_iter()
             .collect::<Vec<_>>();
         let should_close_session = active
-            .and_then(|i| self.sessions_mut().get_mut(i))
+            .and_then(|_| self.session_mut())
             .is_some_and(|ws| ws.close_focused());
         if should_close_session {
             self.close_session();
@@ -1036,11 +1032,10 @@ impl AppState {
         }
         if let Some(ws_idx) = self.session_index() {
             let terminal_ids = self
-                .sessions()
-                .get(ws_idx)
+                .session()
                 .map(|ws| self.terminal_ids_for_tab(ws_idx, ws.active_tab))
                 .unwrap_or_default();
-            let Some(ws) = self.sessions_mut().get_mut(ws_idx) else {
+            let Some(ws) = self.session_mut() else {
                 return false;
             };
             let session_id = ws.id.clone();
