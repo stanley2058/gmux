@@ -469,8 +469,11 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 impl AppState {
     pub(crate) fn session_index(&self) -> Option<usize> {
         self.active_session
-            .filter(|idx| self.sessions().get(*idx).is_some())
-            .or_else(|| (!self.sessions().is_empty()).then_some(0))
+            .filter(|idx| {
+                self.session_entries()
+                    .any(|entry| entry.session_idx == *idx)
+            })
+            .or_else(|| self.session_entries().next().map(|entry| entry.session_idx))
     }
 
     pub(crate) fn has_session(&self) -> bool {
@@ -478,17 +481,21 @@ impl AppState {
     }
 
     pub(crate) fn session(&self) -> Option<&SessionUiState> {
-        self.session_index()
-            .and_then(|idx| self.sessions().get(idx))
+        self.session_index().and_then(|idx| {
+            self.session_entries()
+                .find(|entry| entry.session_idx == idx)
+                .map(|entry| entry.session)
+        })
     }
 
     pub(crate) fn session_mut(&mut self) -> Option<&mut SessionUiState> {
         let idx = self.session_index()?;
-        self.sessions_mut().get_mut(idx)
+        self.sessions.get_mut(idx)
     }
 
     pub(crate) fn collapse_to_single_session(&mut self) -> bool {
-        match self.sessions().len() {
+        let session_count = self.session_entries().count();
+        match session_count {
             0 => {
                 let changed = self.active_session.take().is_some() || self.selected_session != 0;
                 self.selected_session = 0;
@@ -506,19 +513,21 @@ impl AppState {
                 let active_ws_idx = self
                     .active_session
                     .unwrap_or(self.selected_session)
-                    .min(self.sessions().len().saturating_sub(1));
-                let active_tab = self
-                    .sessions()
-                    .iter()
-                    .enumerate()
-                    .take(active_ws_idx + 1)
-                    .fold(0, |offset, (idx, ws)| {
-                        if idx == active_ws_idx {
-                            offset + ws.active_tab.min(ws.tabs.len().saturating_sub(1))
-                        } else {
-                            offset + ws.tabs.len()
-                        }
-                    });
+                    .min(session_count.saturating_sub(1));
+                let active_tab =
+                    self.session_entries()
+                        .take(active_ws_idx + 1)
+                        .fold(0, |offset, entry| {
+                            if entry.session_idx == active_ws_idx {
+                                offset
+                                    + entry
+                                        .session
+                                        .active_tab
+                                        .min(entry.session.tabs.len().saturating_sub(1))
+                            } else {
+                                offset + entry.session.tabs.len()
+                            }
+                        });
 
                 let mut sessions = std::mem::take(self.sessions_mut());
                 let mut primary = sessions.remove(0);
