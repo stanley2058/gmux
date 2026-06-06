@@ -176,15 +176,11 @@ impl App {
         let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
-        let Some(terminal_id) = self
-            .state
-            .sessions()
-            .get(ws_idx)
-            .and_then(|ws| ws.terminal_id(pane_id))
-            .cloned()
+        let Some((_, pane_state)) = self.find_pane(pane_id).filter(|(idx, _)| *idx == ws_idx)
         else {
             return pane_not_found(id, &params.pane_id);
         };
+        let terminal_id = pane_state.attached_terminal_id.clone();
         let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
             return pane_not_found(id, &params.pane_id);
         };
@@ -347,14 +343,13 @@ impl App {
     fn canonicalize_pane_target(&mut self, public_pane_id: &str) -> Option<(usize, usize, PaneId)> {
         let (_, pane_id) = self.parse_pane_id(public_pane_id)?;
         self.state.collapse_to_single_session();
-        self.state
-            .sessions()
-            .iter()
-            .enumerate()
-            .find_map(|(ws_idx, ws)| {
-                ws.find_tab_index_for_pane(pane_id)
-                    .map(|tab_idx| (ws_idx, tab_idx, pane_id))
-            })
+        self.state.session_tab_entries().find_map(|entry| {
+            entry.tab.panes.contains_key(&pane_id).then_some((
+                entry.session_idx,
+                entry.tab_idx,
+                pane_id,
+            ))
+        })
     }
 
     fn focused_pane_info(&self) -> Option<PaneInfo> {
@@ -364,14 +359,14 @@ impl App {
     }
 
     fn pane_info_by_raw_id(&self, pane_id: crate::layout::PaneId) -> Option<PaneInfo> {
-        self.state
-            .sessions()
-            .iter()
-            .enumerate()
-            .find_map(|(ws_idx, ws)| {
-                ws.find_tab_index_for_pane(pane_id)
-                    .and_then(|_| self.pane_info(ws_idx, pane_id))
-            })
+        self.state.session_tab_entries().find_map(|entry| {
+            entry
+                .tab
+                .panes
+                .contains_key(&pane_id)
+                .then(|| self.pane_info(entry.session_idx, pane_id))
+                .flatten()
+        })
     }
 }
 

@@ -5,11 +5,13 @@ impl App {
         &self,
         pane_id: crate::layout::PaneId,
     ) -> Option<(usize, &crate::pane::PaneState)> {
-        self.state
-            .sessions()
-            .iter()
-            .enumerate()
-            .find_map(|(ws_idx, ws)| ws.pane_state(pane_id).map(|pane| (ws_idx, pane)))
+        self.state.session_tab_entries().find_map(|entry| {
+            entry
+                .tab
+                .panes
+                .get(&pane_id)
+                .map(|pane| (entry.session_idx, pane))
+        })
     }
 
     pub(super) fn public_tab_id(&self, ws_idx: usize, tab_idx: usize) -> Option<String> {
@@ -37,6 +39,18 @@ impl App {
             .session_tab_entries()
             .nth(idx)
             .map(|entry| (entry.session_idx, entry.tab_idx))
+    }
+
+    fn tab_exists(&self, ws_idx: usize, tab_idx: usize) -> bool {
+        self.state
+            .session_tab_entries()
+            .any(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
+    }
+
+    fn session_owns_pane(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> bool {
+        self.state
+            .session_tab_entries()
+            .any(|entry| entry.session_idx == ws_idx && entry.tab.panes.contains_key(&pane_id))
     }
 
     fn public_pane_number(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> Option<usize> {
@@ -85,14 +99,14 @@ impl App {
             let (session_raw, tab_raw) = rest.rsplit_once('_')?;
             let ws_idx = self.parse_session_id(session_raw)?;
             let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
-            self.state.sessions().get(ws_idx)?.tabs.get(tab_idx)?;
+            self.tab_exists(ws_idx, tab_idx).then_some(())?;
             return Some((ws_idx, tab_idx));
         }
 
         let (session_raw, tab_raw) = id.rsplit_once(':')?;
         let ws_idx = self.parse_session_id(session_raw)?;
         let tab_idx = tab_raw.parse::<usize>().ok()?.checked_sub(1)?;
-        self.state.sessions().get(ws_idx)?.tabs.get(tab_idx)?;
+        self.tab_exists(ws_idx, tab_idx).then_some(())?;
         Some((ws_idx, tab_idx))
     }
 
@@ -112,7 +126,7 @@ impl App {
             if let Some((session_raw, pane_raw)) = rest.rsplit_once('_') {
                 let ws_idx = self.parse_session_id(session_raw)?;
                 let pane_id = self.resolve_raw_pane_id(pane_raw.parse::<u32>().ok()?)?;
-                self.state.sessions().get(ws_idx)?.pane_state(pane_id)?;
+                self.session_owns_pane(ws_idx, pane_id).then_some(())?;
                 return Some((ws_idx, pane_id));
             }
 
