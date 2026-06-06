@@ -117,9 +117,10 @@ impl App {
     ) -> std::io::Result<usize> {
         if !self.state.workspaces.is_empty() {
             self.state.collapse_to_single_session_workspace();
-            return Ok(self.state.active.unwrap_or(0));
+            return Ok(self.state.session_container_index().unwrap_or(0));
         }
 
+        let should_focus = focus || self.state.session_container_index().is_none();
         let (rows, cols) = self.state.estimate_pane_size();
         let (ws, terminal, runtime) = Workspace::new(
             initial_cwd,
@@ -141,7 +142,7 @@ impl App {
         let workspace_id = self.state.workspaces[idx].id.clone();
         let root_pane = self.state.workspaces[idx].tabs[0].root_pane.raw();
         crate::logging::session_created(&workspace_id, root_pane);
-        if focus || self.state.active.is_none() {
+        if should_focus {
             self.state.switch_workspace(idx);
             self.state.mode = Mode::Terminal;
         }
@@ -174,7 +175,8 @@ impl App {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             number: tab_idx + 1,
             label: tab.display_name(),
-            focused: self.state.active == Some(ws_idx) && ws.active_tab == tab_idx,
+            focused: self.state.session_container_index() == Some(ws_idx)
+                && ws.active_tab == tab_idx,
             pane_count: tab.panes.len(),
         })
     }
@@ -209,11 +211,7 @@ impl App {
         let pane = ws.pane_state(pane_id)?;
         let terminal = self.state.terminals.get(&pane.attached_terminal_id)?;
         let tab_idx = ws.find_tab_index_for_pane(pane_id)?;
-        let focused = self.state.active == Some(ws_idx)
-            && ws.active_tab == tab_idx
-            && ws
-                .focused_pane_id()
-                .is_some_and(|focused| focused == pane_id);
+        let focused = self.state.is_active_pane(ws_idx, tab_idx, pane_id);
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
