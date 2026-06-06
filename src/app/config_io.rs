@@ -88,10 +88,10 @@ impl App {
 
     pub(super) fn save_pane_panel_scope(&mut self, scope: crate::app::state::PanePanelScope) {
         let value = match scope {
-            crate::app::state::PanePanelScope::CurrentWorkspace => {
+            crate::app::state::PanePanelScope::Current => {
                 crate::config::PanePanelScopeConfig::Current.as_str()
             }
-            crate::app::state::PanePanelScope::AllWorkspaces => {
+            crate::app::state::PanePanelScope::All => {
                 crate::config::PanePanelScopeConfig::All.as_str()
             }
         };

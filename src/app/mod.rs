@@ -173,8 +173,8 @@ fn pane_panel_scope_from_config(
     scope: crate::config::PanePanelScopeConfig,
 ) -> state::PanePanelScope {
     match scope {
-        crate::config::PanePanelScopeConfig::Current => state::PanePanelScope::CurrentWorkspace,
-        crate::config::PanePanelScopeConfig::All => state::PanePanelScope::AllWorkspaces,
+        crate::config::PanePanelScopeConfig::Current => state::PanePanelScope::Current,
+        crate::config::PanePanelScopeConfig::All => state::PanePanelScope::All,
     }
 }
 
@@ -1514,7 +1514,7 @@ mod tests {
 
         assert_eq!(
             app.state.pane_panel_scope,
-            state::PanePanelScope::CurrentWorkspace
+            state::PanePanelScope::Current
         );
     }
 
@@ -1661,7 +1661,7 @@ mod tests {
         );
         assert_eq!(
             app.state.pane_panel_scope,
-            state::PanePanelScope::CurrentWorkspace
+            state::PanePanelScope::Current
         );
         assert!(!app.state.redraw_on_focus_gained);
         assert_eq!(
@@ -2011,14 +2011,14 @@ mod tests {
         let mut app = test_app();
         assert_eq!(
             app.state.pane_panel_scope,
-            state::PanePanelScope::AllWorkspaces
+            state::PanePanelScope::All
         );
 
-        app.save_pane_panel_scope(state::PanePanelScope::CurrentWorkspace);
+        app.save_pane_panel_scope(state::PanePanelScope::Current);
 
         assert_eq!(
             app.state.pane_panel_scope,
-            state::PanePanelScope::CurrentWorkspace
+            state::PanePanelScope::Current
         );
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("pane_panel_scope = \"current\""));

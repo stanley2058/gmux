@@ -310,8 +310,8 @@ impl AppState {
 
                     if self.on_pane_panel_scope_toggle(mouse.column, mouse.row) {
                         self.pane_panel_scope = match self.pane_panel_scope {
-                            PanePanelScope::CurrentWorkspace => PanePanelScope::AllWorkspaces,
-                            PanePanelScope::AllWorkspaces => PanePanelScope::CurrentWorkspace,
+                            PanePanelScope::Current => PanePanelScope::All,
+                            PanePanelScope::All => PanePanelScope::Current,
                         };
                         self.pane_panel_scroll = 0;
                         self.mark_session_dirty();

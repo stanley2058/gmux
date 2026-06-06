@@ -431,7 +431,7 @@ impl AppState {
             self.mark_session_dirty();
             if matches!(
                 self.pane_panel_scope,
-                crate::app::state::PanePanelScope::CurrentWorkspace
+                crate::app::state::PanePanelScope::Current
             ) {
                 self.pane_panel_scroll = 0;
             }
@@ -474,7 +474,7 @@ impl AppState {
         if workspace_changed
             && matches!(
                 self.pane_panel_scope,
-                crate::app::state::PanePanelScope::CurrentWorkspace
+                crate::app::state::PanePanelScope::Current
             )
         {
             self.pane_panel_scroll = 0;
@@ -1943,7 +1943,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         state.next_pane_panel_entry();
         assert_eq!(state.active, Some(0));
@@ -1973,7 +1973,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         assert!(state.focus_pane_panel_entry(2));
 
@@ -1985,7 +1985,7 @@ mod tests {
     fn focus_pane_panel_entry_succeeds_for_already_focused_pane() {
         let mut state = app_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
-        state.pane_panel_scope = crate::app::state::PanePanelScope::AllWorkspaces;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         assert!(state.focus_pane_panel_entry(0));
         assert_eq!(state.active, Some(0));
@@ -2006,7 +2006,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.pane_panel_scope = crate::app::state::PanePanelScope::CurrentWorkspace;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::Current;
 
         state.next_pane_panel_entry();
 
@@ -2028,7 +2028,7 @@ mod tests {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Terminal;
-        state.pane_panel_scope = crate::app::state::PanePanelScope::CurrentWorkspace;
+        state.pane_panel_scope = crate::app::state::PanePanelScope::Current;
         state.workspaces[0].tabs[0].layout.focus_pane(root);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 

@@ -79,8 +79,8 @@ fn pane_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
 
 fn pane_panel_toggle_label(scope: PanePanelScope) -> &'static str {
     match scope {
-        PanePanelScope::CurrentWorkspace => "current",
-        PanePanelScope::AllWorkspaces => "all",
+        PanePanelScope::Current => "current",
+        PanePanelScope::All => "all",
     }
 }
 
@@ -124,7 +124,7 @@ fn pane_panel_entries_with_runtimes(
     };
 
     match app.pane_panel_scope {
-        PanePanelScope::CurrentWorkspace => {
+        PanePanelScope::Current => {
             let Some(ws_idx) = pane_panel_current_workspace_idx(app) else {
                 return Vec::new();
             };
@@ -142,7 +142,7 @@ fn pane_panel_entries_with_runtimes(
                 })
                 .collect()
         }
-        PanePanelScope::AllWorkspaces => app
+        PanePanelScope::All => app
             .workspaces
             .iter()
             .enumerate()
@@ -671,7 +671,7 @@ mod tests {
         app.ensure_test_terminals();
         app.active = Some(0);
         app.selected = 0;
-        app.pane_panel_scope = PanePanelScope::AllWorkspaces;
+        app.pane_panel_scope = PanePanelScope::All;
 
         let entries = pane_panel_entries(&app);
         assert_eq!(entries[0].primary_label, "one");
@@ -712,7 +712,7 @@ mod tests {
         terminal.cwd = stale_cwd;
         app.active = Some(0);
         app.selected = 0;
-        app.pane_panel_scope = PanePanelScope::AllWorkspaces;
+        app.pane_panel_scope = PanePanelScope::All;
 
         let (events, _) = tokio::sync::mpsc::channel(4);
         let runtime = crate::terminal::TerminalRuntime::spawn(

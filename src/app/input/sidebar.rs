@@ -509,7 +509,7 @@ mod tests {
             toggle.y,
         ));
 
-        assert_eq!(app.state.pane_panel_scope, PanePanelScope::CurrentWorkspace);
+        assert_eq!(app.state.pane_panel_scope, PanePanelScope::Current);
         assert_eq!(app.state.pane_panel_scroll, 0);
     }
 
@@ -526,7 +526,7 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
-        app.state.pane_panel_scope = PanePanelScope::AllWorkspaces;
+        app.state.pane_panel_scope = PanePanelScope::All;
 
         let detail_area = app.state.pane_panel_rect();
         app.handle_mouse(mouse(

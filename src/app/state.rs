@@ -661,9 +661,9 @@ pub(crate) enum CopyModeSelection {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PanePanelScope {
-    CurrentWorkspace,
+    Current,
     #[default]
-    AllWorkspaces,
+    All,
 }
 
 // ---------------------------------------------------------------------------
@@ -1304,7 +1304,7 @@ impl AppState {
             sidebar_width_source: SidebarWidthSource::ConfigDefault,
             sidebar_width_auto: false,
             sidebar_collapsed: false,
-            pane_panel_scope: PanePanelScope::AllWorkspaces,
+            pane_panel_scope: PanePanelScope::All,
             mouse_capture: true,
             right_click_passthrough_modifiers: None,
             right_click_passthrough: None,

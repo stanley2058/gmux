@@ -258,12 +258,12 @@ impl App {
 
     fn pane_panel_has_animation(&self) -> bool {
         match self.state.pane_panel_scope {
-            crate::app::state::PanePanelScope::CurrentWorkspace => self
+            crate::app::state::PanePanelScope::Current => self
                 .state
                 .active
                 .and_then(|idx| self.state.workspaces.get(idx))
                 .is_some_and(|ws| ws.has_working_pane(&self.state.terminals)),
-            crate::app::state::PanePanelScope::AllWorkspaces => self
+            crate::app::state::PanePanelScope::All => self
                 .state
                 .workspaces
                 .iter()
