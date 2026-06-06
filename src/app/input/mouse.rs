@@ -700,8 +700,11 @@ impl AppState {
             Some(crate::ui::MobileSwitcherTarget::NewTab) => {
                 open_new_tab_dialog(self);
             }
-            Some(crate::ui::MobileSwitcherTarget::Tab { ws_idx, tab_idx }) => {
-                self.focus_session_tab(ws_idx, tab_idx);
+            Some(crate::ui::MobileSwitcherTarget::Tab {
+                session_container_idx,
+                tab_idx,
+            }) => {
+                self.focus_session_tab(session_container_idx, tab_idx);
                 self.mode = Mode::Terminal;
             }
             Some(crate::ui::MobileSwitcherTarget::Menu(action_idx)) => {
