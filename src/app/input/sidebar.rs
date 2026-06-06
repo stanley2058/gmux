@@ -978,9 +978,9 @@ mod tests {
         assert_eq!(app.state.workspaces[2].id, selected_id);
         let snapshot = capture_snapshot(&app.state);
         let captured_names: Vec<_> = snapshot
-            .workspaces
+            .tabs
             .iter()
-            .map(|ws| ws.custom_name.clone().unwrap())
+            .map(|tab| tab.custom_name.clone().unwrap())
             .collect();
         assert_eq!(captured_names, vec!["b", "a", "c"]);
     }

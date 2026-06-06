@@ -176,9 +176,7 @@ pub fn load_history() -> Option<SessionHistorySnapshot> {
 mod tests {
     use super::*;
     use crate::app::state::PanePanelScope;
-    use crate::persist::snapshot::{
-        PaneHistorySnapshot, TabHistorySnapshot, WorkspaceHistorySnapshot,
-    };
+    use crate::persist::snapshot::{PaneHistorySnapshot, TabHistorySnapshot};
 
     fn temp_session_path(name: &str) -> PathBuf {
         let unique = format!(
@@ -204,7 +202,6 @@ mod tests {
             version: SNAPSHOT_VERSION,
             tabs: vec![],
             active_tab: 0,
-            workspaces: vec![],
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
@@ -223,17 +220,6 @@ mod tests {
                         lines: 1,
                     },
                 )]),
-            }],
-            workspaces: vec![WorkspaceHistorySnapshot {
-                tabs: vec![TabHistorySnapshot {
-                    panes: std::collections::HashMap::from([(
-                        0,
-                        PaneHistorySnapshot {
-                            ansi: secret.to_string(),
-                            lines: 1,
-                        },
-                    )]),
-                }],
             }],
         }
     }

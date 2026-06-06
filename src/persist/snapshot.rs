@@ -21,11 +21,6 @@ pub struct SessionSnapshot {
     pub tabs: Vec<TabSnapshot>,
     #[serde(default)]
     pub active_tab: usize,
-    /// Compatibility view for old in-memory tests and callers. New snapshots serialize tabs
-    /// directly and do not write workspace containers.
-    #[serde(default, skip_serializing)]
-    #[allow(dead_code)]
-    pub workspaces: Vec<WorkspaceSnapshot>,
     #[serde(default)]
     pub pane_panel_scope: crate::app::state::PanePanelScope,
     #[serde(default)]
@@ -47,9 +42,6 @@ pub struct SessionHistorySnapshot {
     pub version: u32,
     #[serde(default)]
     pub tabs: Vec<TabHistorySnapshot>,
-    #[serde(default, skip_serializing)]
-    #[allow(dead_code)]
-    pub workspaces: Vec<WorkspaceHistorySnapshot>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -182,10 +174,9 @@ struct RawSessionSnapshot {
 }
 
 fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> {
-    let (tabs, workspaces, active_tab) = if let Some(tabs) = raw.tabs {
+    let (tabs, active_tab) = if let Some(tabs) = raw.tabs {
         let active_tab = raw.active_tab.min(tabs.len().saturating_sub(1));
-        let workspaces = compatibility_workspaces_from_tabs(&tabs, active_tab);
-        (tabs, workspaces, active_tab)
+        (tabs, active_tab)
     } else {
         let workspaces = raw
             .workspaces
@@ -194,35 +185,17 @@ fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> 
             .collect::<Result<Vec<_>, _>>()?;
         let active_tab = active_tab_from_workspaces(&workspaces, raw.active);
         let tabs = flatten_workspace_tabs(&workspaces);
-        (tabs, workspaces, active_tab)
+        (tabs, active_tab)
     };
     Ok(SessionSnapshot {
         version: raw.version,
         tabs,
         active_tab,
-        workspaces,
         pane_panel_scope: raw.pane_panel_scope,
         sidebar_width: raw.sidebar_width,
         sidebar_section_split: raw.sidebar_section_split,
         collapsed_space_keys: raw.collapsed_space_keys,
     })
-}
-
-fn compatibility_workspaces_from_tabs(
-    tabs: &[TabSnapshot],
-    active_tab: usize,
-) -> Vec<WorkspaceSnapshot> {
-    if tabs.is_empty() {
-        return Vec::new();
-    }
-
-    vec![WorkspaceSnapshot {
-        id: None,
-        custom_name: None,
-        identity_cwd: identity_cwd_from_tabs(tabs),
-        tabs: tabs.to_vec(),
-        active_tab,
-    }]
 }
 
 fn flatten_workspace_tabs(workspaces: &[WorkspaceSnapshot]) -> Vec<TabSnapshot> {
@@ -259,20 +232,6 @@ fn active_tab_from_workspaces(
         offset += workspace.tabs.len();
     }
     0
-}
-
-fn identity_cwd_from_tabs(tabs: &[TabSnapshot]) -> PathBuf {
-    tabs.first()
-        .and_then(|tab| tab.root_pane)
-        .and_then(|pane_id| tabs.first()?.panes.get(&pane_id))
-        .map(|pane| pane.cwd.clone())
-        .or_else(|| {
-            tabs.iter()
-                .flat_map(|tab| tab.panes.values())
-                .next()
-                .map(|pane| pane.cwd.clone())
-        })
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()))
 }
 
 fn migrate_workspace(raw: serde_json::Value) -> Result<WorkspaceSnapshot, String> {
@@ -346,7 +305,6 @@ pub fn capture(
         version: SNAPSHOT_VERSION,
         tabs,
         active_tab,
-        workspaces,
         pane_panel_scope,
         sidebar_width: Some(sidebar_width),
         sidebar_section_split: Some(sidebar_section_split),
@@ -443,7 +401,6 @@ pub fn capture_history(
     SessionHistorySnapshot {
         version: SNAPSHOT_VERSION,
         tabs,
-        workspaces,
     }
 }
 
@@ -521,25 +478,17 @@ pub(super) fn parse_history_snapshot(content: &str) -> Result<SessionHistorySnap
             raw.version, SNAPSHOT_VERSION
         ));
     }
-    let (tabs, workspaces) = if let Some(tabs) = raw.tabs {
-        let workspaces = if tabs.is_empty() {
-            Vec::new()
-        } else {
-            vec![WorkspaceHistorySnapshot { tabs: tabs.clone() }]
-        };
-        (tabs, workspaces)
+    let tabs = if let Some(tabs) = raw.tabs {
+        tabs
     } else {
-        let tabs = raw
-            .workspaces
+        raw.workspaces
             .iter()
             .flat_map(|workspace| workspace.tabs.clone())
-            .collect();
-        (tabs, raw.workspaces)
+            .collect()
     };
     Ok(SessionHistorySnapshot {
         version: raw.version,
         tabs,
-        workspaces,
     })
 }
 
@@ -630,7 +579,6 @@ mod tests {
             version: SNAPSHOT_VERSION,
             tabs: vec![],
             active_tab: 0,
-            workspaces: vec![],
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
@@ -638,7 +586,7 @@ mod tests {
         };
         let json = serde_json::to_string(&snap).unwrap();
         let restored = parse_snapshot(&json).unwrap();
-        assert!(restored.workspaces.is_empty());
+        assert!(restored.tabs.is_empty());
         assert_eq!(restored.active_tab, 0);
         assert_eq!(restored.sidebar_width, Some(26));
         assert_eq!(restored.sidebar_section_split, Some(0.5));
@@ -702,13 +650,6 @@ mod tests {
         let snap = SessionSnapshot {
             tabs: tabs.clone(),
             active_tab: 0,
-            workspaces: vec![WorkspaceSnapshot {
-                id: Some("wproj".to_string()),
-                custom_name: Some("pi-mono".to_string()),
-                identity_cwd: PathBuf::from("/home/can/Projects/gmux"),
-                tabs,
-                active_tab: 0,
-            }],
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
@@ -721,20 +662,13 @@ mod tests {
         assert!(json.contains("\"tabs\""));
         let restored = parse_snapshot(&json).unwrap();
 
-        assert_eq!(restored.workspaces.len(), 1);
-        assert_eq!(restored.workspaces[0].id.as_deref(), None);
-        assert_eq!(restored.workspaces[0].custom_name.as_deref(), None);
         assert_eq!(restored.tabs.len(), 1);
-        assert_eq!(restored.workspaces[0].tabs.len(), 1);
-        assert_eq!(restored.workspaces[0].tabs[0].panes.len(), 2);
+        assert_eq!(restored.tabs[0].panes.len(), 2);
         assert_eq!(
-            restored.workspaces[0].tabs[0].panes[&0].cwd,
+            restored.tabs[0].panes[&0].cwd,
             PathBuf::from("/home/can/Projects/gmux")
         );
-        assert_eq!(
-            restored.workspaces[0].tabs[0].panes[&1].label.as_deref(),
-            Some("website")
-        );
+        assert_eq!(restored.tabs[0].panes[&1].label.as_deref(), Some("website"));
         assert_eq!(restored.pane_panel_scope, PanePanelScope::CurrentWorkspace);
         assert_eq!(restored.sidebar_width, Some(26));
         assert_eq!(restored.sidebar_section_split, Some(0.5));
@@ -745,14 +679,15 @@ mod tests {
         let snap = parse_snapshot(session_fixture("current-gmux")).unwrap();
 
         assert_eq!(snap.version, 3);
-        assert_eq!(snap.workspaces.len(), 2);
+        assert_eq!(snap.tabs.len(), 3);
         assert_eq!(snap.active_tab, 0);
         assert_eq!(snap.pane_panel_scope, PanePanelScope::AllWorkspaces);
         assert_eq!(snap.sidebar_width, None);
         assert_eq!(snap.sidebar_section_split, None);
-        assert_eq!(snap.workspaces[0].tabs.len(), 2);
+        assert_eq!(snap.tabs[0].custom_name.as_deref(), Some("separate-pane"));
+        assert_eq!(snap.tabs[1].custom_name.as_deref(), Some("p"));
         assert_eq!(
-            snap.workspaces[1].identity_cwd,
+            snap.tabs[2].panes[&3].cwd,
             PathBuf::from("/home/test/projects/project-b")
         );
     }
@@ -762,11 +697,11 @@ mod tests {
         let snap = parse_snapshot(session_fixture("current-gmux-dev")).unwrap();
 
         assert_eq!(snap.version, 3);
-        assert_eq!(snap.workspaces.len(), 2);
+        assert_eq!(snap.tabs.len(), 3);
         assert_eq!(snap.pane_panel_scope, PanePanelScope::CurrentWorkspace);
         assert_eq!(snap.sidebar_section_split, Some(0.4));
-        assert_eq!(snap.workspaces[0].active_tab, 1);
-        assert_eq!(snap.workspaces[1].tabs[0].panes.len(), 2);
+        assert_eq!(snap.active_tab, 1);
+        assert_eq!(snap.tabs[2].panes.len(), 2);
     }
 
     #[test]
@@ -825,22 +760,20 @@ mod tests {
     #[test]
     fn legacy_workspace_snapshot_migrates_to_single_tab() {
         let snap = parse_snapshot(session_fixture("legacy-pre-tabs-v2")).unwrap();
-        let ws = &snap.workspaces[0];
+        let tab = &snap.tabs[0];
 
         assert_eq!(snap.version, 2);
-        assert_eq!(snap.workspaces.len(), 1);
-        assert_eq!(ws.custom_name.as_deref(), Some("legacy"));
-        assert_eq!(ws.identity_cwd, PathBuf::from("/tmp/pion"));
-        assert_eq!(ws.active_tab, 0);
-        assert_eq!(ws.tabs.len(), 1);
-        assert_eq!(ws.tabs[0].focused, Some(1));
-        assert_eq!(ws.tabs[0].root_pane, Some(0));
-        assert_eq!(ws.tabs[0].panes[&0].cwd, PathBuf::from("/tmp/pion"));
-        assert_eq!(ws.tabs[0].panes[&1].cwd, PathBuf::from("/tmp/gmux"));
+        assert_eq!(snap.tabs.len(), 1);
+        assert_eq!(tab.custom_name.as_deref(), Some("legacy"));
+        assert_eq!(snap.active_tab, 0);
+        assert_eq!(tab.focused, Some(1));
+        assert_eq!(tab.root_pane, Some(0));
+        assert_eq!(tab.panes[&0].cwd, PathBuf::from("/tmp/pion"));
+        assert_eq!(tab.panes[&1].cwd, PathBuf::from("/tmp/gmux"));
     }
 
     #[test]
-    fn capture_contract_tracks_workspace_order_active_and_selected() {
+    fn capture_contract_tracks_flattened_workspace_tab_order() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
         state.active = Some(1);
         state.selected = 2;
@@ -848,13 +781,12 @@ mod tests {
         state.move_workspace(1, 0);
 
         let snapshot = capture_from_state(&state);
-        let ids: Vec<_> = state.workspaces.iter().map(|ws| ws.id.clone()).collect();
-        let captured_ids: Vec<_> = snapshot
-            .workspaces
+        let names: Vec<_> = snapshot
+            .tabs
             .iter()
-            .map(|ws| ws.id.clone().unwrap())
+            .map(|tab| tab.custom_name.as_deref())
             .collect();
-        assert_eq!(captured_ids, ids);
+        assert_eq!(names, vec![Some("b"), Some("a"), Some("c")]);
         assert_eq!(snapshot.active_tab, 0);
     }
 
@@ -867,11 +799,9 @@ mod tests {
         state.workspaces[0].tabs[0].set_custom_name("main".into());
 
         let snapshot = capture_from_state(&state);
-        let workspace = &snapshot.workspaces[0];
-        assert_eq!(workspace.custom_name.as_deref(), Some("renamed-workspace"));
-        assert_eq!(workspace.active_tab, second_tab);
-        assert_eq!(workspace.tabs[0].custom_name.as_deref(), Some("main"));
-        assert_eq!(workspace.tabs[1].custom_name.as_deref(), Some("logs"));
+        assert_eq!(snapshot.active_tab, second_tab);
+        assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("main"));
+        assert_eq!(snapshot.tabs[1].custom_name.as_deref(), Some("logs"));
     }
 
     #[test]
@@ -883,8 +813,8 @@ mod tests {
         state.close_selected_workspace();
 
         let snapshot = capture_from_state(&state);
-        assert_eq!(snapshot.workspaces.len(), 1);
-        assert_eq!(snapshot.workspaces[0].custom_name.as_deref(), Some("one"));
+        assert_eq!(snapshot.tabs.len(), 1);
+        assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("one"));
         assert_eq!(snapshot.active_tab, 0);
     }
 
@@ -912,7 +842,7 @@ mod tests {
         state.toggle_zoom();
 
         let snapshot = capture_from_state(&state);
-        let tab = &snapshot.workspaces[0].tabs[0];
+        let tab = &snapshot.tabs[0];
         assert!(matches!(tab.layout, LayoutSnapshot::Split { .. }));
         assert_eq!(tab.focused, Some(second.raw()));
         assert_eq!(tab.root_pane, Some(root.raw()));
@@ -930,8 +860,8 @@ mod tests {
         state.navigate_pane(NavDirection::Right);
 
         let snapshot = capture_from_state(&state);
-        assert_eq!(snapshot.workspaces[0].tabs[0].focused, Some(second.raw()));
-        assert_ne!(snapshot.workspaces[0].tabs[0].focused, Some(root.raw()));
+        assert_eq!(snapshot.tabs[0].focused, Some(second.raw()));
+        assert_ne!(snapshot.tabs[0].focused, Some(root.raw()));
     }
 
     #[test]
@@ -944,8 +874,8 @@ mod tests {
         state.resize_pane(NavDirection::Right);
 
         let after = capture_from_state(&state);
-        let before_ratio = root_split_ratio(&before.workspaces[0].tabs[0]).unwrap();
-        let after_ratio = root_split_ratio(&after.workspaces[0].tabs[0]).unwrap();
+        let before_ratio = root_split_ratio(&before.tabs[0]).unwrap();
+        let after_ratio = root_split_ratio(&after.tabs[0]).unwrap();
         assert_ne!(before_ratio, after_ratio);
     }
 
@@ -958,10 +888,9 @@ mod tests {
         state.close_tab();
 
         let snapshot = capture_from_state(&state);
-        let workspace = &snapshot.workspaces[0];
-        assert_eq!(workspace.tabs.len(), 1);
-        assert_eq!(workspace.active_tab, 0);
-        assert!(workspace.tabs[0].custom_name.is_none());
+        assert_eq!(snapshot.tabs.len(), 1);
+        assert_eq!(snapshot.active_tab, 0);
+        assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("one"));
     }
 
     #[test]
@@ -972,7 +901,7 @@ mod tests {
         state.close_pane();
 
         let snapshot = capture_from_state(&state);
-        let tab = &snapshot.workspaces[0].tabs[0];
+        let tab = &snapshot.tabs[0];
         assert_eq!(tab.panes.len(), 1);
         assert!(matches!(tab.layout, LayoutSnapshot::Pane(_)));
         assert!(!tab.zoomed);
@@ -995,9 +924,7 @@ mod tests {
         state.terminals.get_mut(&second_terminal_id).unwrap().cwd = PathBuf::from("/tmp/gmux");
 
         let snapshot = capture_from_state(&state);
-        let workspace = &snapshot.workspaces[0];
-        let tab = &workspace.tabs[0];
-        assert_eq!(workspace.identity_cwd, PathBuf::from("/tmp/pion"));
+        let tab = &snapshot.tabs[0];
         assert_eq!(tab.panes[&root.raw()].cwd, PathBuf::from("/tmp/pion"));
         assert_eq!(tab.panes[&second.raw()].cwd, PathBuf::from("/tmp/gmux"));
     }
@@ -1026,7 +953,7 @@ mod tests {
         assert!(!encoded.contains("\"history\""));
 
         let history_snapshot = capture_history_from_state_with_runtimes(&state, &terminal_runtimes);
-        let history = &history_snapshot.workspaces[0].tabs[0].panes[&root.raw()];
+        let history = &history_snapshot.tabs[0].panes[&root.raw()];
 
         assert!(history.ansi.contains("alpha"));
         assert!(history.ansi.contains("gamma"));
@@ -1070,7 +997,7 @@ mod tests {
         assert!(!encoded.contains("second-pane-history"));
 
         let history_snapshot = capture_history_from_state_with_runtimes(&state, &terminal_runtimes);
-        let tab = &history_snapshot.workspaces[0].tabs[0];
+        let tab = &history_snapshot.tabs[0];
         let first_history = &tab.panes[&first.raw()];
         let second_history = &tab.panes[&second.raw()];
 
@@ -1136,25 +1063,6 @@ mod tests {
                 root_pane: Some(0),
             }],
             active_tab: 0,
-            workspaces: vec![WorkspaceSnapshot {
-                id: Some("test-ws".to_string()),
-                custom_name: Some("fallback test".to_string()),
-                identity_cwd: PathBuf::from("/tmp"),
-                tabs: vec![TabSnapshot {
-                    custom_name: None,
-                    layout: LayoutSnapshot::Split {
-                        direction: DirectionSnapshot::Horizontal,
-                        ratio: 0.5,
-                        first: Box::new(LayoutSnapshot::Pane(0)),
-                        second: Box::new(LayoutSnapshot::Pane(1)),
-                    },
-                    panes,
-                    zoomed: false,
-                    focused: Some(0),
-                    root_pane: Some(0),
-                }],
-                active_tab: 0,
-            }],
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
@@ -1163,9 +1071,9 @@ mod tests {
 
         let json = serde_json::to_string(&snap).unwrap();
         let restored = parse_snapshot(&json).unwrap();
-        assert_eq!(restored.workspaces.len(), 1);
+        assert_eq!(restored.tabs.len(), 1);
         assert_eq!(
-            restored.workspaces[0].tabs[0].panes[&0].cwd,
+            restored.tabs[0].panes[&0].cwd,
             PathBuf::from("/tmp/this-directory-does-not-exist-for-gmux-test")
         );
     }

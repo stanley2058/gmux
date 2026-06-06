@@ -758,17 +758,6 @@ mod tests {
                     },
                 )]),
             }],
-            workspaces: vec![super::super::snapshot::WorkspaceHistorySnapshot {
-                tabs: vec![super::super::snapshot::TabHistorySnapshot {
-                    panes: HashMap::from([(
-                        0,
-                        super::super::snapshot::PaneHistorySnapshot {
-                            ansi: "RESTORED_HISTORY\r\n".to_string(),
-                            lines: 1,
-                        },
-                    )]),
-                }],
-            }],
         };
         let tabs = vec![TabSnapshot {
             custom_name: None,
@@ -782,13 +771,6 @@ mod tests {
             version: super::super::snapshot::SNAPSHOT_VERSION,
             tabs: tabs.clone(),
             active_tab: 0,
-            workspaces: vec![super::super::snapshot::WorkspaceSnapshot {
-                id: Some("workspace".into()),
-                custom_name: None,
-                identity_cwd: cwd,
-                tabs,
-                active_tab: 0,
-            }],
             pane_panel_scope: crate::app::state::PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
