@@ -447,7 +447,7 @@ impl App {
 
         let last_focus = state.session_container_index().and_then(|idx| {
             state
-                .workspaces
+                .session_containers()
                 .get(idx)
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });

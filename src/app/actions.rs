@@ -740,7 +740,7 @@ impl AppState {
 
         if self.session_container_index() == Some(ws_idx)
             && self
-                .workspaces
+                .session_containers()
                 .get(ws_idx)
                 .and_then(crate::workspace::Workspace::focused_pane_id)
                 == Some(pane_id)
@@ -1011,7 +1011,7 @@ impl AppState {
             return;
         };
         if let Some(tab) = self
-            .workspaces
+            .session_containers_mut()
             .get_mut(ws_idx)
             .and_then(|ws| ws.tabs.get_mut(tab_idx))
         {
