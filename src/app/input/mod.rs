@@ -96,7 +96,7 @@ impl App {
         }
         if let Some(rt) = self
             .state
-            .focused_runtime_in_session_container(&self.terminal_runtimes)
+            .focused_runtime_in_session(&self.terminal_runtimes)
         {
             let _ = rt.send_paste(text).await;
         }

@@ -111,7 +111,7 @@ impl App {
     fn pass_through_key_to_focused_pane(&mut self, key: TerminalKey) -> bool {
         let Some(rt) = self
             .state
-            .focused_runtime_in_session_container(&self.terminal_runtimes)
+            .focused_runtime_in_session(&self.terminal_runtimes)
         else {
             return false;
         };
@@ -244,7 +244,7 @@ impl App {
             .ok_or_else(|| std::io::Error::other("no focused pane"))?;
         let scrollback = self
             .state
-            .runtime_for_pane_in_session_container(&self.terminal_runtimes, ws_idx, pane_id)
+            .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)
             .ok_or_else(|| std::io::Error::other("focused pane has no scrollback runtime"))?
             .recent_text(usize::MAX);
 

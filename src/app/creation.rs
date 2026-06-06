@@ -239,7 +239,7 @@ impl App {
         pane_id: crate::layout::PaneId,
     ) -> Option<&crate::terminal::TerminalRuntime> {
         self.state
-            .runtime_for_pane_in_session_container(&self.terminal_runtimes, ws_idx, pane_id)
+            .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)
     }
 
     pub(super) fn lookup_runtime_sender(
@@ -248,6 +248,6 @@ impl App {
         pane_id: crate::layout::PaneId,
     ) -> Option<&crate::terminal::TerminalRuntime> {
         self.state
-            .runtime_for_pane_in_session_container(&self.terminal_runtimes, ws_idx, pane_id)
+            .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)
     }
 }

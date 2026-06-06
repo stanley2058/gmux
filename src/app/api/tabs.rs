@@ -91,7 +91,7 @@ impl App {
         let cwd = cwd.map(PathBuf::from).unwrap_or_else(|| {
             let follow_cwd = self
                 .state
-                .focused_runtime_in_session_container(&self.terminal_runtimes)
+                .focused_runtime_in_session(&self.terminal_runtimes)
                 .and_then(|rt| rt.cwd());
             self.resolve_new_terminal_cwd(follow_cwd)
         });

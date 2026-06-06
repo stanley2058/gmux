@@ -47,7 +47,7 @@ impl AppState {
         }
 
         let cursor = self
-            .runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+            .runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)
             .and_then(|rt| rt.cursor_state(info.inner_rect, true))
             .filter(|cursor| cursor.visible)
             .map(|cursor| {
@@ -483,7 +483,7 @@ impl AppState {
             info.inner_rect.width.saturating_sub(1),
             metrics,
         );
-        self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, copy_mode.pane_id)?
+        self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, copy_mode.pane_id)?
             .extract_selection(&row_selection)
     }
 
@@ -720,7 +720,7 @@ mod tests {
     fn copy_mode_viewport_top_row(app: &App, pane_id: crate::layout::PaneId) -> usize {
         let metrics = app
             .state
-            .runtime_for_pane_in_session_container(&app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
             .expect("copy mode scroll metrics");
         metrics
@@ -730,7 +730,7 @@ mod tests {
 
     fn copy_mode_offset_from_bottom(app: &App, pane_id: crate::layout::PaneId) -> usize {
         app.state
-            .runtime_for_pane_in_session_container(&app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
             .expect("copy mode scroll metrics")
             .offset_from_bottom
@@ -741,7 +741,7 @@ mod tests {
         pane_id: crate::layout::PaneId,
     ) -> crate::pane::ScrollMetrics {
         app.state
-            .runtime_for_pane_in_session_container(&app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
             .expect("copy mode scroll metrics")
     }

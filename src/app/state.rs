@@ -1120,7 +1120,7 @@ impl AppState {
     ) -> bool {
         self.mode == Mode::Terminal
             && self
-                .focused_runtime_in_session_container(terminal_runtimes)
+                .focused_runtime_in_session(terminal_runtimes)
                 .and_then(crate::terminal::TerminalRuntime::input_state)
                 .is_some_and(crate::pane::InputState::mouse_reporting_enabled)
     }
@@ -1170,8 +1170,8 @@ impl AppState {
         self.session_tab_entries().count()
     }
 
-    /// Returns the runtime for a pane in the indexed session container.
-    pub(crate) fn runtime_for_pane_in_session_container<'a>(
+    /// Returns the runtime for a pane in the indexed session.
+    pub(crate) fn runtime_for_pane_in_session_at<'a>(
         &'a self,
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         ws_idx: usize,
@@ -1223,22 +1223,22 @@ impl AppState {
         })
     }
 
-    pub(crate) fn focused_runtime_in_session_container_at<'a>(
+    pub(crate) fn focused_runtime_in_session_at<'a>(
         &'a self,
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         ws_idx: usize,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
         let ws = self.session_containers().get(ws_idx)?;
         let pane_id = ws.focused_pane_id()?;
-        self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+        self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)
     }
 
-    pub(crate) fn focused_runtime_in_session_container<'a>(
+    pub(crate) fn focused_runtime_in_session<'a>(
         &'a self,
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
         let ws_idx = self.session_index()?;
-        self.focused_runtime_in_session_container_at(terminal_runtimes, ws_idx)
+        self.focused_runtime_in_session_at(terminal_runtimes, ws_idx)
     }
 
     pub fn is_active_pane(

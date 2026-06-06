@@ -794,7 +794,7 @@ impl AppState {
         self.pane_panel_scroll = self.pane_panel_scroll.min(max_scroll);
     }
 
-    pub(crate) fn terminal_ids_for_session_container(
+    pub(crate) fn terminal_ids_for_session_at(
         &self,
         ws_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
@@ -866,7 +866,7 @@ impl AppState {
         self.mark_session_dirty();
 
         let mut terminal_ids = Vec::new();
-        terminal_ids.extend(self.terminal_ids_for_session_container(close_idx));
+        terminal_ids.extend(self.terminal_ids_for_session_at(close_idx));
         if let Some(session_id) = self
             .session_containers()
             .get(close_idx)
@@ -1113,8 +1113,7 @@ impl AppState {
         }
 
         // Leave mouse input to terminal apps that requested it.
-        let Some(rt) =
-            self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
+        let Some(rt) = self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)
         else {
             return false;
         };
@@ -1174,7 +1173,7 @@ impl AppState {
             return None;
         }
 
-        let rt = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)?;
+        let rt = self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)?;
         let screen_col = info.inner_rect.x.saturating_add(col);
         let screen_row = info.inner_rect.y.saturating_add(viewport_row);
         if let Some((_, _, uri)) = rt
@@ -1211,7 +1210,7 @@ impl AppState {
         };
 
         let text = self
-            .runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, sel.pane_id)
+            .runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, sel.pane_id)
             .and_then(|rt| rt.extract_selection(&sel));
         if let Some(text) = text {
             if !text.is_empty() {
@@ -1546,7 +1545,7 @@ impl AppState {
         }
 
         let pane_terminal_id = self.terminal_id_for_pane(ws_idx, pane_id);
-        let workspace_terminal_ids = self.terminal_ids_for_session_container(ws_idx);
+        let session_terminal_ids = self.terminal_ids_for_session_at(ws_idx);
         self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
         let should_close_session = {
             let ws = &mut self.session_containers_mut()[ws_idx];
@@ -1556,7 +1555,7 @@ impl AppState {
 
         if should_close_session {
             self.session_containers_mut().remove(ws_idx);
-            self.remove_unattached_terminal_ids(workspace_terminal_ids);
+            self.remove_unattached_terminal_ids(session_terminal_ids);
             self.active = None;
             self.selected = 0;
             if self.mode == Mode::Terminal {

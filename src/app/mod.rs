@@ -1099,7 +1099,7 @@ impl App {
                     if self.state.mode == Mode::Terminal {
                         if let Some(runtime) = self
                             .state
-                            .focused_runtime_in_session_container(&self.terminal_runtimes)
+                            .focused_runtime_in_session(&self.terminal_runtimes)
                         {
                             let _ = runtime.try_send_bytes(bytes::Bytes::from(
                                 if runtime
