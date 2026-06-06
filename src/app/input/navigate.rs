@@ -167,7 +167,7 @@ impl App {
 
         let mut cwd = None;
         if let Some(ws_idx) = self.state.session_index() {
-            if let Some(workspace) = self.state.sessions().get(ws_idx) {
+            if let Some(workspace) = self.state.session() {
                 let tab_idx = workspace.active_tab_index();
                 if let Some(tab_id) = self.public_tab_id(ws_idx, tab_idx) {
                     env.push(("GMUX_ACTIVE_TAB_ID".to_string(), tab_id));
@@ -232,12 +232,11 @@ impl App {
     fn open_focused_scrollback_in_editor(&mut self) -> std::io::Result<()> {
         let ws_idx = self
             .state
-            .active_session
+            .session_index()
             .ok_or_else(|| std::io::Error::other("no active session"))?;
         let ws = self
             .state
-            .sessions()
-            .get(ws_idx)
+            .session()
             .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         let pane_id = ws
             .focused_pane_id()
@@ -288,8 +287,7 @@ impl App {
         let (session_id, tab_idx, previous_focus, previous_zoomed, cwd) = {
             let ws = self
                 .state
-                .sessions()
-                .get(ws_idx)
+                .session()
                 .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
             let tab_idx = ws.active_tab_index();
             let previous_focus = ws
@@ -310,8 +308,7 @@ impl App {
         let host_terminal_theme = self.state.host_terminal_theme;
         let new_pane = self
             .state
-            .sessions_mut()
-            .get_mut(ws_idx)
+            .session_mut()
             .ok_or_else(|| std::io::Error::other("active session state disappeared"))?
             .split_focused_command(
                 Direction::Horizontal,
@@ -338,8 +335,7 @@ impl App {
         }
         let ws = self
             .state
-            .sessions_mut()
-            .get_mut(ws_idx)
+            .session_mut()
             .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         ws.active_tab_mut()
             .expect("workspace must have an active tab")

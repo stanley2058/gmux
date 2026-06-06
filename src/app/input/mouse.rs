@@ -839,10 +839,7 @@ impl AppState {
             return Some(0);
         }
         if self.on_tab_scroll_right_button(col, row) {
-            return self
-                .active_session
-                .and_then(|idx| self.sessions().get(idx))
-                .map(|ws| ws.tabs.len());
+            return self.session().map(|ws| ws.tabs.len());
         }
 
         let left_edge = if first_idx == 0 {
@@ -851,8 +848,7 @@ impl AppState {
             self.view.tab_scroll_left_hit_area.x + self.view.tab_scroll_left_hit_area.width
         };
         let right_edge = if self
-            .active_session
-            .and_then(|idx| self.sessions().get(idx))
+            .session()
             .is_some_and(|ws| last_idx + 1 >= ws.tabs.len())
         {
             last_rect.x + last_rect.width
