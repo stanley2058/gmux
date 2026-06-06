@@ -356,8 +356,8 @@ fn nav_direction_from_api(direction: PaneDirection) -> NavDirection {
 
 impl App {
     fn focused_pane_info(&self) -> Option<PaneInfo> {
-        let ws_idx = self.state.active?;
-        let pane_id = self.state.workspaces.get(ws_idx)?.focused_pane_id()?;
+        let ws_idx = self.state.session_container_index()?;
+        let pane_id = self.state.session_container()?.focused_pane_id()?;
         self.pane_info(ws_idx, pane_id)
     }
 }

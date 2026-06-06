@@ -36,8 +36,8 @@ impl App {
 
     pub(super) fn handle_tab_create(&mut self, id: String, params: TabCreateParams) -> String {
         let TabCreateParams { cwd, focus, label } = params;
-        let ws_idx = if let Some(active) = self.state.active {
-            active
+        let ws_idx = if let Some(ws_idx) = self.state.session_container_index() {
+            ws_idx
         } else {
             let cwd = cwd
                 .map(PathBuf::from)
