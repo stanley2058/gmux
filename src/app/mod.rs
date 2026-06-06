@@ -261,7 +261,8 @@ impl App {
                 crate::logging::session_restored(0, "empty");
                 (Vec::new(), None, 0)
             } else {
-                crate::logging::session_restored(ws.len(), "ok");
+                let restored_tabs = ws.first().map(|ws| ws.tabs.len()).unwrap_or(0);
+                crate::logging::session_restored(restored_tabs, "ok");
                 (ws, Some(0), 0)
             }
         } else {
