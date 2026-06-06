@@ -1502,6 +1502,7 @@ impl AppState {
     }
 
     fn handle_pane_died(&mut self, pane_id: PaneId) {
+        self.collapse_to_single_session_workspace();
         let ws_idx = self
             .workspaces
             .iter()
@@ -1533,21 +1534,10 @@ impl AppState {
         if should_close_workspace {
             self.workspaces.remove(ws_idx);
             self.remove_unattached_terminal_ids(workspace_terminal_ids);
-            if self.workspaces.is_empty() {
-                self.active = None;
-                self.selected = 0;
-                if self.mode == Mode::Terminal {
-                    self.mode = Mode::Navigate;
-                }
-            } else {
-                if let Some(active) = self.active {
-                    if active >= self.workspaces.len() {
-                        self.active = Some(self.workspaces.len() - 1);
-                    }
-                }
-                if self.selected >= self.workspaces.len() {
-                    self.selected = self.workspaces.len() - 1;
-                }
+            self.active = None;
+            self.selected = 0;
+            if self.mode == Mode::Terminal {
+                self.mode = Mode::Navigate;
             }
         } else {
             self.remove_unattached_terminal_ids(pane_terminal_id);
@@ -2375,14 +2365,18 @@ mod tests {
     }
 
     #[test]
-    fn pane_died_last_pane_removes_workspace() {
+    fn pane_died_last_pane_in_tab_removes_tab_after_session_collapse() {
         let mut state = app_with_workspaces(&["a", "b"]);
         let pane_id = *state.workspaces[0].panes.keys().next().unwrap();
 
         state.handle_pane_died(pane_id);
 
         assert_eq!(state.workspaces.len(), 1);
-        assert_eq!(state.workspaces[0].custom_name.as_deref(), Some("b"));
+        assert_eq!(state.workspaces[0].tabs.len(), 1);
+        assert_eq!(
+            state.workspaces[0].tabs[0].custom_name.as_deref(),
+            Some("b")
+        );
     }
 
     #[test]
