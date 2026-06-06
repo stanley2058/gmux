@@ -114,16 +114,7 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
     let settings = prefix_rhs_label(&kb.settings);
     let goto = prefix_rhs_label(&kb.goto);
     let detach = prefix_rhs_label(&kb.detach);
-    let session_nav = match (
-        kb.navigate.workspace_up.label(),
-        kb.navigate.workspace_down.label(),
-    ) {
-        (Some(up), Some(down)) => Some(format!("{up} / {down}")),
-        (Some(up), None) => Some(up),
-        (None, Some(down)) => Some(down),
-        (None, None) => None,
-    };
-    let mut spans = vec![
+    let spans = vec![
         Span::styled(" NAVIGATE ", mode_style),
         Span::raw(" "),
         Span::styled("esc", key),
@@ -151,10 +142,6 @@ pub(super) fn render_navigate_overlay(app: &AppState, frame: &mut Frame, area: R
         Span::styled(detach, key),
         Span::styled(" detach", dim),
     ];
-    if let Some(session_nav) = session_nav {
-        spans.insert(4, Span::styled(" session  ", dim));
-        spans.insert(4, Span::styled(session_nav, key));
-    }
     let line = Line::from(spans);
 
     let overlay_y = area.y + area.height.saturating_sub(1);

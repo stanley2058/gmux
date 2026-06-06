@@ -247,8 +247,6 @@ pub struct CustomCommandKeybind {
 /// Parsed keybinds for Gmux actions.
 #[derive(Debug, Clone)]
 pub struct NavigateKeybinds {
-    pub workspace_up: ActionKeybinds,
-    pub workspace_down: ActionKeybinds,
     pub pane_left: ActionKeybinds,
     pub pane_down: ActionKeybinds,
     pub pane_up: ActionKeybinds,
@@ -261,16 +259,10 @@ pub struct Keybinds {
     pub navigate: NavigateKeybinds,
     pub help: ActionKeybinds,
     pub settings: ActionKeybinds,
-    pub new_workspace: ActionKeybinds,
-    pub rename_workspace: ActionKeybinds,
-    pub close_workspace: ActionKeybinds,
-    pub workspace_picker: ActionKeybinds,
     pub goto: ActionKeybinds,
     pub detach: ActionKeybinds,
     pub reload_config: ActionKeybinds,
     pub open_notification_target: ActionKeybinds,
-    pub previous_workspace: ActionKeybinds,
-    pub next_workspace: ActionKeybinds,
     pub previous_pane_panel_entry: ActionKeybinds,
     pub next_pane_panel_entry: ActionKeybinds,
     pub focus_pane_panel_entry: Vec<IndexedKeybind>,
@@ -279,7 +271,6 @@ pub struct Keybinds {
     pub previous_tab: ActionKeybinds,
     pub next_tab: ActionKeybinds,
     pub switch_tab: Vec<IndexedKeybind>,
-    pub switch_workspace: Vec<IndexedKeybind>,
     pub close_tab: ActionKeybinds,
     pub rename_pane: ActionKeybinds,
     pub edit_scrollback: ActionKeybinds,
@@ -395,8 +386,6 @@ impl Config {
 
         let mut keybinds = Keybinds {
             navigate: NavigateKeybinds {
-                workspace_up: ActionKeybinds::default(),
-                workspace_down: ActionKeybinds::default(),
                 pane_left: parse_navigate_bindings(
                     "keys.navigate_pane_left",
                     &self.keys.navigate_pane_left,
@@ -424,10 +413,6 @@ impl Config {
             },
             help: action!("keys.help", &self.keys.help),
             settings: action!("keys.settings", &self.keys.settings),
-            new_workspace: ActionKeybinds::default(),
-            rename_workspace: ActionKeybinds::default(),
-            close_workspace: ActionKeybinds::default(),
-            workspace_picker: ActionKeybinds::default(),
             goto: action!("keys.goto", &self.keys.goto),
             detach: action!("keys.detach", &self.keys.detach),
             reload_config: action!("keys.reload_config", &self.keys.reload_config),
@@ -435,8 +420,6 @@ impl Config {
                 "keys.open_notification_target",
                 &self.keys.open_notification_target
             ),
-            previous_workspace: ActionKeybinds::default(),
-            next_workspace: ActionKeybinds::default(),
             previous_pane_panel_entry: action!(
                 "keys.previous_pane_panel_entry",
                 &self.keys.previous_pane_panel_entry
@@ -454,7 +437,6 @@ impl Config {
             previous_tab: action!("keys.previous_tab", &self.keys.previous_tab),
             next_tab: action!("keys.next_tab", &self.keys.next_tab),
             switch_tab: indexed!("keys.switch_tab", &self.keys.switch_tab),
-            switch_workspace: Vec::new(),
             close_tab: action!("keys.close_tab", &self.keys.close_tab),
             rename_pane: action!("keys.rename_pane", &self.keys.rename_pane),
             edit_scrollback: action!("keys.edit_scrollback", &self.keys.edit_scrollback),
@@ -1269,9 +1251,6 @@ next_tab = "prefix+n"
 
     #[test]
     fn removed_workspace_keybind_config_is_ignored() {
-        let kb = Config::default().keybinds();
-        assert!(kb.new_workspace.bindings.is_empty());
-
         let config: Config = toml::from_str(
             r#"
 [keys]
@@ -1291,15 +1270,15 @@ workspaces = "prefix+shift"
         )
         .unwrap();
         let kb = config.keybinds();
-        assert!(kb.new_workspace.bindings.is_empty());
-        assert!(kb.rename_workspace.bindings.is_empty());
-        assert!(kb.close_workspace.bindings.is_empty());
-        assert!(kb.workspace_picker.bindings.is_empty());
-        assert!(kb.previous_workspace.bindings.is_empty());
-        assert!(kb.next_workspace.bindings.is_empty());
-        assert!(kb.switch_workspace.is_empty());
-        assert!(kb.navigate.workspace_up.bindings.is_empty());
-        assert!(kb.navigate.workspace_down.bindings.is_empty());
+        assert!(config.collect_diagnostics().is_empty());
+        assert_eq!(
+            binding_triggers(&kb.next_tab),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('n'),
+                KeyModifiers::empty()
+            ))]
+        );
+        assert_eq!(kb.switch_tab.len(), 9);
     }
 
     #[test]
@@ -1757,13 +1736,6 @@ switch_tab = "prefix+shift+1..9"
             .bindings
             .iter()
             .all(|binding| binding.trigger.is_prefix()));
-        assert!(kb.workspace_picker.bindings.is_empty());
-        assert!(kb.new_workspace.bindings.is_empty());
-        assert!(kb.rename_workspace.bindings.is_empty());
-        assert!(kb.close_workspace.bindings.is_empty());
-        assert!(kb.switch_workspace.is_empty());
-        assert!(kb.navigate.workspace_up.bindings.is_empty());
-        assert!(kb.navigate.workspace_down.bindings.is_empty());
         assert_eq!(
             binding_triggers(&kb.split_vertical),
             vec![

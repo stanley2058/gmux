@@ -407,23 +407,18 @@ pub(super) fn handle_navigate_reserved_key(state: &mut AppState, key: TerminalKe
                 state.navigate_pane(NavDirection::Right);
                 return true;
             }
+            KeyCode::Up => {
+                state.move_selected_workspace_by_visible_delta(-1);
+                return true;
+            }
+            KeyCode::Down => {
+                state.move_selected_workspace_by_visible_delta(1);
+                return true;
+            }
             _ => {}
         }
     }
 
-    if state.keybinds.navigate.workspace_up.matches_direct_key(key) {
-        state.move_selected_workspace_by_visible_delta(-1);
-        return true;
-    }
-    if state
-        .keybinds
-        .navigate
-        .workspace_down
-        .matches_direct_key(key)
-    {
-        state.move_selected_workspace_by_visible_delta(1);
-        return true;
-    }
     if state.keybinds.navigate.pane_left.matches_direct_key(key) {
         state.navigate_pane(NavDirection::Left);
         return true;
@@ -471,15 +466,8 @@ pub(crate) fn handle_navigate_key(state: &mut AppState, key: KeyEvent) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NavigateAction {
-    NewWorkspace,
-    RenameWorkspace,
-    CloseWorkspace,
-    SwitchWorkspace(usize),
     SwitchTab(usize),
     FocusPanePanelEntry(usize),
-    WorkspacePicker,
-    PreviousWorkspace,
-    NextWorkspace,
     PreviousPanePanelEntry,
     NextPanePanelEntry,
     NewTab,
@@ -529,13 +517,6 @@ fn indexed_navigation_action(
             }
         }
     }
-    for binding in &kb.switch_workspace {
-        if trigger_matches(binding) {
-            if let Some(idx) = binding.matched_index(key) {
-                return Some(NavigateAction::SwitchWorkspace(idx));
-            }
-        }
-    }
     for binding in &kb.focus_pane_panel_entry {
         if trigger_matches(binding) {
             if let Some(idx) = binding.matched_index(key) {
@@ -571,12 +552,6 @@ fn action_for_key(
     for (bindings, action) in [
         (&kb.help, NavigateAction::Help),
         (&kb.settings, NavigateAction::Settings),
-        (&kb.workspace_picker, NavigateAction::WorkspacePicker),
-        (&kb.new_workspace, NavigateAction::NewWorkspace),
-        (&kb.rename_workspace, NavigateAction::RenameWorkspace),
-        (&kb.close_workspace, NavigateAction::CloseWorkspace),
-        (&kb.previous_workspace, NavigateAction::PreviousWorkspace),
-        (&kb.next_workspace, NavigateAction::NextWorkspace),
         (
             &kb.previous_pane_panel_entry,
             NavigateAction::PreviousPanePanelEntry,
@@ -654,32 +629,6 @@ pub(super) fn execute_navigate_action_in_context(
 ) {
     let previous_mode = state.mode;
     match action {
-        NavigateAction::NewWorkspace => {
-            state.request_new_workspace = true;
-            leave_navigate_mode(state);
-        }
-        NavigateAction::RenameWorkspace => {
-            if let Some(ws_idx) = workspace_action_target(state, context) {
-                super::modal::open_rename_workspace(state, terminal_runtimes, ws_idx);
-            }
-        }
-        NavigateAction::CloseWorkspace => {
-            if let Some(ws_idx) = workspace_action_target(state, context) {
-                state.selected = ws_idx;
-                if state.confirm_close {
-                    super::modal::open_confirm_close(state);
-                } else {
-                    state.close_selected_workspace();
-                    leave_navigate_mode(state);
-                }
-            }
-        }
-        NavigateAction::SwitchWorkspace(idx) => {
-            if let Some(ws_idx) = state.workspace_at_visible_position(idx) {
-                state.switch_workspace(ws_idx);
-                leave_navigate_mode(state);
-            }
-        }
         NavigateAction::SwitchTab(idx) => {
             let tab_exists = state
                 .active
@@ -694,18 +643,6 @@ pub(super) fn execute_navigate_action_in_context(
             if state.focus_pane_panel_entry(idx) {
                 leave_navigate_mode(state);
             }
-        }
-        NavigateAction::WorkspacePicker => {
-            state.mobile_switcher_scroll = 0;
-            state.mode = Mode::Navigate;
-        }
-        NavigateAction::PreviousWorkspace => {
-            state.previous_workspace();
-            leave_navigate_mode(state);
-        }
-        NavigateAction::NextWorkspace => {
-            state.next_workspace();
-            leave_navigate_mode(state);
         }
         NavigateAction::PreviousPanePanelEntry => {
             state.previous_pane_panel_entry();
@@ -818,14 +755,6 @@ pub(super) fn execute_navigate_action_in_context(
     finish_action_context(state, context, previous_mode);
 }
 
-fn workspace_action_target(state: &AppState, context: ActionContext) -> Option<usize> {
-    let idx = match context {
-        ActionContext::Direct | ActionContext::Prefix => state.active.unwrap_or(state.selected),
-        ActionContext::Navigate => state.selected,
-    };
-    (idx < state.workspaces.len()).then_some(idx)
-}
-
 fn leave_navigate_mode(state: &mut AppState) {
     if state.active.is_some() {
         state.mode = Mode::Terminal;
@@ -928,9 +857,7 @@ mod tests {
 
     use super::super::{state_with_workspaces, unique_temp_path, wait_for_file};
     use super::*;
-    use crate::{
-        app::App, config::Config, input::TerminalKey, terminal::TerminalState, workspace::Workspace,
-    };
+    use crate::{app::App, config::Config, input::TerminalKey, workspace::Workspace};
 
     #[test]
     fn default_goto_key_opens_navigator() {
@@ -945,82 +872,8 @@ mod tests {
     }
 
     #[test]
-    fn custom_rename_key_enters_rename_mode() {
-        let mut state = state_with_workspaces(&["test"]);
-        state.keybinds.rename_workspace = crate::config::ActionKeybinds::prefix("g");
-
-        handle_navigate_key(
-            &mut state,
-            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
-        );
-
-        assert_eq!(state.mode, Mode::RenameWorkspace);
-        assert_eq!(state.name_input, "test");
-    }
-
-    #[test]
-    fn rename_workspace_prefills_live_terminal_cwd_label() {
-        let mut state = state_with_workspaces(&["stale"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let terminal_id = state.workspaces[0].panes[&root]
-            .attached_terminal_id
-            .clone();
-        state.workspaces[0].custom_name = None;
-        state.workspaces[0].identity_cwd = "/__gmux_original__".into();
-        state.terminals.insert(
-            terminal_id.clone(),
-            TerminalState::new(terminal_id, "/__gmux_projects__".into()),
-        );
-        state.keybinds.rename_workspace = crate::config::ActionKeybinds::prefix("g");
-
-        handle_navigate_key(
-            &mut state,
-            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
-        );
-
-        assert_eq!(state.mode, Mode::RenameWorkspace);
-        assert_eq!(state.name_input, "__gmux_projects__");
-        assert_eq!(state.workspaces[0].display_name(), "__gmux_original__");
-    }
-
-    #[test]
-    fn prefix_rename_workspace_targets_active_workspace_not_stale_selection() {
-        let mut state = state_with_workspaces(&["main", "issue"]);
-        let mut terminal_runtimes = TerminalRuntimeRegistry::new();
-        state.active = Some(1);
-        state.selected = 0;
-        state.mode = Mode::Prefix;
-
-        execute_navigate_action_in_context(
-            &mut state,
-            &mut terminal_runtimes,
-            NavigateAction::RenameWorkspace,
-            ActionContext::Prefix,
-        );
-
-        assert_eq!(state.mode, Mode::RenameWorkspace);
-        assert_eq!(state.selected, 1);
-        assert_eq!(state.name_input, "issue");
-    }
-
-    #[test]
-    fn custom_new_workspace_key_requests_and_exits_navigate() {
-        let mut state = state_with_workspaces(&["test"]);
-        state.keybinds.new_workspace = crate::config::ActionKeybinds::prefix("g");
-
-        handle_navigate_key(
-            &mut state,
-            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
-        );
-
-        assert!(state.request_new_workspace);
-        assert_eq!(state.mode, Mode::Terminal);
-    }
-
-    #[test]
     fn navigate_down_follows_sidebar_visual_order() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
-        state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
         state.mode = Mode::Navigate;
         state.active = Some(0);
         state.selected = 0;
@@ -1043,25 +896,6 @@ mod tests {
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Char('2'), KeyModifiers::empty()),
-        );
-
-        assert_eq!(state.active, Some(1));
-        assert_eq!(state.selected, 1);
-    }
-
-    #[test]
-    fn indexed_switch_workspace_keybind_follows_sidebar_visual_order() {
-        let mut state = state_with_workspaces(&["main", "normal", "issue"]);
-        let mut terminal_runtimes = TerminalRuntimeRegistry::new();
-        state.mode = Mode::Prefix;
-        state.active = Some(0);
-        state.selected = 0;
-
-        execute_navigate_action_in_context(
-            &mut state,
-            &mut terminal_runtimes,
-            NavigateAction::SwitchWorkspace(1),
-            ActionContext::Prefix,
         );
 
         assert_eq!(state.active, Some(1));
@@ -1144,7 +978,6 @@ mod tests {
     #[test]
     fn movement_action_stays_in_navigate_mode() {
         let mut state = state_with_workspaces(&["a", "b"]);
-        state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
         state.selected = 0;
 
         handle_navigate_key(
@@ -1311,7 +1144,6 @@ navigate_pane_right = "ctrl+l"
     #[test]
     fn mobile_workspace_keyboard_navigation_keeps_selected_row_visible() {
         let mut state = state_with_workspaces(&["a", "b", "c", "d"]);
-        state.keybinds.navigate.workspace_down = crate::config::ActionKeybinds::direct("down");
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Navigate;
@@ -1415,11 +1247,11 @@ last_pane = "prefix+tab"
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
-        app.state.keybinds.new_workspace = crate::config::ActionKeybinds::prefix("shift+n");
+        app.state.keybinds.toggle_sidebar = crate::config::ActionKeybinds::prefix("shift+n");
 
         app.handle_navigate_key(TerminalKey::new(KeyCode::Char('n'), KeyModifiers::SHIFT));
 
-        assert!(app.state.request_new_workspace);
+        assert!(app.state.sidebar_collapsed);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -1437,33 +1269,12 @@ last_pane = "prefix+tab"
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
-        app.state.keybinds.new_workspace = crate::config::ActionKeybinds::prefix("shift+n");
+        app.state.keybinds.toggle_sidebar = crate::config::ActionKeybinds::prefix("shift+n");
 
         app.handle_navigate_key(TerminalKey::new(KeyCode::Char('N'), KeyModifiers::empty()));
 
-        assert!(app.state.request_new_workspace);
+        assert!(app.state.sidebar_collapsed);
         assert_eq!(app.state.mode, Mode::Terminal);
-    }
-
-    #[tokio::test]
-    async fn legacy_uppercase_prefers_shifted_workspace_binding_over_unshifted() {
-        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut app = App::new(
-            &Config::default(),
-            true,
-            None,
-            api_rx,
-            crate::api::EventHub::default(),
-        );
-        app.state.workspaces = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
-        app.state.mode = Mode::Navigate;
-        app.state.keybinds.rename_workspace = crate::config::ActionKeybinds::prefix("shift+w");
-
-        app.handle_navigate_key(TerminalKey::new(KeyCode::Char('W'), KeyModifiers::empty()));
-
-        assert_eq!(app.state.mode, Mode::RenameWorkspace);
     }
 
     #[tokio::test]

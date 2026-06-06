@@ -701,32 +701,6 @@ impl AppState {
         }
     }
 
-    pub fn next_workspace(&mut self) {
-        if self.workspaces.is_empty() {
-            return;
-        }
-        let current = self.active.unwrap_or(self.selected);
-        let order = self.visible_workspace_order();
-        let current_pos = order.iter().position(|idx| *idx == current).unwrap_or(0);
-        let next = order[(current_pos + 1) % order.len()];
-        self.switch_workspace(next);
-    }
-
-    pub fn previous_workspace(&mut self) {
-        if self.workspaces.is_empty() {
-            return;
-        }
-        let current = self.active.unwrap_or(self.selected);
-        let order = self.visible_workspace_order();
-        let current_pos = order.iter().position(|idx| *idx == current).unwrap_or(0);
-        let prev = if current_pos == 0 {
-            order[order.len() - 1]
-        } else {
-            order[current_pos - 1]
-        };
-        self.switch_workspace(prev);
-    }
-
     pub fn move_workspace(&mut self, source_idx: usize, insert_idx: usize) {
         if source_idx >= self.workspaces.len() || insert_idx > self.workspaces.len() {
             return;
