@@ -747,7 +747,7 @@ mod tests {
         state.selected = 1;
         state.active = Some(1);
 
-        state.close_session_container();
+        state.close_session();
 
         let snapshot = capture_from_state(&state);
         assert!(snapshot.tabs.is_empty());

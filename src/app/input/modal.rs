@@ -561,7 +561,7 @@ pub(crate) fn handle_resize_key(state: &mut AppState, raw_key: TerminalKey) {
 }
 
 pub(super) fn confirm_close_accept(state: &mut AppState) {
-    state.close_session_container();
+    state.close_session();
     if state.session_containers().is_empty() {
         state.mode = Mode::Navigate;
     } else {

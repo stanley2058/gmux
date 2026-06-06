@@ -853,7 +853,7 @@ impl AppState {
         }
     }
 
-    pub fn close_session_container(&mut self) {
+    pub fn close_session(&mut self) {
         if self.session_containers().is_empty() {
             return;
         }
@@ -1036,11 +1036,11 @@ impl AppState {
             .and_then(|(i, pane_id)| self.terminal_id_for_pane(i, pane_id))
             .into_iter()
             .collect::<Vec<_>>();
-        let should_close_workspace = active
+        let should_close_session = active
             .and_then(|i| self.session_containers_mut().get_mut(i))
             .is_some_and(|ws| ws.close_focused());
-        if should_close_workspace {
-            self.close_session_container();
+        if should_close_session {
+            self.close_session();
         } else {
             self.remove_unattached_terminal_ids(terminal_ids);
         }
@@ -1053,9 +1053,9 @@ impl AppState {
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
-        let should_close_workspace = self.session().is_some_and(|ws| ws.tabs.len() <= 1);
-        if should_close_workspace {
-            self.close_session_container();
+        let should_close_session = self.session().is_some_and(|ws| ws.tabs.len() <= 1);
+        if should_close_session {
+            self.close_session();
             return false;
         }
         if let Some(ws_idx) = self.session_container_index() {
@@ -1548,13 +1548,13 @@ impl AppState {
         let pane_terminal_id = self.terminal_id_for_pane(ws_idx, pane_id);
         let workspace_terminal_ids = self.terminal_ids_for_session_container(ws_idx);
         self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
-        let should_close_workspace = {
+        let should_close_session = {
             let ws = &mut self.session_containers_mut()[ws_idx];
             ws.remove_pane(pane_id)
         };
         self.mark_session_dirty();
 
-        if should_close_workspace {
+        if should_close_session {
             self.session_containers_mut().remove(ws_idx);
             self.remove_unattached_terminal_ids(workspace_terminal_ids);
             self.active = None;
@@ -2452,12 +2452,12 @@ mod tests {
     }
 
     #[test]
-    fn close_session_container_closes_canonical_session() {
+    fn close_session_closes_canonical_session() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
         state.selected = 1;
         state.active = Some(1);
 
-        state.close_session_container();
+        state.close_session();
 
         assert!(state.session_containers.is_empty());
         assert_eq!(state.selected, 0);
@@ -2465,10 +2465,10 @@ mod tests {
     }
 
     #[test]
-    fn close_last_session_container_clears_active() {
+    fn close_last_session_clears_active() {
         let mut state = app_with_workspaces(&["only"]);
         state.selected = 0;
-        state.close_session_container();
+        state.close_session();
 
         assert!(state.session_containers.is_empty());
         assert_eq!(state.active, None);
@@ -2476,12 +2476,12 @@ mod tests {
     }
 
     #[test]
-    fn close_session_container_ignores_stale_selected_workspace() {
+    fn close_session_ignores_stale_selected_workspace() {
         let mut state = app_with_workspaces(&["a", "b"]);
         state.selected = 99;
         state.active = Some(0);
 
-        state.close_session_container();
+        state.close_session();
 
         assert!(state.session_containers.is_empty());
         assert_eq!(state.selected, 0);
@@ -2705,13 +2705,13 @@ mod tests {
     }
 
     #[test]
-    fn close_session_container_removes_unattached_terminal_states() {
+    fn close_session_removes_unattached_terminal_states() {
         let mut state = app_with_workspaces(&["one", "two"]);
         let terminal_id = state
             .terminal_id_for_pane(0, state.session_containers[0].tabs[0].root_pane)
             .unwrap();
 
-        state.close_session_container();
+        state.close_session();
 
         assert!(!state.terminals.contains_key(&terminal_id));
     }

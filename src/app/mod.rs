@@ -624,7 +624,7 @@ impl App {
                 needs_render = true;
             }
 
-            if self.ensure_default_session_container() {
+            if self.ensure_default_session() {
                 needs_render = true;
             }
 
@@ -751,7 +751,7 @@ impl App {
         Ok(())
     }
 
-    pub(crate) fn ensure_default_session_container(&mut self) -> bool {
+    pub(crate) fn ensure_default_session(&mut self) -> bool {
         if !self.state.session_containers().is_empty() || self.state.mode == Mode::Onboarding {
             return false;
         }
@@ -1346,7 +1346,7 @@ mod tests {
 
         let idx = app
             .create_session_container_with_options(std::path::PathBuf::from("/tmp"), true)
-            .expect("existing session container should be reused");
+            .expect("existing session should be reused");
 
         assert_eq!(idx, 0);
         assert_eq!(app.state.session_containers.len(), 1);
