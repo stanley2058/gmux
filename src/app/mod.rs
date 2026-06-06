@@ -515,7 +515,6 @@ impl App {
         app.state.workspaces = workspaces;
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
-        app.state.active = (!app.state.workspaces.is_empty()).then_some(0);
         app.state.selected = 0;
         app.state.collapse_to_single_session_workspace();
         app.state.mode = app.state.terminal_or_navigate_mode();

@@ -76,7 +76,7 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if self.state.active.is_none() && !self.state.workspaces.is_empty() {
+        if !self.state.workspaces.is_empty() {
             self.state.collapse_to_single_session_workspace();
         }
         let Some(ws_idx) = self.state.session_container_index() else {
