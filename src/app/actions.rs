@@ -511,9 +511,9 @@ impl AppState {
                         }
                     });
 
-                let extras = self.sessions_mut().split_off(1);
-                let primary = &mut self.sessions_mut()[0];
-                for mut workspace in extras {
+                let mut sessions = std::mem::take(self.sessions_mut());
+                let mut primary = sessions.remove(0);
+                for mut workspace in sessions {
                     if let (Some(name), Some(first_tab)) =
                         (workspace.custom_name.take(), workspace.tabs.first_mut())
                     {
@@ -525,9 +525,7 @@ impl AppState {
                 }
 
                 if primary.tabs.is_empty() {
-                    self.sessions_mut().clear();
-                    self.active_session = None;
-                    self.selected_session = 0;
+                    self.clear_session();
                     self.tab_scroll = 0;
                     self.tab_scroll_follow_active = true;
                     return true;
@@ -551,8 +549,7 @@ impl AppState {
                 }
                 primary.next_public_pane_number = next_public_pane_number;
 
-                self.active_session = Some(0);
-                self.selected_session = 0;
+                self.set_session(primary);
                 self.mobile_switcher_scroll = 0;
                 self.pane_panel_scroll = 0;
                 self.tab_scroll_follow_active = true;
