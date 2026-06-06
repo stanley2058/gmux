@@ -98,7 +98,7 @@ pub(crate) fn mobile_switcher_target_at(
         .saturating_add(row.saturating_sub(areas.viewport.y) as usize);
     let mut cursor = 0usize;
 
-    if let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) {
+    if let Some(ws) = app.session_container() {
         cursor += 1; // tabs title
         if doc_row == cursor {
             return Some(MobileSwitcherTarget::NewTab);
@@ -236,7 +236,7 @@ fn render_header_status(
         return;
     }
     let p = &app.palette;
-    let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) else {
+    let Some(ws) = app.session_container() else {
         frame.render_widget(Paragraph::new(" no session"), area);
         return;
     };
@@ -345,8 +345,7 @@ fn render_close_button(app: &AppState, frame: &mut Frame, area: Rect) {
 
 fn mobile_switcher_content_height(app: &AppState) -> usize {
     let tabs_h = app
-        .active
-        .and_then(|idx| app.workspaces.get(idx))
+        .session_container()
         .map(|ws| 2 + ws.tabs.len())
         .unwrap_or(0);
     let menu_h = 1 + app.global_menu_labels().len();
@@ -379,7 +378,7 @@ fn render_mobile_switcher_content(
     }
 
     let mut doc_y = 0usize;
-    if let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) {
+    if let Some(ws) = app.session_container() {
         render_section_title_at(
             frame,
             viewport,
@@ -639,7 +638,7 @@ fn mobile_screen_rect(app: &AppState) -> Rect {
 }
 
 fn mobile_pane_summary(app: &AppState) -> String {
-    let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) else {
+    let Some(ws) = app.session_container() else {
         return " no session".to_string();
     };
     let pane_count = ws

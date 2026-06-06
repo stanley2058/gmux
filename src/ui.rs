@@ -266,8 +266,7 @@ fn compute_mobile_view(
     }
 
     let split_borders = app
-        .active
-        .and_then(|i| app.workspaces.get(i))
+        .session_container()
         .map(|ws| ws.layout.splits(terminal_area))
         .unwrap_or_default();
 
