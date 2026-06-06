@@ -12,14 +12,11 @@ impl App {
     pub(super) fn handle_tab_list(&mut self, id: String, params: TabListParams) -> String {
         let TabListParams {} = params;
         self.state.collapse_to_single_session_workspace();
-        let mut tabs = Vec::new();
-        for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
-            for tab_idx in 0..ws.tabs.len() {
-                if let Some(tab) = self.tab_info(ws_idx, tab_idx) {
-                    tabs.push(tab);
-                }
-            }
-        }
+        let tabs = self
+            .state
+            .session_tab_entries()
+            .filter_map(|(ws_idx, tab_idx, _, _)| self.tab_info(ws_idx, tab_idx))
+            .collect();
 
         encode_success(id, ResponseResult::TabList { tabs })
     }

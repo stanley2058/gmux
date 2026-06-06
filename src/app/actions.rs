@@ -44,18 +44,10 @@ impl AppState {
     }
 
     pub(crate) fn flattened_tab_index(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
-        let ws = self.workspaces.get(ws_idx)?;
-        if tab_idx >= ws.tabs.len() {
-            return None;
-        }
-        Some(
-            self.workspaces
-                .iter()
-                .take(ws_idx)
-                .map(|ws| ws.tabs.len())
-                .sum::<usize>()
-                + tab_idx,
-        )
+        self.session_tab_entries()
+            .position(|(entry_ws_idx, entry_tab_idx, _, _)| {
+                entry_ws_idx == ws_idx && entry_tab_idx == tab_idx
+            })
     }
 
     pub(crate) fn record_pane_focus_change(
