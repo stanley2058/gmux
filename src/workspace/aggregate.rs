@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use crate::layout::PaneId;
 use crate::terminal::{TerminalId, TerminalState};
 
-use super::{Tab, Workspace};
+use super::{SessionUiState, Tab};
+
+#[cfg(test)]
+use super::Workspace;
 
 /// Detail info for a single pane, used by the sidebar pane list.
 pub struct PaneDetail {
@@ -58,7 +61,7 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
         .or_else(|| Some(command.clone()))
 }
 
-impl Workspace {
+impl SessionUiState {
     pub fn has_working_pane(&self, terminals: &HashMap<TerminalId, TerminalState>) -> bool {
         self.tabs.iter().any(|tab| tab.has_working_pane(terminals))
     }

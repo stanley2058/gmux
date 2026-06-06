@@ -55,7 +55,7 @@ pub fn derive_label_from_cwd(cwd: &Path) -> String {
 
 pub(crate) fn session_tab_display_name(
     ws_idx: usize,
-    ws: &Workspace,
+    ws: &SessionUiState,
     tab_idx: usize,
     tab: &Tab,
 ) -> String {
@@ -70,22 +70,25 @@ pub(crate) fn session_tab_display_name(
 
 pub(crate) fn session_tab_is_auto_named(
     ws_idx: usize,
-    ws: &Workspace,
+    ws: &SessionUiState,
     tab_idx: usize,
     tab: &Tab,
 ) -> bool {
     tab.is_auto_named() && !(ws_idx > 0 && tab_idx == 0 && ws.custom_name.is_some())
 }
 
-/// A named legacy workspace containing tabs.
-pub struct Workspace {
+/// UI state for one gmux session.
+///
+/// This is the session-level state container while the legacy workspace layer
+/// is collapsed into `sessions -> tabs -> panes`.
+pub struct SessionUiState {
     /// Stable public session identity, independent of display order.
     pub id: String,
     /// User-provided override. If set, auto-derived identity stops updating.
     pub custom_name: Option<String>,
     /// Fallback session identity source for tests, old snapshots, or missing runtimes.
     pub identity_cwd: PathBuf,
-    /// Stable-ish public pane numbers within this workspace.
+    /// Stable-ish public pane numbers within this session.
     /// New panes append at the end; closing a pane compacts higher numbers down.
     pub public_pane_numbers: HashMap<PaneId, usize>,
     pub(crate) next_public_pane_number: usize,
@@ -95,29 +98,28 @@ pub struct Workspace {
     pub(crate) test_runtimes: HashMap<PaneId, TerminalRuntime>,
 }
 
-/// UI state for one gmux session.
-///
-/// This is currently backed by the legacy `Workspace` implementation while
-/// the workspace layer is collapsed into `sessions -> tabs -> panes`.
-pub(crate) type SessionUiState = Workspace;
+/// Temporary compatibility alias while older tests and internal call sites are
+/// migrated from workspace terminology.
+#[cfg(test)]
+pub(crate) type Workspace = SessionUiState;
 
-impl Deref for Workspace {
+impl Deref for SessionUiState {
     type Target = Tab;
 
     fn deref(&self) -> &Self::Target {
         self.active_tab()
-            .expect("workspace must always have at least one active tab")
+            .expect("session must always have at least one active tab")
     }
 }
 
-impl DerefMut for Workspace {
+impl DerefMut for SessionUiState {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.active_tab_mut()
-            .expect("workspace must always have at least one active tab")
+            .expect("session must always have at least one active tab")
     }
 }
 
-impl Workspace {
+impl SessionUiState {
     pub fn new(
         initial_cwd: PathBuf,
         rows: u16,
@@ -245,15 +247,15 @@ impl Workspace {
         let events = self
             .active_tab()
             .map(|tab| tab.events.clone())
-            .expect("workspace must always have at least one tab");
+            .expect("session must always have at least one tab");
         let render_notify = self
             .active_tab()
             .map(|tab| tab.render_notify.clone())
-            .expect("workspace must always have at least one tab");
+            .expect("session must always have at least one tab");
         let render_dirty = self
             .active_tab()
             .map(|tab| tab.render_dirty.clone())
-            .expect("workspace must always have at least one tab");
+            .expect("session must always have at least one tab");
 
         let (tab, terminal, runtime) = Tab::new(
             number,
@@ -331,7 +333,7 @@ impl Workspace {
     ) -> std::io::Result<crate::workspace::tab::NewPane> {
         let new_pane = self
             .active_tab_mut()
-            .expect("workspace must always have at least one tab")
+            .expect("session must always have at least one tab")
             .split_focused(
                 direction,
                 rows,
@@ -563,7 +565,7 @@ impl Workspace {
 }
 
 #[cfg(test)]
-impl Workspace {
+impl SessionUiState {
     pub(crate) fn test_new(name: &str) -> Self {
         let (events, _) = mpsc::channel(64);
         let render_notify = Arc::new(Notify::new());
@@ -604,7 +606,7 @@ impl Workspace {
     }
 
     pub(crate) fn test_split(&mut self, direction: Direction) -> PaneId {
-        let tab = self.active_tab_mut().expect("workspace must have tab");
+        let tab = self.active_tab_mut().expect("session must have tab");
         let new_id = tab.layout.split_focused(direction);
         tab.panes
             .insert(new_id, PaneState::new(TerminalId::alloc()));
