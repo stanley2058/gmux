@@ -469,22 +469,22 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 impl AppState {
     pub(crate) fn session_container_index(&self) -> Option<usize> {
         self.active
-            .filter(|idx| self.workspaces.get(*idx).is_some())
-            .or_else(|| (!self.workspaces.is_empty()).then_some(0))
+            .filter(|idx| self.session_containers().get(*idx).is_some())
+            .or_else(|| (!self.session_containers().is_empty()).then_some(0))
     }
 
     pub(crate) fn session_container(&self) -> Option<&crate::workspace::Workspace> {
         self.session_container_index()
-            .and_then(|idx| self.workspaces.get(idx))
+            .and_then(|idx| self.session_containers().get(idx))
     }
 
     pub(crate) fn session_container_mut(&mut self) -> Option<&mut crate::workspace::Workspace> {
         let idx = self.session_container_index()?;
-        self.workspaces.get_mut(idx)
+        self.session_containers_mut().get_mut(idx)
     }
 
     pub(crate) fn collapse_to_single_session_workspace(&mut self) -> bool {
-        match self.workspaces.len() {
+        match self.session_containers().len() {
             0 => {
                 let changed = self.active.take().is_some() || self.selected != 0;
                 self.selected = 0;
@@ -502,9 +502,9 @@ impl AppState {
                 let active_ws_idx = self
                     .active
                     .unwrap_or(self.selected)
-                    .min(self.workspaces.len().saturating_sub(1));
+                    .min(self.session_containers().len().saturating_sub(1));
                 let active_tab = self
-                    .workspaces
+                    .session_containers()
                     .iter()
                     .enumerate()
                     .take(active_ws_idx + 1)
@@ -516,8 +516,8 @@ impl AppState {
                         }
                     });
 
-                let extras = self.workspaces.split_off(1);
-                let primary = &mut self.workspaces[0];
+                let extras = self.session_containers_mut().split_off(1);
+                let primary = &mut self.session_containers_mut()[0];
                 for mut workspace in extras {
                     if let (Some(name), Some(first_tab)) =
                         (workspace.custom_name.take(), workspace.tabs.first_mut())
@@ -530,7 +530,7 @@ impl AppState {
                 }
 
                 if primary.tabs.is_empty() {
-                    self.workspaces.clear();
+                    self.session_containers_mut().clear();
                     self.active = None;
                     self.selected = 0;
                     self.tab_scroll = 0;
@@ -568,7 +568,7 @@ impl AppState {
     }
 
     pub fn focus_session_container(&mut self, idx: usize) {
-        let Some(active_tab) = self.workspaces.get(idx).and_then(|ws| {
+        let Some(active_tab) = self.session_containers().get(idx).and_then(|ws| {
             (!ws.tabs.is_empty()).then_some(ws.active_tab.min(ws.tabs.len().saturating_sub(1)))
         }) else {
             return;
@@ -583,14 +583,14 @@ impl AppState {
         };
 
         let previous_focus = self.current_pane_focus_target();
-        let workspace_changed = self.active != Some(ws_idx) || self.workspaces.len() > 1;
+        let workspace_changed = self.active != Some(ws_idx) || self.session_containers().len() > 1;
         self.selection = None;
         self.selection_autoscroll = None;
 
         self.collapse_to_single_session_workspace();
         self.active = Some(0);
         self.selected = 0;
-        let workspace_id = self.workspaces[0].id.clone();
+        let workspace_id = self.session_containers()[0].id.clone();
         if workspace_changed {
             crate::logging::session_focused(&workspace_id);
         }
@@ -604,7 +604,7 @@ impl AppState {
             self.pane_panel_scroll = 0;
         }
         self.ensure_session_container_visible(0);
-        if let Some(ws) = self.workspaces.get_mut(0) {
+        if let Some(ws) = self.session_containers_mut().get_mut(0) {
             ws.switch_tab(flat_tab_idx);
             let tab_id = format!("{}:{}", workspace_id, flat_tab_idx + 1);
             crate::logging::tab_focused(&workspace_id, &tab_id);
