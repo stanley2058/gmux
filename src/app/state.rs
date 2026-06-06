@@ -952,6 +952,13 @@ pub(crate) struct PaneFocusTarget {
     pub pane_id: PaneId,
 }
 
+pub(crate) struct SessionTabEntry<'a> {
+    pub session_idx: usize,
+    pub tab_idx: usize,
+    pub session: &'a SessionUiState,
+    pub tab: &'a crate::workspace::Tab,
+}
+
 /// All application state — pure data, no channels or async runtime.
 /// Testable without PTYs or a tokio runtime.
 pub struct AppState {
@@ -1152,15 +1159,22 @@ impl AppState {
         &mut self.sessions
     }
 
-    pub(crate) fn session_tab_entries(
-        &self,
-    ) -> impl Iterator<Item = (usize, usize, &SessionUiState, &crate::workspace::Tab)> {
-        self.sessions().iter().enumerate().flat_map(|(ws_idx, ws)| {
-            ws.tabs
-                .iter()
-                .enumerate()
-                .map(move |(tab_idx, tab)| (ws_idx, tab_idx, ws, tab))
-        })
+    pub(crate) fn session_tab_entries(&self) -> impl Iterator<Item = SessionTabEntry<'_>> {
+        self.sessions()
+            .iter()
+            .enumerate()
+            .flat_map(|(session_idx, session)| {
+                session
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .map(move |(tab_idx, tab)| SessionTabEntry {
+                        session_idx,
+                        tab_idx,
+                        session,
+                        tab,
+                    })
+            })
     }
 
     pub(crate) fn session_tab_count(&self) -> usize {

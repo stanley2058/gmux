@@ -15,7 +15,7 @@ impl App {
         let tabs = self
             .state
             .session_tab_entries()
-            .filter_map(|(ws_idx, tab_idx, _, _)| self.tab_info(ws_idx, tab_idx))
+            .filter_map(|entry| self.tab_info(entry.session_idx, entry.tab_idx))
             .collect();
 
         encode_success(id, ResponseResult::TabList { tabs })

@@ -27,9 +27,7 @@ impl App {
     fn public_tab_number(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
         self.state
             .session_tab_entries()
-            .position(|(entry_ws_idx, entry_tab_idx, _, _)| {
-                entry_ws_idx == ws_idx && entry_tab_idx == tab_idx
-            })
+            .position(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
             .map(|idx| idx + 1)
     }
 
@@ -38,7 +36,7 @@ impl App {
         self.state
             .session_tab_entries()
             .nth(idx)
-            .map(|(ws_idx, tab_idx, _, _)| (ws_idx, tab_idx))
+            .map(|entry| (entry.session_idx, entry.tab_idx))
     }
 
     fn public_pane_number(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> Option<usize> {

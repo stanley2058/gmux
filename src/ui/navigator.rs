@@ -48,7 +48,7 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
     };
     let count = app
         .session_tab_entries()
-        .map(|(_, _, _, tab)| tab.panes.len())
+        .map(|entry| entry.tab.panes.len())
         .sum::<usize>();
     let mut spans = vec![Span::styled(" / ", focus_style)];
     let query = app.navigator.query.trim();
