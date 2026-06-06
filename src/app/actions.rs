@@ -800,7 +800,7 @@ impl AppState {
         &self,
         ws_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
-        self.workspaces
+        self.session_containers()
             .get(ws_idx)
             .into_iter()
             .flat_map(|ws| &ws.tabs)
@@ -814,7 +814,7 @@ impl AppState {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
-        self.workspaces
+        self.session_containers()
             .get(ws_idx)
             .and_then(|ws| ws.tabs.get(tab_idx))
             .into_iter()
@@ -828,7 +828,7 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) -> Option<crate::terminal::TerminalId> {
-        self.workspaces
+        self.session_containers()
             .get(ws_idx)?
             .pane_state(pane_id)
             .map(|pane| pane.attached_terminal_id.clone())
@@ -839,7 +839,7 @@ impl AppState {
         terminal_ids: impl IntoIterator<Item = crate::terminal::TerminalId>,
     ) {
         for terminal_id in terminal_ids {
-            let still_attached = self.workspaces.iter().any(|ws| {
+            let still_attached = self.session_containers().iter().any(|ws| {
                 ws.tabs.iter().any(|tab| {
                     tab.panes
                         .values()
@@ -856,7 +856,7 @@ impl AppState {
     }
 
     pub fn close_session_container(&mut self) {
-        if self.workspaces.is_empty() {
+        if self.session_containers().is_empty() {
             return;
         }
         self.collapse_to_single_session_workspace();
@@ -869,19 +869,23 @@ impl AppState {
 
         let mut terminal_ids = Vec::new();
         terminal_ids.extend(self.terminal_ids_for_session_container(close_idx));
-        if let Some(workspace_id) = self.workspaces.get(close_idx).map(|ws| ws.id.clone()) {
+        if let Some(workspace_id) = self
+            .session_containers()
+            .get(close_idx)
+            .map(|ws| ws.id.clone())
+        {
             crate::logging::session_closed(&workspace_id);
         }
-        self.workspaces.remove(close_idx);
+        self.session_containers_mut().remove(close_idx);
         self.remove_unattached_terminal_ids(terminal_ids);
-        if self.workspaces.is_empty() {
+        if self.session_containers().is_empty() {
             self.active = None;
             self.selected = 0;
             self.tab_scroll = 0;
             self.tab_scroll_follow_active = true;
         } else {
-            if self.selected >= self.workspaces.len() {
-                self.selected = self.workspaces.len() - 1;
+            if self.selected >= self.session_containers().len() {
+                self.selected = self.session_containers().len() - 1;
             }
             self.active = Some(self.selected);
             self.ensure_session_container_visible(self.selected);
@@ -1033,7 +1037,7 @@ impl AppState {
         self.mark_session_dirty();
         let terminal_ids = active
             .and_then(|i| {
-                self.workspaces
+                self.session_containers()
                     .get(i)
                     .and_then(|ws| ws.focused_pane_id().map(|pane_id| (i, pane_id)))
             })
@@ -1041,7 +1045,7 @@ impl AppState {
             .into_iter()
             .collect::<Vec<_>>();
         let should_close_workspace = active
-            .and_then(|i| self.workspaces.get_mut(i))
+            .and_then(|i| self.session_containers_mut().get_mut(i))
             .is_some_and(|ws| ws.close_focused());
         if should_close_workspace {
             self.close_session_container();
@@ -1066,11 +1070,11 @@ impl AppState {
         }
         if let Some(ws_idx) = self.session_container_index() {
             let terminal_ids = self
-                .workspaces
+                .session_containers()
                 .get(ws_idx)
                 .map(|ws| self.terminal_ids_for_tab(ws_idx, ws.active_tab))
                 .unwrap_or_default();
-            let Some(ws) = self.workspaces.get_mut(ws_idx) else {
+            let Some(ws) = self.session_containers_mut().get_mut(ws_idx) else {
                 return false;
             };
             let workspace_id = ws.id.clone();
