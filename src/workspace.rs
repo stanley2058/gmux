@@ -20,15 +20,15 @@ mod tab;
 
 pub use self::tab::Tab;
 
-static NEXT_WORKSPACE_ID: AtomicU64 = AtomicU64::new(1);
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 const DEFAULT_SESSION_LABEL: &str = "session";
 
-pub(crate) fn generate_workspace_id() -> String {
+pub(crate) fn generate_session_id() -> String {
     let micros = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_micros())
         .unwrap_or(0);
-    let counter = NEXT_WORKSPACE_ID.fetch_add(1, Ordering::Relaxed);
+    let counter = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
     format!("w{micros:x}{counter:x}")
 }
 
@@ -79,11 +79,11 @@ pub(crate) fn session_tab_is_auto_named(
 
 /// A named legacy workspace containing tabs.
 pub struct Workspace {
-    /// Stable public workspace identity, independent of display order.
+    /// Stable public session identity, independent of display order.
     pub id: String,
     /// User-provided override. If set, auto-derived identity stops updating.
     pub custom_name: Option<String>,
-    /// Fallback workspace identity source for tests, old snapshots, or missing runtimes.
+    /// Fallback session identity source for tests, old snapshots, or missing runtimes.
     pub identity_cwd: PathBuf,
     /// Stable-ish public pane numbers within this workspace.
     /// New panes append at the end; closing a pane compacts higher numbers down.
@@ -170,7 +170,7 @@ impl Workspace {
         public_pane_numbers.insert(tab.root_pane, 1);
         Ok((
             Self {
-                id: generate_workspace_id(),
+                id: generate_session_id(),
                 custom_name: None,
                 identity_cwd: initial_cwd.clone(),
                 public_pane_numbers,
@@ -588,7 +588,7 @@ impl Workspace {
         let mut public_pane_numbers = HashMap::new();
         public_pane_numbers.insert(tab.root_pane, 1);
         Self {
-            id: generate_workspace_id(),
+            id: generate_session_id(),
             custom_name: Some(name.to_string()),
             identity_cwd: identity_cwd.clone(),
             public_pane_numbers,

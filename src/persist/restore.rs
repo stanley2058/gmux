@@ -297,7 +297,7 @@ fn restore_session_container(
 
     (
         Some(SessionUiState {
-            id: crate::workspace::generate_workspace_id(),
+            id: crate::workspace::generate_session_id(),
             custom_name: None,
             identity_cwd: identity_cwd_from_tabs(tab_snaps),
             public_pane_numbers,
