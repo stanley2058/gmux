@@ -293,7 +293,7 @@ impl App {
         };
         if should_close_workspace {
             self.state.selected = ws_idx;
-            self.state.close_selected_workspace();
+            self.state.close_session_container();
             self.shutdown_detached_terminal_runtimes();
             self.emit_event(EventEnvelope {
                 event: EventKind::PaneClosed,

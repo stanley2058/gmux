@@ -563,7 +563,7 @@ pub(crate) fn handle_resize_key(state: &mut AppState, raw_key: TerminalKey) {
 }
 
 pub(super) fn confirm_close_accept(state: &mut AppState) {
-    state.close_selected_workspace();
+    state.close_session_container();
     if state.workspaces.is_empty() {
         state.mode = Mode::Navigate;
     } else {

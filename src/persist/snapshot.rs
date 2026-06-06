@@ -753,7 +753,7 @@ mod tests {
         state.selected = 1;
         state.active = Some(1);
 
-        state.close_selected_workspace();
+        state.close_session_container();
 
         let snapshot = capture_from_state(&state);
         assert_eq!(snapshot.tabs.len(), 1);

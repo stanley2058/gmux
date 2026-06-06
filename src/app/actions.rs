@@ -827,7 +827,7 @@ impl AppState {
         }
     }
 
-    pub fn close_selected_workspace(&mut self) {
+    pub fn close_session_container(&mut self) {
         if self.workspaces.is_empty() {
             return;
         }
@@ -1014,7 +1014,7 @@ impl AppState {
             if let Some(active) = active {
                 self.selected = active;
             }
-            self.close_selected_workspace();
+            self.close_session_container();
         } else {
             self.remove_unattached_terminal_ids(terminal_ids);
         }
@@ -1033,7 +1033,7 @@ impl AppState {
             if let Some(idx) = self.session_container_index() {
                 self.selected = idx;
             }
-            self.close_selected_workspace();
+            self.close_session_container();
             return false;
         }
         if let Some(ws_idx) = self.session_container_index() {
@@ -2344,12 +2344,12 @@ mod tests {
     }
 
     #[test]
-    fn close_workspace_adjusts_indices() {
+    fn close_session_container_adjusts_indices() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
         state.selected = 1;
         state.active = Some(1);
 
-        state.close_selected_workspace();
+        state.close_session_container();
 
         assert_eq!(state.workspaces.len(), 2);
         assert_eq!(state.selected, 1);
@@ -2358,10 +2358,10 @@ mod tests {
     }
 
     #[test]
-    fn close_last_workspace_clears_active() {
+    fn close_last_session_container_clears_active() {
         let mut state = app_with_workspaces(&["only"]);
         state.selected = 0;
-        state.close_selected_workspace();
+        state.close_session_container();
 
         assert!(state.workspaces.is_empty());
         assert_eq!(state.active, None);
@@ -2369,12 +2369,12 @@ mod tests {
     }
 
     #[test]
-    fn close_workspace_at_end_adjusts_selected() {
+    fn close_session_container_at_end_adjusts_selected() {
         let mut state = app_with_workspaces(&["a", "b"]);
         state.selected = 1;
         state.active = Some(1);
 
-        state.close_selected_workspace();
+        state.close_session_container();
 
         assert_eq!(state.workspaces.len(), 1);
         assert_eq!(state.selected, 0);
@@ -2591,13 +2591,13 @@ mod tests {
     }
 
     #[test]
-    fn close_workspace_removes_unattached_terminal_states() {
+    fn close_session_container_removes_unattached_terminal_states() {
         let mut state = app_with_workspaces(&["one", "two"]);
         let terminal_id = state
             .terminal_id_for_pane(0, state.workspaces[0].tabs[0].root_pane)
             .unwrap();
 
-        state.close_selected_workspace();
+        state.close_session_container();
 
         assert!(!state.terminals.contains_key(&terminal_id));
     }
