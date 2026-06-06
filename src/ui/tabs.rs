@@ -237,10 +237,10 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
     if area.width == 0 || area.height == 0 {
         return;
     }
-    let Some(active_ws_idx) = app.active else {
+    let Some(session_container_idx) = app.session_container_index() else {
         return;
     };
-    let Some(ws) = app.workspaces.get(active_ws_idx) else {
+    let Some(ws) = app.session_container() else {
         return;
     };
 
@@ -338,7 +338,7 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
             },
     }) = &app.drag
     {
-        if *ws_idx == active_ws_idx {
+        if *ws_idx == session_container_idx {
             if let Some(x) = tab_drop_indicator_x(app, ws, *insert_idx) {
                 frame.buffer_mut()[(x.min(area.x + area.width.saturating_sub(1)), area.y)]
                     .set_symbol("│")
