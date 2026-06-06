@@ -1,9 +1,9 @@
 use ratatui::{
-    Frame,
     layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
+    Frame,
 };
 
 use super::scrollbar::{render_scrollbar, should_show_scrollbar};
@@ -631,7 +631,7 @@ fn render_sidebar_toggle(
 mod tests {
     use super::*;
     use crate::workspace::Workspace;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{backend::TestBackend, Terminal};
 
     #[test]
     fn render_sidebar_toggle_draws_expanded_collapse_icon() {

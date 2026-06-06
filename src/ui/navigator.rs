@@ -124,11 +124,7 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
     } else {
         Style::default().fg(p.subtext0).bg(p.panel_bg)
     };
-    let prefix = if row.depth > 0 {
-        "├─"
-    } else {
-        "  "
-    };
+    let prefix = if row.depth > 0 { "├─" } else { "  " };
     let current = if row.is_current { "◆" } else { " " };
     let marker = if selected { "→" } else { " " };
     let indent = "  ".repeat(row.depth as usize);

@@ -1519,10 +1519,10 @@ navigate_pane_left = ["esc", "alt+esc", "enter", "1", "tab", "shift+tab", "left"
             .navigate
             .pane_left
             .matches_direct_key(TerminalKey::new(KeyCode::Enter, KeyModifiers::empty())));
-        assert!(keybinds.navigate.pane_left.matches_direct_key(TerminalKey::new(
-            KeyCode::Char('1'),
-            KeyModifiers::empty()
-        )));
+        assert!(keybinds
+            .navigate
+            .pane_left
+            .matches_direct_key(TerminalKey::new(KeyCode::Char('1'), KeyModifiers::empty())));
         assert_eq!(
             diagnostics
                 .iter()

@@ -1,8 +1,8 @@
 use ratatui::{
-    Frame,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Span,
+    Frame,
 };
 
 mod dialogs;
@@ -36,8 +36,9 @@ pub(crate) use self::onboarding::onboarding_welcome_continue_rect;
 use self::onboarding::render_onboarding_overlay;
 use self::panes::{compute_pane_infos, render_panes, resize_tab_panes};
 pub(crate) use self::release_notes::{
-    PRODUCT_ANNOUNCEMENT_MODAL_SIZE, RELEASE_NOTES_MODAL_SIZE, product_announcement_display_lines,
-    release_notes_close_button_rect, release_notes_display_lines, release_notes_wrapped_line_count,
+    product_announcement_display_lines, release_notes_close_button_rect,
+    release_notes_display_lines, release_notes_wrapped_line_count, PRODUCT_ANNOUNCEMENT_MODAL_SIZE,
+    RELEASE_NOTES_MODAL_SIZE,
 };
 use self::release_notes::{render_product_announcement_overlay, render_release_notes_overlay};
 pub(crate) use self::scrollbar::{
@@ -64,8 +65,8 @@ pub(crate) use self::{
 pub(crate) use self::{
     keybind_help::keybind_help_lines,
     mobile::{
-        MobileSwitcherTarget, mobile_switcher_areas, mobile_switcher_max_scroll,
-        mobile_switcher_target_at,
+        mobile_switcher_areas, mobile_switcher_max_scroll, mobile_switcher_target_at,
+        MobileSwitcherTarget,
     },
     panes::pane_is_scrolled_back,
     tabs::compute_tab_bar_view,
@@ -438,7 +439,7 @@ mod tests {
     use super::*;
     use crate::{app::state::ViewLayout, layout::PaneInfo, workspace::Workspace};
     use ratatui::style::Color;
-    use ratatui::{Terminal, backend::TestBackend};
+    use ratatui::{backend::TestBackend, Terminal};
 
     #[tokio::test]
     async fn focused_pane_cursor_wins_during_terminal_render() {
@@ -1001,52 +1002,41 @@ mod tests {
             .1
             .clone();
 
-        assert!(
-            tabs.iter()
-                .any(|(key, label)| key == "prefix+g" && label.as_ref() == "session navigator")
-        );
+        assert!(tabs
+            .iter()
+            .any(|(key, label)| key == "prefix+g" && label.as_ref() == "session navigator"));
         let navigation = groups
             .iter()
             .find(|(name, _)| *name == "navigation")
             .expect("navigation group")
             .1
             .clone();
-        assert!(
-            !navigation
-                .iter()
-                .any(|(key, label)| key.contains("unset") || label.as_ref() == "list")
-        );
-        assert!(
-            !groups
-                .iter()
-                .flat_map(|(_, entries)| entries)
-                .any(|(_, label)| label.as_ref().contains("workspace")
-                    || label.as_ref().contains("agent"))
-        );
-        assert!(
-            panes
-                .iter()
-                .any(|(key, label)| key == "prefix+h / prefix+left"
-                    && label.as_ref() == "focus pane left")
-        );
-        assert!(
-            panes
-                .iter()
-                .any(|(key, label)| key == "prefix+j / prefix+down"
-                    && label.as_ref() == "focus pane down")
-        );
+        assert!(!navigation
+            .iter()
+            .any(|(key, label)| key.contains("unset") || label.as_ref() == "list"));
+        assert!(!groups
+            .iter()
+            .flat_map(|(_, entries)| entries)
+            .any(|(_, label)| label.as_ref().contains("workspace")
+                || label.as_ref().contains("agent")));
+        assert!(panes
+            .iter()
+            .any(|(key, label)| key == "prefix+h / prefix+left"
+                && label.as_ref() == "focus pane left"));
+        assert!(panes
+            .iter()
+            .any(|(key, label)| key == "prefix+j / prefix+down"
+                && label.as_ref() == "focus pane down"));
         assert!(
             panes
                 .iter()
                 .any(|(key, label)| key == "prefix+k / prefix+up"
                     && label.as_ref() == "focus pane up")
         );
-        assert!(
-            panes
-                .iter()
-                .any(|(key, label)| key == "prefix+l / prefix+right"
-                    && label.as_ref() == "focus pane right")
-        );
+        assert!(panes
+            .iter()
+            .any(|(key, label)| key == "prefix+l / prefix+right"
+                && label.as_ref() == "focus pane right"));
     }
 
     #[test]
@@ -1076,16 +1066,12 @@ mod tests {
             .expect("custom group")
             .1
             .clone();
-        assert!(
-            custom
-                .iter()
-                .any(|(key, label)| key == "prefix+alt+g" && label.as_ref() == "open lazygit")
-        );
-        assert!(
-            custom
-                .iter()
-                .any(|(key, label)| key == "prefix+alt+h" && label.as_ref() == "custom command")
-        );
+        assert!(custom
+            .iter()
+            .any(|(key, label)| key == "prefix+alt+g" && label.as_ref() == "open lazygit"));
+        assert!(custom
+            .iter()
+            .any(|(key, label)| key == "prefix+alt+h" && label.as_ref() == "custom command"));
 
         let rendered_help = keybind_help_lines(&app)
             .into_iter()

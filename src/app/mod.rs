@@ -1512,10 +1512,7 @@ mod tests {
 
         let app = App::new(&config, true, None, api_rx, crate::api::EventHub::default());
 
-        assert_eq!(
-            app.state.pane_panel_scope,
-            state::PanePanelScope::Current
-        );
+        assert_eq!(app.state.pane_panel_scope, state::PanePanelScope::Current);
     }
 
     #[test]
@@ -1659,10 +1656,7 @@ mod tests {
             app.state.toast_config.delivery,
             crate::config::ToastDelivery::Gmux
         );
-        assert_eq!(
-            app.state.pane_panel_scope,
-            state::PanePanelScope::Current
-        );
+        assert_eq!(app.state.pane_panel_scope, state::PanePanelScope::Current);
         assert!(!app.state.redraw_on_focus_gained);
         assert_eq!(
             app.state.right_click_passthrough_modifiers,
@@ -2009,17 +2003,11 @@ mod tests {
         std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
 
         let mut app = test_app();
-        assert_eq!(
-            app.state.pane_panel_scope,
-            state::PanePanelScope::All
-        );
+        assert_eq!(app.state.pane_panel_scope, state::PanePanelScope::All);
 
         app.save_pane_panel_scope(state::PanePanelScope::Current);
 
-        assert_eq!(
-            app.state.pane_panel_scope,
-            state::PanePanelScope::Current
-        );
+        assert_eq!(app.state.pane_panel_scope, state::PanePanelScope::Current);
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("pane_panel_scope = \"current\""));
         assert!(app.state.config_diagnostic.is_none());

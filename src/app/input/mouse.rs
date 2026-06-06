@@ -1715,11 +1715,10 @@ mod tests {
         );
 
         assert!(app.state.pane_at(info.rect.x, info.rect.y).is_none());
-        assert!(
-            app.state
-                .pane_mouse_target(info.rect.x, info.rect.y)
-                .is_some()
-        );
+        assert!(app
+            .state
+            .pane_mouse_target(info.rect.x, info.rect.y)
+            .is_some());
         app.handle_mouse(MouseEvent {
             modifiers: KeyModifiers::CONTROL,
             ..mouse(
@@ -1933,17 +1932,15 @@ mod tests {
         let border = app.state.view.split_borders[0].clone();
         let row = border.area.y.saturating_add(1);
 
-        assert!(
-            app.state
-                .find_border_at(border.pos.saturating_sub(1), row)
-                .is_some()
-        );
+        assert!(app
+            .state
+            .find_border_at(border.pos.saturating_sub(1), row)
+            .is_some());
         assert!(app.state.find_border_at(border.pos, row).is_some());
-        assert!(
-            app.state
-                .find_border_at(border.pos.saturating_add(1), row)
-                .is_none()
-        );
+        assert!(app
+            .state
+            .find_border_at(border.pos.saturating_add(1), row)
+            .is_none());
     }
 
     #[test]
@@ -1957,17 +1954,15 @@ mod tests {
         let border = app.state.view.split_borders[0].clone();
         let col = border.area.x.saturating_add(1);
 
-        assert!(
-            app.state
-                .find_border_at(col, border.pos.saturating_sub(1))
-                .is_some()
-        );
+        assert!(app
+            .state
+            .find_border_at(col, border.pos.saturating_sub(1))
+            .is_some());
         assert!(app.state.find_border_at(col, border.pos).is_some());
-        assert!(
-            app.state
-                .find_border_at(col, border.pos.saturating_add(1))
-                .is_none()
-        );
+        assert!(app
+            .state
+            .find_border_at(col, border.pos.saturating_add(1))
+            .is_none());
     }
 
     #[test]

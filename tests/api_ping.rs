@@ -575,7 +575,9 @@ fn tab_methods_round_trip_over_socket() {
     assert_ne!(second_tab_id, first_tab_id);
     assert!(tab_created["result"]["tab"].get("workspace_id").is_none());
     assert_eq!(tab_created["result"]["tab"]["focused"], true);
-    assert!(tab_created["result"]["root_pane"].get("workspace_id").is_none());
+    assert!(tab_created["result"]["root_pane"]
+        .get("workspace_id")
+        .is_none());
     assert_eq!(tab_created["result"]["root_pane"]["tab_id"], second_tab_id);
 
     let tab_list = send_request(
@@ -944,7 +946,9 @@ fn events_subscribe_streams_tab_and_pane_events() {
 
     let created_tab_event = wait_for_event(&mut reader, "tab_created", Duration::from_secs(2));
     assert_eq!(created_tab_event["data"]["tab"]["tab_id"], second_tab_id);
-    assert!(created_tab_event["data"]["tab"].get("workspace_id").is_none());
+    assert!(created_tab_event["data"]["tab"]
+        .get("workspace_id")
+        .is_none());
     let focused_tab_event = wait_for_event(&mut reader, "tab_focused", Duration::from_secs(2));
     assert_eq!(focused_tab_event["data"]["tab_id"], second_tab_id);
     assert!(focused_tab_event["data"].get("workspace_id").is_none());
