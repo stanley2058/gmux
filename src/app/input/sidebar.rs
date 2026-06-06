@@ -202,7 +202,7 @@ impl AppState {
         ) {
             Some(self.selected)
         } else {
-            self.active
+            self.session_container_index()
         }
     }
 
