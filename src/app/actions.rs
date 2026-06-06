@@ -460,7 +460,7 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
-// Session container operations
+// Session operations
 // ---------------------------------------------------------------------------
 
 impl AppState {

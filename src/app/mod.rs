@@ -243,7 +243,7 @@ impl App {
                 .pane_history
                 .then(crate::persist::load_history)
                 .flatten();
-            let (restored_containers, terminals, terminal_runtimes) = crate::persist::restore(
+            let (restored_sessions, terminals, terminal_runtimes) = crate::persist::restore(
                 &snap,
                 history.as_ref(),
                 24,
@@ -257,16 +257,16 @@ impl App {
             );
             restored_terminals = terminals;
             restored_terminal_runtimes = terminal_runtimes.into();
-            if restored_containers.is_empty() {
+            if restored_sessions.is_empty() {
                 crate::logging::session_restored(0, "empty");
                 (Vec::new(), None, 0)
             } else {
-                let restored_tabs = restored_containers
+                let restored_tabs = restored_sessions
                     .first()
-                    .map(|container| container.tabs.len())
+                    .map(|session| session.tabs.len())
                     .unwrap_or(0);
                 crate::logging::session_restored(restored_tabs, "ok");
-                (restored_containers, Some(0), 0)
+                (restored_sessions, Some(0), 0)
             }
         } else {
             (Vec::new(), None, 0)
@@ -1338,7 +1338,7 @@ mod tests {
     }
 
     #[test]
-    fn create_session_container_with_existing_container_collapses_instead_of_appending() {
+    fn create_session_with_existing_sessions_collapses_instead_of_appending() {
         let mut app = test_app();
         app.state.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];
         app.state.active = None;

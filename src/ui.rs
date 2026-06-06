@@ -590,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn collapsed_sidebar_renders_only_session_container_glance() {
+    fn collapsed_sidebar_renders_only_session_glance() {
         let mut app = crate::app::state::AppState::test_new();
         app.sidebar_collapsed = true;
         app.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];

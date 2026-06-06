@@ -636,7 +636,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_collapsed_pane_row_uses_session_container_not_selected_legacy_workspace() {
+    fn clicking_collapsed_pane_row_uses_visible_session_not_selected_legacy_workspace() {
         let mut app = app_for_mouse_test();
         let mut first = Workspace::test_new("one");
         let second_tab = first.test_add_tab(Some("logs"));

@@ -371,7 +371,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn details_describe_legacy_container_as_session_tab() {
+    fn details_describe_legacy_session_as_session_tab() {
         let first = crate::workspace::Workspace::test_new("one");
         let second = crate::workspace::Workspace::test_new("two");
         let pane_id = second.tabs[0].root_pane;

@@ -159,12 +159,12 @@ impl App {
             .sessions()
             .iter()
             .enumerate()
-            .flat_map(|(container_idx, container)| {
-                container
+            .flat_map(|(session_idx, session)| {
+                session
                     .tabs
                     .iter()
                     .flat_map(|tab| tab.layout.pane_ids().into_iter())
-                    .filter_map(move |pane_id| self.pane_info(container_idx, pane_id))
+                    .filter_map(move |pane_id| self.pane_info(session_idx, pane_id))
             })
             .collect()
     }
@@ -174,13 +174,13 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::TabInfo> {
-        let container = self.state.sessions().get(ws_idx)?;
-        let tab = container.tabs.get(tab_idx)?;
+        let session = self.state.sessions().get(ws_idx)?;
+        let tab = session.tabs.get(tab_idx)?;
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             number: tab_idx + 1,
             label: tab.display_name(),
-            focused: self.state.session_index() == Some(ws_idx) && container.active_tab == tab_idx,
+            focused: self.state.session_index() == Some(ws_idx) && session.active_tab == tab_idx,
             pane_count: tab.panes.len(),
         })
     }
@@ -201,8 +201,8 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let container = self.state.sessions().get(ws_idx)?;
-        let tab = container.tabs.get(tab_idx)?;
+        let session = self.state.sessions().get(ws_idx)?;
+        let tab = session.tabs.get(tab_idx)?;
         self.pane_info(ws_idx, tab.root_pane)
     }
 
@@ -211,20 +211,20 @@ impl App {
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let container = self.state.sessions().get(ws_idx)?;
-        let pane = container.pane_state(pane_id)?;
+        let session = self.state.sessions().get(ws_idx)?;
+        let pane = session.pane_state(pane_id)?;
         let terminal = self.state.terminals.get(&pane.attached_terminal_id)?;
-        let tab_idx = container.find_tab_index_for_pane(pane_id)?;
+        let tab_idx = session.find_tab_index_for_pane(pane_id)?;
         let focused = self.state.is_active_pane(ws_idx, tab_idx, pane_id);
         Some(crate::api::schema::PaneInfo {
             pane_id: self.public_pane_id(ws_idx, pane_id)?,
             terminal_id: terminal.id.to_string(),
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             focused,
-            cwd: container.tabs[tab_idx]
+            cwd: session.tabs[tab_idx]
                 .cwd_for_pane(pane_id, &self.state.terminals, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
-            foreground_cwd: container.tabs[tab_idx]
+            foreground_cwd: session.tabs[tab_idx]
                 .foreground_cwd_for_pane(pane_id, &self.terminal_runtimes)
                 .map(|cwd| cwd.display().to_string()),
             label: terminal.manual_label.clone(),

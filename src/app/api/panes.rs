@@ -30,8 +30,8 @@ impl App {
         };
         let (rows, cols) = self.state.estimate_pane_size();
         let split_cwd = params.cwd.map(std::path::PathBuf::from).or_else(|| {
-            let follow_cwd = self.state.sessions().get(ws_idx).and_then(|container| {
-                container.tabs.get(target_tab_idx)?.cwd_for_pane(
+            let follow_cwd = self.state.sessions().get(ws_idx).and_then(|session| {
+                session.tabs.get(target_tab_idx)?.cwd_for_pane(
                     target_pane_id,
                     &self.state.terminals,
                     &self.terminal_runtimes,
