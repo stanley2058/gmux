@@ -318,7 +318,7 @@ pub(crate) fn visible_hyperlinks(
         return Vec::new();
     };
     let Some(tab) = app_state
-        .workspaces
+        .session_containers()
         .get(ws_idx)
         .and_then(crate::workspace::Workspace::active_tab)
     else {

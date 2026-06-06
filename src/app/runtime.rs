@@ -264,7 +264,7 @@ impl App {
                 .is_some_and(|ws| ws.has_working_pane(&self.state.terminals)),
             crate::app::state::PanePanelScope::All => self
                 .state
-                .workspaces
+                .session_containers()
                 .iter()
                 .any(|ws| ws.has_working_pane(&self.state.terminals)),
         }
