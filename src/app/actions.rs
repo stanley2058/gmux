@@ -1527,10 +1527,8 @@ impl AppState {
         self.mark_session_dirty();
 
         if should_close_session {
-            self.sessions_mut().remove(ws_idx);
+            self.clear_session();
             self.remove_unattached_terminal_ids(session_terminal_ids);
-            self.active_session = None;
-            self.selected_session = 0;
             if self.mode == Mode::Terminal {
                 self.mode = Mode::Navigate;
             }
