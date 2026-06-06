@@ -181,7 +181,7 @@ impl App {
         if let Some(terminal) = self.state.terminals.get_mut(&terminal_id) {
             terminal.clear_launch_metadata_after_respawn();
         }
-        self.state.focus_pane_in_session_container(ws_idx, pane_id);
+        self.state.focus_pane_in_session_at(ws_idx, pane_id);
         self.schedule_session_save();
         true
     }

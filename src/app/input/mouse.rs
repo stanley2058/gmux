@@ -292,7 +292,7 @@ impl AppState {
                         if let Some((ws_idx, _tab_idx, pane_id)) =
                             self.collapsed_pane_detail_target_at(mouse.row)
                         {
-                            self.focus_pane_in_session_container(ws_idx, pane_id);
+                            self.focus_pane_in_session_at(ws_idx, pane_id);
                             self.mode = Mode::Terminal;
                         }
                         return None;
@@ -336,7 +336,7 @@ impl AppState {
 
                     if let Some((ws_idx, _tab_idx, pane_id)) = self.pane_detail_target_at(mouse.row)
                     {
-                        self.focus_pane_in_session_container(ws_idx, pane_id);
+                        self.focus_pane_in_session_at(ws_idx, pane_id);
                         self.mode = Mode::Terminal;
                         return None;
                     }

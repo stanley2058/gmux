@@ -81,11 +81,7 @@ impl AppState {
         }
     }
 
-    pub(crate) fn focus_pane_in_session_container(
-        &mut self,
-        ws_idx: usize,
-        pane_id: PaneId,
-    ) -> bool {
+    pub(crate) fn focus_pane_in_session_at(&mut self, ws_idx: usize, pane_id: PaneId) -> bool {
         let Some(ws) = self.session_containers().get(ws_idx) else {
             return false;
         };
@@ -132,7 +128,7 @@ impl AppState {
             return false;
         };
 
-        if self.focus_pane_in_session_container(ws_idx, pane_id) {
+        if self.focus_pane_in_session_at(ws_idx, pane_id) {
             return true;
         }
 
@@ -430,7 +426,7 @@ impl AppState {
                     .and_then(|ws| ws.tabs.get(tab_idx))
                     .is_some_and(|tab| tab.panes.contains_key(&pane_id))
                 {
-                    self.focus_pane_in_session_container(ws_idx, pane_id);
+                    self.focus_pane_in_session_at(ws_idx, pane_id);
                     self.mode = Mode::Terminal;
                     return true;
                 }
@@ -744,7 +740,7 @@ impl AppState {
             return true;
         }
 
-        if self.focus_pane_in_session_container(ws_idx, pane_id) {
+        if self.focus_pane_in_session_at(ws_idx, pane_id) {
             self.ensure_pane_panel_entry_visible(idx);
             return true;
         }
@@ -938,7 +934,7 @@ impl AppState {
 
         if let Some(focused) = panes.iter().find(|p| p.is_focused) {
             if let Some(target) = find_in_direction(focused, direction, &panes) {
-                return self.focus_pane_in_session_container(ws_idx, target);
+                return self.focus_pane_in_session_at(ws_idx, target);
             }
         }
         false
@@ -974,7 +970,7 @@ impl AppState {
             } else {
                 ids[(pos + 1) % ids.len()]
             };
-            self.focus_pane_in_session_container(ws_idx, target);
+            self.focus_pane_in_session_at(ws_idx, target);
         }
     }
 
@@ -2223,7 +2219,7 @@ mod tests {
     }
 
     #[test]
-    fn session_container_tab_switch_works_without_active_index() {
+    fn session_tab_switch_works_without_active_index() {
         let mut state = app_with_workspaces(&["one"]);
         let second_tab = state.session_containers[0].test_add_tab(Some("logs"));
         state.active = None;
@@ -2279,8 +2275,8 @@ mod tests {
         let root = state.session_containers[0].tabs[0].root_pane;
         let right = state.session_containers[0].test_split(Direction::Horizontal);
 
-        state.focus_pane_in_session_container(0, root);
-        state.focus_pane_in_session_container(0, right);
+        state.focus_pane_in_session_at(0, root);
+        state.focus_pane_in_session_at(0, right);
         state.last_pane();
 
         assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
@@ -2297,8 +2293,8 @@ mod tests {
         let right = state.session_containers[0].test_split(Direction::Horizontal);
         let background = state.session_containers[0].test_split(Direction::Horizontal);
 
-        state.focus_pane_in_session_container(0, root);
-        state.focus_pane_in_session_container(0, right);
+        state.focus_pane_in_session_at(0, root);
+        state.focus_pane_in_session_at(0, right);
         state.session_containers[0].remove_pane(background);
         state.last_pane();
 
@@ -2312,7 +2308,7 @@ mod tests {
         let second_tab = state.session_containers[1].test_add_tab(Some("logs"));
         let second_tab_root = state.session_containers[1].tabs[second_tab].root_pane;
 
-        state.focus_pane_in_session_container(1, second_tab_root);
+        state.focus_pane_in_session_at(1, second_tab_root);
         state.last_pane();
 
         assert_eq!(state.active, Some(0));

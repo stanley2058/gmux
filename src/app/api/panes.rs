@@ -124,8 +124,7 @@ impl App {
                 let Some((ws_idx, _, raw_pane_id)) = self.canonicalize_pane_target(&pane_id) else {
                     return pane_not_found(id, &pane_id);
                 };
-                self.state
-                    .focus_pane_in_session_container(ws_idx, raw_pane_id);
+                self.state.focus_pane_in_session_at(ws_idx, raw_pane_id);
                 self.state.mode = Mode::Terminal;
                 let Some(pane) = self.pane_info_by_raw_id(raw_pane_id) else {
                     return pane_not_found(id, &pane_id);
@@ -300,7 +299,7 @@ impl App {
             return pane_not_found(id, &target.pane_id);
         };
 
-        self.state.focus_pane_in_session_container(ws_idx, pane_id);
+        self.state.focus_pane_in_session_at(ws_idx, pane_id);
         self.state.close_pane();
         self.shutdown_detached_terminal_runtimes();
         self.schedule_session_save();

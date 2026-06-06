@@ -2670,8 +2670,8 @@ mod tests {
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state
-            .focus_pane_in_session_container(0, background_previous_focus);
-        app.state.focus_pane_in_session_container(0, active_pane);
+            .focus_pane_in_session_at(0, background_previous_focus);
+        app.state.focus_pane_in_session_at(0, active_pane);
 
         let target_pane_id = app.pane_info(0, target_pane).unwrap().pane_id;
         let target_tab_id = app.public_tab_id(0, background_tab).unwrap();
