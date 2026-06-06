@@ -113,7 +113,7 @@ fn pane_panel_entries_with_runtimes(
             let Some(ws_idx) = pane_panel_current_context_idx(app) else {
                 return Vec::new();
             };
-            let Some(ws) = app.sessions().get(ws_idx) else {
+            let Some(ws) = app.session() else {
                 return Vec::new();
             };
             ws.pane_details(&app.terminals)
@@ -373,7 +373,7 @@ pub(super) fn render_sidebar_collapsed(app: &AppState, frame: &mut Frame, area: 
     );
     if detail_content_area != Rect::default() {
         if let Some(ws_idx) = detail_ws_idx {
-            if let Some(ws) = app.sessions().get(ws_idx) {
+            if let Some(ws) = app.session() {
                 for (detail_idx, detail) in ws.pane_details(&app.terminals).iter().enumerate() {
                     let y = detail_content_area.y + detail_idx as u16;
                     if y >= detail_content_area.y + detail_content_area.height {

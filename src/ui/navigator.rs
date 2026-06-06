@@ -252,12 +252,14 @@ fn tab_detail(
     ws_idx: usize,
     tab_idx: usize,
 ) -> String {
-    let Some(ws) = app.sessions().get(ws_idx) else {
+    let Some(entry) = app
+        .session_tab_entries()
+        .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
+    else {
         return String::new();
     };
-    let Some(tab) = ws.tabs.get(tab_idx) else {
-        return String::new();
-    };
+    let ws = entry.session;
+    let tab = entry.tab;
     let session_label = app
         .session()
         .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
@@ -278,12 +280,14 @@ fn pane_detail(
     tab_idx: usize,
     pane_id: crate::layout::PaneId,
 ) -> String {
-    let Some(ws) = app.sessions().get(ws_idx) else {
+    let Some(entry) = app
+        .session_tab_entries()
+        .find(|entry| entry.session_idx == ws_idx && entry.tab_idx == tab_idx)
+    else {
         return String::new();
     };
-    let Some(tab) = ws.tabs.get(tab_idx) else {
-        return String::new();
-    };
+    let ws = entry.session;
+    let tab = entry.tab;
     let session_label = app
         .session()
         .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
