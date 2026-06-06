@@ -841,7 +841,7 @@ impl AppState {
         if self.on_tab_scroll_right_button(col, row) {
             return self
                 .active
-                .and_then(|idx| self.session_containers().get(idx))
+                .and_then(|idx| self.sessions().get(idx))
                 .map(|ws| ws.tabs.len());
         }
 
@@ -852,7 +852,7 @@ impl AppState {
         };
         let right_edge = if self
             .active
-            .and_then(|idx| self.session_containers().get(idx))
+            .and_then(|idx| self.sessions().get(idx))
             .is_some_and(|ws| last_idx + 1 >= ws.tabs.len())
         {
             last_rect.x + last_rect.width

@@ -394,7 +394,7 @@ impl AppState {
             let host_terminal_theme = self.host_terminal_theme;
             let default_shell = self.default_shell.clone();
             let shell_config = crate::pane::PaneShellConfig::new(&default_shell, self.shell_mode);
-            let Some(ws) = self.session_containers_mut().get_mut(ws_idx) else {
+            let Some(ws) = self.sessions_mut().get_mut(ws_idx) else {
                 return;
             };
             if let Ok(new_pane) = ws.split_focused(

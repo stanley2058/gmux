@@ -159,7 +159,7 @@ fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> 
             .into_iter()
             .map(migrate_legacy_workspace)
             .collect::<Result<Vec<_>, _>>()?;
-        let active_tab = active_tab_from_session_containers(&legacy_containers, raw.active);
+        let active_tab = active_tab_from_sessions(&legacy_containers, raw.active);
         let tabs = flatten_session_container_tabs(&legacy_containers);
         (tabs, active_tab)
     };
@@ -186,7 +186,7 @@ fn flatten_session_container_tabs(containers: &[SessionContainerSnapshot]) -> Ve
     tabs
 }
 
-fn active_tab_from_session_containers(
+fn active_tab_from_sessions(
     containers: &[SessionContainerSnapshot],
     active_container: Option<usize>,
 ) -> usize {

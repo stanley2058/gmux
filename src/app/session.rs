@@ -22,20 +22,17 @@ impl App {
             return;
         }
 
-        if self.state.session_containers().is_empty() {
+        if self.state.sessions().is_empty() {
             crate::persist::clear();
         } else {
             self.state.collapse_to_single_session();
             let snap = crate::persist::capture(
-                self.state.session_containers(),
+                self.state.sessions(),
                 &self.state.terminals,
                 &self.terminal_runtimes,
             );
             let history = self.persist_pane_history.then(|| {
-                crate::persist::capture_history(
-                    self.state.session_containers(),
-                    &self.terminal_runtimes,
-                )
+                crate::persist::capture_history(self.state.sessions(), &self.terminal_runtimes)
             });
             crate::persist::save(&snap, history.as_ref());
         }

@@ -29,24 +29,19 @@ impl AppState {
 
     fn pane_focus_target_indices(&self, target: &PaneFocusTarget) -> Option<(usize, usize)> {
         if let Some(ws_idx) = self
-            .session_containers()
+            .sessions()
             .iter()
             .position(|ws| ws.id == target.session_id)
         {
-            if let Some(tab_idx) =
-                self.session_containers()[ws_idx].find_tab_index_for_pane(target.pane_id)
-            {
+            if let Some(tab_idx) = self.sessions()[ws_idx].find_tab_index_for_pane(target.pane_id) {
                 return Some((ws_idx, tab_idx));
             }
         }
 
-        self.session_containers()
-            .iter()
-            .enumerate()
-            .find_map(|(ws_idx, ws)| {
-                ws.find_tab_index_for_pane(target.pane_id)
-                    .map(|tab_idx| (ws_idx, tab_idx))
-            })
+        self.sessions().iter().enumerate().find_map(|(ws_idx, ws)| {
+            ws.find_tab_index_for_pane(target.pane_id)
+                .map(|tab_idx| (ws_idx, tab_idx))
+        })
     }
 
     pub(crate) fn flattened_tab_index(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
@@ -62,7 +57,7 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) {
-        let Some(ws) = self.session_containers().get(ws_idx) else {
+        let Some(ws) = self.sessions().get(ws_idx) else {
             return;
         };
         let target = PaneFocusTarget {
@@ -82,7 +77,7 @@ impl AppState {
     }
 
     pub(crate) fn focus_pane_in_session_at(&mut self, ws_idx: usize, pane_id: PaneId) -> bool {
-        let Some(ws) = self.session_containers().get(ws_idx) else {
+        let Some(ws) = self.sessions().get(ws_idx) else {
             return false;
         };
         let Some(tab_idx) = ws.find_tab_index_for_pane(pane_id) else {
@@ -93,7 +88,7 @@ impl AppState {
             session_id: ws.id.clone(),
             pane_id,
         };
-        if self.session_containers().len() == 1
+        if self.sessions().len() == 1
             && self.active == Some(ws_idx)
             && previous.as_ref() == Some(&target)
         {
@@ -107,7 +102,7 @@ impl AppState {
             return false;
         };
         if let Some(tab) = self
-            .session_containers_mut()
+            .sessions_mut()
             .get_mut(ws_idx)
             .and_then(|ws| ws.tabs.get_mut(tab_idx))
         {
@@ -121,7 +116,7 @@ impl AppState {
 
     pub(crate) fn focus_session_pane(&mut self, pane_id: PaneId) -> bool {
         let Some(ws_idx) = self
-            .session_containers()
+            .sessions()
             .iter()
             .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some())
         else {
@@ -182,7 +177,7 @@ impl AppState {
         });
         let multi_tab = self.session_tab_count() > 1;
 
-        for ws_idx in 0..self.session_containers().len() {
+        for ws_idx in 0..self.sessions().len() {
             let child_query_kind = if session_matches {
                 NavigatorQueryKind::Empty
             } else {
@@ -205,7 +200,7 @@ impl AppState {
         query: &str,
         multi_tab: bool,
     ) -> Vec<NavigatorRow> {
-        let Some(ws) = self.session_containers().get(ws_idx) else {
+        let Some(ws) = self.sessions().get(ws_idx) else {
             return Vec::new();
         };
         let mut rows = Vec::new();
@@ -236,7 +231,7 @@ impl AppState {
     }
 
     fn navigator_tab_row(&self, ws_idx: usize, tab_idx: usize) -> NavigatorRow {
-        let ws = &self.session_containers()[ws_idx];
+        let ws = &self.sessions()[ws_idx];
         let tab = &ws.tabs[tab_idx];
         let label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
         let pane_count = tab.panes.len();
@@ -260,7 +255,7 @@ impl AppState {
         tab_idx: usize,
         multi_tab: bool,
     ) -> Vec<NavigatorRow> {
-        let Some(ws) = self.session_containers().get(ws_idx) else {
+        let Some(ws) = self.sessions().get(ws_idx) else {
             return Vec::new();
         };
         let Some(tab) = ws.tabs.get(tab_idx) else {
@@ -398,11 +393,11 @@ impl AppState {
     pub(crate) fn focus_navigator_target(&mut self, target: NavigatorTarget) -> bool {
         match target {
             NavigatorTarget::Tab { ws_idx, tab_idx } => {
-                if ws_idx >= self.session_containers().len() {
+                if ws_idx >= self.sessions().len() {
                     return false;
                 }
                 let tab_exists = self
-                    .session_containers()
+                    .sessions()
                     .get(ws_idx)
                     .is_some_and(|ws| tab_idx < ws.tabs.len());
                 if !tab_exists {
@@ -417,11 +412,11 @@ impl AppState {
                 tab_idx,
                 pane_id,
             } => {
-                if ws_idx >= self.session_containers().len() {
+                if ws_idx >= self.sessions().len() {
                     return false;
                 }
                 if self
-                    .session_containers()
+                    .sessions()
                     .get(ws_idx)
                     .and_then(|ws| ws.tabs.get(tab_idx))
                     .is_some_and(|tab| tab.panes.contains_key(&pane_id))
@@ -471,22 +466,22 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 impl AppState {
     pub(crate) fn session_index(&self) -> Option<usize> {
         self.active
-            .filter(|idx| self.session_containers().get(*idx).is_some())
-            .or_else(|| (!self.session_containers().is_empty()).then_some(0))
+            .filter(|idx| self.sessions().get(*idx).is_some())
+            .or_else(|| (!self.sessions().is_empty()).then_some(0))
     }
 
     pub(crate) fn session(&self) -> Option<&SessionUiState> {
         self.session_index()
-            .and_then(|idx| self.session_containers().get(idx))
+            .and_then(|idx| self.sessions().get(idx))
     }
 
     pub(crate) fn session_mut(&mut self) -> Option<&mut SessionUiState> {
         let idx = self.session_index()?;
-        self.session_containers_mut().get_mut(idx)
+        self.sessions_mut().get_mut(idx)
     }
 
     pub(crate) fn collapse_to_single_session(&mut self) -> bool {
-        match self.session_containers().len() {
+        match self.sessions().len() {
             0 => {
                 let changed = self.active.take().is_some() || self.selected != 0;
                 self.selected = 0;
@@ -504,9 +499,9 @@ impl AppState {
                 let active_ws_idx = self
                     .active
                     .unwrap_or(self.selected)
-                    .min(self.session_containers().len().saturating_sub(1));
+                    .min(self.sessions().len().saturating_sub(1));
                 let active_tab = self
-                    .session_containers()
+                    .sessions()
                     .iter()
                     .enumerate()
                     .take(active_ws_idx + 1)
@@ -518,8 +513,8 @@ impl AppState {
                         }
                     });
 
-                let extras = self.session_containers_mut().split_off(1);
-                let primary = &mut self.session_containers_mut()[0];
+                let extras = self.sessions_mut().split_off(1);
+                let primary = &mut self.sessions_mut()[0];
                 for mut workspace in extras {
                     if let (Some(name), Some(first_tab)) =
                         (workspace.custom_name.take(), workspace.tabs.first_mut())
@@ -532,7 +527,7 @@ impl AppState {
                 }
 
                 if primary.tabs.is_empty() {
-                    self.session_containers_mut().clear();
+                    self.sessions_mut().clear();
                     self.active = None;
                     self.selected = 0;
                     self.tab_scroll = 0;
@@ -570,7 +565,7 @@ impl AppState {
     }
 
     pub fn focus_session(&mut self, idx: usize) {
-        let Some(active_tab) = self.session_containers().get(idx).and_then(|ws| {
+        let Some(active_tab) = self.sessions().get(idx).and_then(|ws| {
             (!ws.tabs.is_empty()).then_some(ws.active_tab.min(ws.tabs.len().saturating_sub(1)))
         }) else {
             return;
@@ -585,14 +580,14 @@ impl AppState {
         };
 
         let previous_focus = self.current_pane_focus_target();
-        let workspace_changed = self.active != Some(ws_idx) || self.session_containers().len() > 1;
+        let workspace_changed = self.active != Some(ws_idx) || self.sessions().len() > 1;
         self.selection = None;
         self.selection_autoscroll = None;
 
         self.collapse_to_single_session();
         self.active = Some(0);
         self.selected = 0;
-        let session_id = self.session_containers()[0].id.clone();
+        let session_id = self.sessions()[0].id.clone();
         if workspace_changed {
             crate::logging::session_focused(&session_id);
         }
@@ -606,7 +601,7 @@ impl AppState {
             self.pane_panel_scroll = 0;
         }
         self.ensure_session_visible(0);
-        if let Some(ws) = self.session_containers_mut().get_mut(0) {
+        if let Some(ws) = self.sessions_mut().get_mut(0) {
             ws.switch_tab(flat_tab_idx);
             let tab_id = format!("{}:{}", session_id, flat_tab_idx + 1);
             crate::logging::tab_focused(&session_id, &tab_id);
@@ -618,7 +613,7 @@ impl AppState {
     }
 
     pub(crate) fn ensure_session_visible(&mut self, idx: usize) {
-        if idx >= self.session_containers().len() {
+        if idx >= self.sessions().len() {
             return;
         }
 
@@ -731,7 +726,7 @@ impl AppState {
 
         if self.session_index() == Some(ws_idx)
             && self
-                .session_containers()
+                .sessions()
                 .get(ws_idx)
                 .and_then(SessionUiState::focused_pane_id)
                 == Some(pane_id)
@@ -794,7 +789,7 @@ impl AppState {
         &self,
         ws_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
-        self.session_containers()
+        self.sessions()
             .get(ws_idx)
             .into_iter()
             .flat_map(|ws| &ws.tabs)
@@ -808,7 +803,7 @@ impl AppState {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Vec<crate::terminal::TerminalId> {
-        self.session_containers()
+        self.sessions()
             .get(ws_idx)
             .and_then(|ws| ws.tabs.get(tab_idx))
             .into_iter()
@@ -822,7 +817,7 @@ impl AppState {
         ws_idx: usize,
         pane_id: PaneId,
     ) -> Option<crate::terminal::TerminalId> {
-        self.session_containers()
+        self.sessions()
             .get(ws_idx)?
             .pane_state(pane_id)
             .map(|pane| pane.attached_terminal_id.clone())
@@ -833,7 +828,7 @@ impl AppState {
         terminal_ids: impl IntoIterator<Item = crate::terminal::TerminalId>,
     ) {
         for terminal_id in terminal_ids {
-            let still_attached = self.session_containers().iter().any(|ws| {
+            let still_attached = self.sessions().iter().any(|ws| {
                 ws.tabs.iter().any(|tab| {
                     tab.panes
                         .values()
@@ -850,7 +845,7 @@ impl AppState {
     }
 
     pub fn close_session(&mut self) {
-        if self.session_containers().is_empty() {
+        if self.sessions().is_empty() {
             return;
         }
         self.collapse_to_single_session();
@@ -863,23 +858,19 @@ impl AppState {
 
         let mut terminal_ids = Vec::new();
         terminal_ids.extend(self.terminal_ids_for_session_at(close_idx));
-        if let Some(session_id) = self
-            .session_containers()
-            .get(close_idx)
-            .map(|ws| ws.id.clone())
-        {
+        if let Some(session_id) = self.sessions().get(close_idx).map(|ws| ws.id.clone()) {
             crate::logging::session_closed(&session_id);
         }
-        self.session_containers_mut().remove(close_idx);
+        self.sessions_mut().remove(close_idx);
         self.remove_unattached_terminal_ids(terminal_ids);
-        if self.session_containers().is_empty() {
+        if self.sessions().is_empty() {
             self.active = None;
             self.selected = 0;
             self.tab_scroll = 0;
             self.tab_scroll_follow_active = true;
         } else {
-            if self.selected >= self.session_containers().len() {
-                self.selected = self.session_containers().len() - 1;
+            if self.selected >= self.sessions().len() {
+                self.selected = self.sessions().len() - 1;
             }
             self.active = Some(self.selected);
             self.ensure_session_visible(self.selected);
@@ -997,7 +988,7 @@ impl AppState {
             return;
         };
         if let Some(tab) = self
-            .session_containers_mut()
+            .sessions_mut()
             .get_mut(ws_idx)
             .and_then(|ws| ws.tabs.get_mut(tab_idx))
         {
@@ -1025,7 +1016,7 @@ impl AppState {
         self.mark_session_dirty();
         let terminal_ids = active
             .and_then(|i| {
-                self.session_containers()
+                self.sessions()
                     .get(i)
                     .and_then(|ws| ws.focused_pane_id().map(|pane_id| (i, pane_id)))
             })
@@ -1033,7 +1024,7 @@ impl AppState {
             .into_iter()
             .collect::<Vec<_>>();
         let should_close_session = active
-            .and_then(|i| self.session_containers_mut().get_mut(i))
+            .and_then(|i| self.sessions_mut().get_mut(i))
             .is_some_and(|ws| ws.close_focused());
         if should_close_session {
             self.close_session();
@@ -1056,11 +1047,11 @@ impl AppState {
         }
         if let Some(ws_idx) = self.session_index() {
             let terminal_ids = self
-                .session_containers()
+                .sessions()
                 .get(ws_idx)
                 .map(|ws| self.terminal_ids_for_tab(ws_idx, ws.active_tab))
                 .unwrap_or_default();
-            let Some(ws) = self.session_containers_mut().get_mut(ws_idx) else {
+            let Some(ws) = self.sessions_mut().get_mut(ws_idx) else {
                 return false;
             };
             let session_id = ws.id.clone();
@@ -1522,7 +1513,7 @@ impl AppState {
     fn handle_pane_died(&mut self, pane_id: PaneId) {
         self.collapse_to_single_session();
         let ws_idx = self
-            .session_containers()
+            .sessions()
             .iter()
             .position(|ws| ws.find_tab_index_for_pane(pane_id).is_some());
 
@@ -1544,13 +1535,13 @@ impl AppState {
         let session_terminal_ids = self.terminal_ids_for_session_at(ws_idx);
         self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
         let should_close_session = {
-            let ws = &mut self.session_containers_mut()[ws_idx];
+            let ws = &mut self.sessions_mut()[ws_idx];
             ws.remove_pane(pane_id)
         };
         self.mark_session_dirty();
 
         if should_close_session {
-            self.session_containers_mut().remove(ws_idx);
+            self.sessions_mut().remove(ws_idx);
             self.remove_unattached_terminal_ids(session_terminal_ids);
             self.active = None;
             self.selected = 0;

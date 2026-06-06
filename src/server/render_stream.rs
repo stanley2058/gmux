@@ -318,7 +318,7 @@ pub(crate) fn visible_hyperlinks(
         return Vec::new();
     };
     let Some(tab) = app_state
-        .session_containers()
+        .sessions()
         .get(ws_idx)
         .and_then(|session| session.active_tab())
     else {

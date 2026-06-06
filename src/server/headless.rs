@@ -646,7 +646,7 @@ impl HeadlessServer {
         };
 
         let mut pane_by_terminal = HashMap::new();
-        for ws in self.app.state.session_containers() {
+        for ws in self.app.state.sessions() {
             for tab in &ws.tabs {
                 for (pane_id, pane) in &tab.panes {
                     pane_by_terminal.insert(pane.attached_terminal_id.clone(), pane_id.raw());
@@ -681,7 +681,7 @@ impl HeadlessServer {
 
         self.app.state.collapse_to_single_session();
         let snapshot = crate::persist::capture(
-            self.app.state.session_containers(),
+            self.app.state.sessions(),
             &self.app.state.terminals,
             &self.app.terminal_runtimes,
         );
@@ -1230,7 +1230,7 @@ impl HeadlessServer {
             }
             AppEvent::PaneDied { pane_id } => {
                 let pane_id_val = *pane_id;
-                let terminal_id = self.app.state.session_containers().iter().find_map(|ws| {
+                let terminal_id = self.app.state.sessions().iter().find_map(|ws| {
                     ws.tabs.iter().find_map(|tab| {
                         tab.panes
                             .get(pane_id)

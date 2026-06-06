@@ -252,7 +252,7 @@ fn tab_detail(
     ws_idx: usize,
     tab_idx: usize,
 ) -> String {
-    let Some(ws) = app.session_containers().get(ws_idx) else {
+    let Some(ws) = app.sessions().get(ws_idx) else {
         return String::new();
     };
     let Some(tab) = ws.tabs.get(tab_idx) else {
@@ -278,7 +278,7 @@ fn pane_detail(
     tab_idx: usize,
     pane_id: crate::layout::PaneId,
 ) -> String {
-    let Some(ws) = app.session_containers().get(ws_idx) else {
+    let Some(ws) = app.sessions().get(ws_idx) else {
         return String::new();
     };
     let Some(tab) = ws.tabs.get(tab_idx) else {

@@ -447,7 +447,7 @@ impl App {
 
         let last_focus = state.session_index().and_then(|idx| {
             state
-                .session_containers()
+                .sessions()
                 .get(idx)
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
@@ -516,7 +516,7 @@ impl App {
         app.no_session = false;
         app.state.detach_exits = false;
         app.state.pane_id_aliases = pane_id_aliases;
-        *app.state.session_containers_mut() = session_containers;
+        *app.state.sessions_mut() = session_containers;
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
         app.state.selected = 0;
@@ -524,7 +524,7 @@ impl App {
         app.state.mode = app.state.terminal_or_navigate_mode();
         app.last_focus = app.state.session_index().and_then(|idx| {
             app.state
-                .session_containers()
+                .sessions()
                 .get(idx)
                 .and_then(|ws| ws.focused_pane_id().map(|pane_id| (idx, pane_id)))
         });
@@ -752,7 +752,7 @@ impl App {
     }
 
     pub(crate) fn ensure_default_session(&mut self) -> bool {
-        if !self.state.session_containers().is_empty() || self.state.mode == Mode::Onboarding {
+        if !self.state.sessions().is_empty() || self.state.mode == Mode::Onboarding {
             return false;
         }
 

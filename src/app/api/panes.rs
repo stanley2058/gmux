@@ -19,7 +19,7 @@ impl App {
         };
         let Some(target_tab_idx) = self
             .state
-            .session_containers()
+            .sessions()
             .get(ws_idx)
             .and_then(|ws| ws.find_tab_index_for_pane(target_pane_id))
         else {
@@ -30,17 +30,13 @@ impl App {
         };
         let (rows, cols) = self.state.estimate_pane_size();
         let split_cwd = params.cwd.map(std::path::PathBuf::from).or_else(|| {
-            let follow_cwd = self
-                .state
-                .session_containers()
-                .get(ws_idx)
-                .and_then(|container| {
-                    container.tabs.get(target_tab_idx)?.cwd_for_pane(
-                        target_pane_id,
-                        &self.state.terminals,
-                        &self.terminal_runtimes,
-                    )
-                });
+            let follow_cwd = self.state.sessions().get(ws_idx).and_then(|container| {
+                container.tabs.get(target_tab_idx)?.cwd_for_pane(
+                    target_pane_id,
+                    &self.state.terminals,
+                    &self.terminal_runtimes,
+                )
+            });
             Some(self.resolve_new_terminal_cwd(follow_cwd))
         });
         let default_shell = self.state.default_shell.clone();
@@ -50,7 +46,7 @@ impl App {
         let previous_focus = self.state.current_pane_focus_target();
         self.state.collapse_to_single_session();
         let ws_idx = 0;
-        let Some(ws) = self.state.session_containers_mut().get_mut(ws_idx) else {
+        let Some(ws) = self.state.sessions_mut().get_mut(ws_idx) else {
             return pane_not_found(id, &params.target_pane_id);
         };
         let direction = match params.direction {
@@ -186,7 +182,7 @@ impl App {
         };
         let Some(terminal_id) = self
             .state
-            .session_containers()
+            .sessions()
             .get(ws_idx)
             .and_then(|ws| ws.terminal_id(pane_id))
             .cloned()
@@ -356,7 +352,7 @@ impl App {
         let (_, pane_id) = self.parse_pane_id(public_pane_id)?;
         self.state.collapse_to_single_session();
         self.state
-            .session_containers()
+            .sessions()
             .iter()
             .enumerate()
             .find_map(|(ws_idx, ws)| {
@@ -373,7 +369,7 @@ impl App {
 
     fn pane_info_by_raw_id(&self, pane_id: crate::layout::PaneId) -> Option<PaneInfo> {
         self.state
-            .session_containers()
+            .sessions()
             .iter()
             .enumerate()
             .find_map(|(ws_idx, ws)| {

@@ -1144,26 +1144,23 @@ impl AppState {
         }
     }
 
-    pub(crate) fn session_containers(&self) -> &[SessionUiState] {
+    pub(crate) fn sessions(&self) -> &[SessionUiState] {
         &self.session_containers
     }
 
-    pub(crate) fn session_containers_mut(&mut self) -> &mut Vec<SessionUiState> {
+    pub(crate) fn sessions_mut(&mut self) -> &mut Vec<SessionUiState> {
         &mut self.session_containers
     }
 
     pub(crate) fn session_tab_entries(
         &self,
     ) -> impl Iterator<Item = (usize, usize, &SessionUiState, &crate::workspace::Tab)> {
-        self.session_containers()
-            .iter()
-            .enumerate()
-            .flat_map(|(ws_idx, ws)| {
-                ws.tabs
-                    .iter()
-                    .enumerate()
-                    .map(move |(tab_idx, tab)| (ws_idx, tab_idx, ws, tab))
-            })
+        self.sessions().iter().enumerate().flat_map(|(ws_idx, ws)| {
+            ws.tabs
+                .iter()
+                .enumerate()
+                .map(move |(tab_idx, tab)| (ws_idx, tab_idx, ws, tab))
+        })
     }
 
     pub(crate) fn session_tab_count(&self) -> usize {
@@ -1178,17 +1175,12 @@ impl AppState {
         pane_id: crate::layout::PaneId,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
         #[cfg(test)]
-        if let Some(runtime) = self
-            .session_containers()
-            .get(ws_idx)?
-            .test_runtimes
-            .get(&pane_id)
-        {
+        if let Some(runtime) = self.sessions().get(ws_idx)?.test_runtimes.get(&pane_id) {
             return Some(runtime);
         }
         #[cfg(test)]
         if let Some(runtime) = self
-            .session_containers()
+            .sessions()
             .get(ws_idx)?
             .tabs
             .iter()
@@ -1196,10 +1188,7 @@ impl AppState {
         {
             return Some(runtime);
         }
-        let terminal_id = self
-            .session_containers()
-            .get(ws_idx)?
-            .terminal_id(pane_id)?;
+        let terminal_id = self.sessions().get(ws_idx)?.terminal_id(pane_id)?;
         terminal_runtimes.get(terminal_id)
     }
 
@@ -1209,7 +1198,7 @@ impl AppState {
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         pane_id: crate::layout::PaneId,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
-        self.session_containers().iter().find_map(|ws| {
+        self.sessions().iter().find_map(|ws| {
             #[cfg(test)]
             if let Some(runtime) = ws.test_runtimes.get(&pane_id) {
                 return Some(runtime);
@@ -1228,7 +1217,7 @@ impl AppState {
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         ws_idx: usize,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
-        let ws = self.session_containers().get(ws_idx)?;
+        let ws = self.sessions().get(ws_idx)?;
         let pane_id = ws.focused_pane_id()?;
         self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)
     }
@@ -1253,7 +1242,7 @@ impl AppState {
         if ws_idx != active_ws_idx {
             return false;
         }
-        let Some(ws) = self.session_containers().get(ws_idx) else {
+        let Some(ws) = self.sessions().get(ws_idx) else {
             return false;
         };
         if tab_idx != ws.active_tab_index() {
@@ -1393,7 +1382,7 @@ impl AppState {
     pub fn ensure_test_terminals(&mut self) {
         use crate::terminal::TerminalState;
         let missing = self
-            .session_containers()
+            .sessions()
             .iter()
             .flat_map(|ws| {
                 ws.tabs.iter().flat_map(|tab| {
@@ -1417,7 +1406,7 @@ impl AppState {
         runtime: crate::terminal::TerminalRuntime,
     ) {
         if let Some(ws) = self
-            .session_containers_mut()
+            .sessions_mut()
             .iter_mut()
             .find(|ws| ws.terminal_id(pane_id).is_some())
         {

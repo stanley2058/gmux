@@ -228,7 +228,7 @@ pub(crate) fn has_visible_pane_graphics(
         return false;
     };
     if app
-        .session_containers()
+        .sessions()
         .get(ws_idx)
         .and_then(|session| session.active_tab())
         .is_none()
@@ -414,7 +414,7 @@ impl HostGraphicsCache {
 
 fn active_view_key(app: &AppState) -> Option<HostViewKey> {
     let ws_idx = app.active?;
-    let ws = app.session_containers().get(ws_idx)?;
+    let ws = app.sessions().get(ws_idx)?;
     Some(HostViewKey {
         workspace_index: ws_idx,
         tab_index: ws.active_tab_index(),
@@ -435,7 +435,7 @@ fn collect_visible_placements(
         }
     };
     if app
-        .session_containers()
+        .sessions()
         .get(ws_idx)
         .and_then(|session| session.active_tab())
         .is_none()

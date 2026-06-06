@@ -76,7 +76,7 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if !self.state.session_containers().is_empty() {
+        if !self.state.sessions().is_empty() {
             self.state.collapse_to_single_session();
         }
         let Some(session_idx) = self.state.session_index() else {
@@ -88,7 +88,7 @@ impl App {
         let default_shell = self.state.default_shell.clone();
         let shell_mode = self.state.shell_mode;
         let (idx, terminal, runtime, session_id, root_pane) = {
-            let session = &mut self.state.session_containers_mut()[session_idx];
+            let session = &mut self.state.sessions_mut()[session_idx];
             let (idx, terminal, runtime) = session.create_tab(
                 rows,
                 cols,
@@ -120,7 +120,7 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
-        if !self.state.session_containers().is_empty() {
+        if !self.state.sessions().is_empty() {
             self.state.collapse_to_single_session();
             return Ok(self.state.session_index().unwrap_or(0));
         }
@@ -140,11 +140,11 @@ impl App {
         )?;
         self.terminal_runtimes.insert(terminal.id.clone(), runtime);
         self.state.terminals.insert(terminal.id.clone(), terminal);
-        self.state.session_containers_mut().push(ws);
-        let idx = self.state.session_containers().len() - 1;
-        let root_pane = self.state.session_containers()[idx].tabs[0].root_pane;
+        self.state.sessions_mut().push(ws);
+        let idx = self.state.sessions().len() - 1;
+        let root_pane = self.state.sessions()[idx].tabs[0].root_pane;
         self.state.remove_alias_shadowed_by_new_pane(root_pane);
-        let session_id = self.state.session_containers()[idx].id.clone();
+        let session_id = self.state.sessions()[idx].id.clone();
         crate::logging::session_created(&session_id, root_pane.raw());
         if should_focus {
             self.state.focus_session(idx);
@@ -156,7 +156,7 @@ impl App {
 
     pub(super) fn collect_panes(&self) -> Vec<crate::api::schema::PaneInfo> {
         self.state
-            .session_containers()
+            .sessions()
             .iter()
             .enumerate()
             .flat_map(|(container_idx, container)| {
@@ -174,7 +174,7 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::TabInfo> {
-        let container = self.state.session_containers().get(ws_idx)?;
+        let container = self.state.sessions().get(ws_idx)?;
         let tab = container.tabs.get(tab_idx)?;
         Some(crate::api::schema::TabInfo {
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
@@ -201,7 +201,7 @@ impl App {
         ws_idx: usize,
         tab_idx: usize,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let container = self.state.session_containers().get(ws_idx)?;
+        let container = self.state.sessions().get(ws_idx)?;
         let tab = container.tabs.get(tab_idx)?;
         self.pane_info(ws_idx, tab.root_pane)
     }
@@ -211,7 +211,7 @@ impl App {
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::api::schema::PaneInfo> {
-        let container = self.state.session_containers().get(ws_idx)?;
+        let container = self.state.sessions().get(ws_idx)?;
         let pane = container.pane_state(pane_id)?;
         let terminal = self.state.terminals.get(&pane.attached_terminal_id)?;
         let tab_idx = container.find_tab_index_for_pane(pane_id)?;
