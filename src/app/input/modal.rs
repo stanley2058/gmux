@@ -306,7 +306,7 @@ pub(super) fn open_new_tab_dialog(state: &mut AppState) {
 }
 
 pub(super) fn leave_modal(state: &mut AppState) {
-    if state.active.is_some() {
+    if state.session_container().is_some() {
         state.mode = Mode::Terminal;
     } else {
         state.mode = Mode::Navigate;
@@ -380,7 +380,7 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                         };
                 }
                 Mode::RenameTab => {
-                    if let Some(ws_idx) = state.active {
+                    if let Some(ws_idx) = state.session_container_index() {
                         if let Some(ws) = state.workspaces.get_mut(ws_idx) {
                             let workspace_id = ws.id.clone();
                             let active_tab = ws.active_tab;
@@ -398,7 +398,8 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                     }
                 }
                 Mode::RenamePane => {
-                    if let (Some(ws_idx), Some(pane_id)) = (state.active, state.rename_pane_target)
+                    if let (Some(ws_idx), Some(pane_id)) =
+                        (state.session_container_index(), state.rename_pane_target)
                     {
                         if let Some(ws) = state.workspaces.get(ws_idx) {
                             if let Some(pane) = ws.pane_state(pane_id) {
@@ -536,11 +537,7 @@ pub(crate) fn handle_resize_key(state: &mut AppState, raw_key: TerminalKey) {
         || state.keybinds.resize_mode.matches_prefix_key(raw_key)
         || state.keybinds.resize_mode.matches_direct_key(raw_key)
     {
-        if state.active.is_some() {
-            state.mode = Mode::Terminal;
-        } else {
-            state.mode = Mode::Navigate;
-        }
+        leave_modal(state);
         return;
     }
 
@@ -591,34 +588,24 @@ pub(super) fn apply_context_menu_action(
     let item = menu.items().get(idx).copied();
     match (menu.kind, item) {
         (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("New tab")) => {
-            state.selected = ws_idx;
-            state.active = Some(ws_idx);
-            state.switch_tab(tab_idx);
+            state.switch_workspace_tab(ws_idx, tab_idx);
             open_new_tab_dialog(state);
         }
         (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("Rename")) => {
-            state.selected = ws_idx;
-            state.active = Some(ws_idx);
-            state.switch_tab(tab_idx);
+            state.switch_workspace_tab(ws_idx, tab_idx);
             open_rename_active_tab(state, false);
         }
         (ContextMenuKind::Tab { ws_idx, tab_idx }, Some("Close")) => {
-            state.selected = ws_idx;
-            state.active = Some(ws_idx);
-            state.switch_tab(tab_idx);
+            state.switch_workspace_tab(ws_idx, tab_idx);
             if !state.close_tab() {
-                state.mode = if state.active.is_some() {
-                    Mode::Terminal
-                } else {
-                    Mode::Navigate
-                };
+                leave_modal(state);
             }
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Rename pane")) => {
             open_rename_pane(state, pane_id);
         }
         (ContextMenuKind::Pane { pane_id, .. }, Some("Clear pane name")) => {
-            if let Some(ws_idx) = state.active {
+            if let Some(ws_idx) = state.session_container_index() {
                 if let Some(ws) = state.workspaces.get(ws_idx) {
                     if let Some(pane) = ws.pane_state(pane_id) {
                         let terminal_id = pane.attached_terminal_id.clone();
@@ -645,11 +632,7 @@ pub(super) fn apply_context_menu_action(
         }
         (ContextMenuKind::Pane { .. }, Some("Close pane")) => {
             if !state.close_pane() {
-                state.mode = if state.active.is_some() {
-                    Mode::Terminal
-                } else {
-                    Mode::Navigate
-                };
+                leave_modal(state);
             }
         }
         _ => leave_modal(state),
