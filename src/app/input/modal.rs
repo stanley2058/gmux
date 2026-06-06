@@ -259,6 +259,7 @@ pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {
 }
 
 pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool) {
+    state.collapse_to_single_session_workspace();
     state.creating_new_tab = false;
     state.requested_new_tab_name = None;
     state.rename_pane_target = None;
@@ -272,6 +273,7 @@ pub(super) fn open_rename_active_tab(state: &mut AppState, replace_on_type: bool
 }
 
 pub(super) fn open_rename_pane(state: &mut AppState, pane_id: crate::layout::PaneId) {
+    state.collapse_to_single_session_workspace();
     let Some(ws) = state.session_container() else {
         return;
     };
@@ -380,30 +382,30 @@ pub(super) fn apply_rename_action(state: &mut AppState, action: ModalAction) {
                         };
                 }
                 Mode::RenameTab => {
-                    if let Some(ws_idx) = state.session_container_index() {
-                        if let Some(ws) = state.workspaces.get_mut(ws_idx) {
-                            let workspace_id = ws.id.clone();
-                            let active_tab = ws.active_tab;
-                            if let Some(tab) = ws.active_tab_mut() {
-                                let keep_auto_name =
-                                    tab.is_auto_named() && new_name == tab.number.to_string();
-                                if !new_name.is_empty() && !keep_auto_name {
-                                    tab.set_custom_name(new_name);
-                                    let tab_id = format!("{}:{}", workspace_id, active_tab + 1);
-                                    crate::logging::tab_renamed(&workspace_id, &tab_id);
-                                    state.mark_session_dirty();
-                                }
+                    state.collapse_to_single_session_workspace();
+                    if let Some(ws) = state.session_container_mut() {
+                        let workspace_id = ws.id.clone();
+                        let active_tab = ws.active_tab;
+                        if let Some(tab) = ws.active_tab_mut() {
+                            let keep_auto_name =
+                                tab.is_auto_named() && new_name == tab.number.to_string();
+                            if !new_name.is_empty() && !keep_auto_name {
+                                tab.set_custom_name(new_name);
+                                let tab_id = format!("{}:{}", workspace_id, active_tab + 1);
+                                crate::logging::tab_renamed(&workspace_id, &tab_id);
+                                state.mark_session_dirty();
                             }
                         }
                     }
                 }
                 Mode::RenamePane => {
-                    if let (Some(ws_idx), Some(pane_id)) =
-                        (state.session_container_index(), state.rename_pane_target)
-                    {
-                        if let Some(ws) = state.workspaces.get(ws_idx) {
-                            if let Some(pane) = ws.pane_state(pane_id) {
-                                let terminal_id = pane.attached_terminal_id.clone();
+                    state.collapse_to_single_session_workspace();
+                    if let Some(pane_id) = state.rename_pane_target {
+                        if let Some(ws) = state.session_container() {
+                            if let Some(terminal_id) = ws
+                                .pane_state(pane_id)
+                                .map(|pane| pane.attached_terminal_id.clone())
+                            {
                                 if let Some(terminal) = state.terminals.get_mut(&terminal_id) {
                                     terminal.set_manual_label(new_name);
                                     state.mark_session_dirty();
@@ -849,6 +851,61 @@ mod tests {
 
         let snapshot = capture_snapshot(&state);
         assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("logs"));
+    }
+
+    #[test]
+    fn tab_rename_collapses_legacy_active_workspace_to_session_tab() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        state.active = Some(1);
+        state.selected = 1;
+        state.mode = Mode::RenameTab;
+        state.name_input = "deploy".into();
+
+        handle_rename_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.workspaces[0].active_tab, 1);
+        assert_eq!(state.workspaces[0].tabs[1].display_name(), "deploy");
+        let snapshot = capture_snapshot(&state);
+        assert_eq!(snapshot.tabs[1].custom_name.as_deref(), Some("deploy"));
+    }
+
+    #[test]
+    fn pane_rename_collapses_legacy_workspace_target() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        let target_pane = state.workspaces[1].tabs[0].root_pane;
+        let terminal_id = state.workspaces[1]
+            .pane_state(target_pane)
+            .unwrap()
+            .attached_terminal_id
+            .clone();
+        state.ensure_test_terminals();
+        state.active = Some(0);
+        state.selected = 0;
+        state.mode = Mode::RenamePane;
+        state.rename_pane_target = Some(target_pane);
+        state.name_input = "database".into();
+
+        handle_rename_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.workspaces.len(), 1);
+        assert!(state.workspaces[0].pane_state(target_pane).is_some());
+        assert_eq!(
+            state
+                .terminals
+                .get(&terminal_id)
+                .unwrap()
+                .manual_label
+                .as_deref(),
+            Some("database")
+        );
     }
 
     #[test]
