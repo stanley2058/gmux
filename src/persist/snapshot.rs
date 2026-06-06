@@ -254,14 +254,14 @@ fn first_pane_id_in_layout(layout: &LayoutSnapshot) -> Option<u32> {
 
 /// Capture the current app state into a serializable snapshot.
 pub fn capture(
-    workspaces: &[Workspace],
+    session_containers: &[Workspace],
     terminals: &std::collections::HashMap<
         crate::terminal::TerminalId,
         crate::terminal::TerminalState,
     >,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionSnapshot {
-    let containers: Vec<_> = workspaces
+    let containers: Vec<_> = session_containers
         .iter()
         .map(|container| capture_session_container(container, terminals, terminal_runtimes))
         .collect();
@@ -348,10 +348,10 @@ fn capture_tab(
 
 /// Capture pane screen history separately from the structural session snapshot.
 pub fn capture_history(
-    workspaces: &[Workspace],
+    session_containers: &[Workspace],
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionHistorySnapshot {
-    let tabs = workspaces
+    let tabs = session_containers
         .iter()
         .flat_map(|container| &container.tabs)
         .map(|tab| TabHistorySnapshot {
