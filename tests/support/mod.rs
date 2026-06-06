@@ -64,7 +64,7 @@ pub fn unregister_runtime_dir(path: &Path) {
 #[cfg(target_os = "linux")]
 pub fn gmux_server_pids_for_runtime_dir(runtime_dir: &Path) -> std::io::Result<Vec<u32>> {
     let mut pids = Vec::new();
-    for pid in iter_worktree_server_pids()? {
+    for pid in iter_gmux_server_pids()? {
         let Some(process_runtime_dir) = process_runtime_dir(pid)? else {
             continue;
         };
@@ -469,7 +469,7 @@ fn cleanup_servers_with_missing_runtime_dir() -> std::io::Result<()> {
         return Ok(());
     }
 
-    for pid in iter_worktree_server_pids()? {
+    for pid in iter_gmux_server_pids()? {
         let Some(runtime_dir) = process_runtime_dir(pid)? else {
             continue;
         };
@@ -487,7 +487,7 @@ fn terminate_servers_for_runtime_dirs(runtime_dirs: &HashSet<PathBuf>) {
         return;
     }
 
-    let Ok(pids) = iter_worktree_server_pids() else {
+    let Ok(pids) = iter_gmux_server_pids() else {
         return;
     };
 
@@ -506,7 +506,7 @@ fn terminate_servers_for_runtime_dirs(runtime_dirs: &HashSet<PathBuf>) {
     }
 }
 
-fn iter_worktree_server_pids() -> std::io::Result<Vec<u32>> {
+fn iter_gmux_server_pids() -> std::io::Result<Vec<u32>> {
     let own_pid = std::process::id();
     let mut pids = Vec::new();
 

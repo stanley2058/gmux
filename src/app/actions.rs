@@ -1757,9 +1757,9 @@ mod tests {
                 "./src/app/actions.rs:795",
             ),
             (
-                "open ../gmux-worktrees/issue-1",
+                "open ../gmux-projects/issue-1",
                 "gmux",
-                "../gmux-worktrees/issue-1",
+                "../gmux-projects/issue-1",
             ),
             (
                 "edit src/app/actions.rs,then",
@@ -2032,7 +2032,7 @@ mod tests {
     #[test]
     fn navigator_search_only_matches_visible_row_text() {
         let mut state = app_with_workspaces(&["one"]);
-        state.workspaces[0].identity_cwd = "/tmp/gmux-worktrees/issue-work".into();
+        state.workspaces[0].identity_cwd = "/tmp/gmux-projects/issue-work".into();
 
         state.open_navigator();
         state.navigator.query = "work".into();
