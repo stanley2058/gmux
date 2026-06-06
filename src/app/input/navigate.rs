@@ -972,6 +972,39 @@ mod tests {
     }
 
     #[test]
+    fn custom_open_notification_key_falls_back_to_collapsed_pane_target() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        state.active = Some(0);
+        state.selected = 0;
+        state.mode = Mode::Navigate;
+        state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
+        let target_workspace_id = state.workspaces[1].id.clone();
+        let target_pane = state.workspaces[1].tabs[0].root_pane;
+        state.toast = Some(crate::app::state::ToastNotification {
+            kind: crate::app::state::ToastKind::NeedsAttention,
+            title: "pi needs attention".into(),
+            context: "two".into(),
+            target: Some(crate::app::state::ToastTarget {
+                workspace_id: target_workspace_id,
+                pane_id: target_pane,
+            }),
+        });
+        state.collapse_to_single_session_workspace();
+        state.workspaces[0].switch_tab(0);
+
+        handle_navigate_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.workspaces[0].active_tab, 1);
+        assert_eq!(state.workspaces[0].focused_pane_id(), Some(target_pane));
+        assert!(state.toast.is_none());
+        assert_eq!(state.mode, Mode::Terminal);
+    }
+
+    #[test]
     fn removed_arrow_workspace_navigation_stays_in_navigate_mode() {
         let mut state = state_with_workspaces(&["a", "b"]);
         state.selected = 0;
