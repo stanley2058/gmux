@@ -48,13 +48,13 @@ impl App {
             return match self.create_session_container_with_options(cwd, focus) {
                 Ok(ws_idx) => {
                     if let Some(label) = label {
-                        let workspace_id = self.state.workspaces[ws_idx].id.clone();
+                        let workspace_id = self.state.session_containers()[ws_idx].id.clone();
                         let tab_id = self
                             .public_tab_id(ws_idx, 0)
                             .unwrap_or_else(|| format!("{workspace_id}:1"));
                         if let Some(tab) = self
                             .state
-                            .workspaces
+                            .session_containers_mut()
                             .get_mut(ws_idx)
                             .and_then(|ws| ws.tabs.get_mut(0))
                         {
@@ -97,11 +97,12 @@ impl App {
         });
         let (rows, cols) = self.state.estimate_pane_size();
         let default_shell = self.state.default_shell.clone();
+        let shell_mode = self.state.shell_mode;
         let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
         let host_terminal_theme = self.state.host_terminal_theme;
         let result = self
             .state
-            .workspaces
+            .session_containers_mut()
             .get_mut(ws_idx)
             .ok_or_else(|| std::io::Error::other("session state disappeared"))
             .and_then(|ws| {
@@ -111,24 +112,23 @@ impl App {
                     cwd,
                     scrollback_limit_bytes,
                     host_terminal_theme,
-                    crate::pane::PaneShellConfig::new(&default_shell, self.state.shell_mode),
+                    crate::pane::PaneShellConfig::new(&default_shell, shell_mode),
                 )
             });
         match result {
             Ok((tab_idx, terminal, runtime)) => {
                 self.terminal_runtimes.insert(terminal.id.clone(), runtime);
                 self.state.terminals.insert(terminal.id.clone(), terminal);
-                self.state.remove_alias_shadowed_by_new_pane(
-                    self.state.workspaces[ws_idx].tabs[tab_idx].root_pane,
-                );
+                let root_pane = self.state.session_containers()[ws_idx].tabs[tab_idx].root_pane;
+                self.state.remove_alias_shadowed_by_new_pane(root_pane);
                 if let Some(label) = label {
-                    let workspace_id = self.state.workspaces[ws_idx].id.clone();
+                    let workspace_id = self.state.session_containers()[ws_idx].id.clone();
                     let tab_id = self
                         .public_tab_id(ws_idx, tab_idx)
                         .unwrap_or_else(|| format!("{}:{}", workspace_id, tab_idx + 1));
                     if let Some(tab) = self
                         .state
-                        .workspaces
+                        .session_containers_mut()
                         .get_mut(ws_idx)
                         .and_then(|ws| ws.tabs.get_mut(tab_idx))
                     {
@@ -175,7 +175,7 @@ impl App {
         let Some(focused_ws_idx) = self.state.session_container_index() else {
             return tab_not_found(id, &target.tab_id);
         };
-        let focused_tab_idx = self.state.workspaces[focused_ws_idx].active_tab;
+        let focused_tab_idx = self.state.session_containers()[focused_ws_idx].active_tab;
         let tab = self.tab_info(focused_ws_idx, focused_tab_idx).unwrap();
 
         encode_success(id, ResponseResult::TabInfo { tab })
@@ -189,13 +189,13 @@ impl App {
             return tab_not_found(id, &params.tab_id);
         };
         self.state.collapse_to_single_session_workspace();
-        let workspace_id = self.state.workspaces[0].id.clone();
+        let workspace_id = self.state.session_containers()[0].id.clone();
         let tab_id = self
             .public_tab_id(0, flat_tab_idx)
             .unwrap_or_else(|| format!("{}:{}", workspace_id, flat_tab_idx + 1));
         let Some(tab) = self
             .state
-            .workspaces
+            .session_containers_mut()
             .get_mut(0)
             .and_then(|ws| ws.tabs.get_mut(flat_tab_idx))
         else {
