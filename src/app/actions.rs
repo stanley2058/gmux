@@ -186,12 +186,7 @@ impl AppState {
                 NavigatorQueryKind::Text => navigator_matches(&query, &session_search_text),
             }
         });
-        let total_tabs = self
-            .workspaces
-            .iter()
-            .map(|ws| ws.tabs.len())
-            .sum::<usize>();
-        let multi_tab = total_tabs > 1;
+        let multi_tab = self.session_tab_count() > 1;
 
         for ws_idx in 0..self.workspaces.len() {
             let child_query_kind = if session_matches {

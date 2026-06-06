@@ -132,28 +132,20 @@ fn pane_panel_entries_with_runtimes(
                 .session_container()
                 .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
                 .unwrap_or_else(|| "session".to_string());
-            let multi_tab = app.workspaces.iter().map(|ws| ws.tabs.len()).sum::<usize>() > 1;
+            let multi_tab = app.session_tab_count() > 1;
 
-            app.workspaces
-                .iter()
-                .enumerate()
-                .flat_map(|(ws_idx, ws)| {
-                    ws.tabs.iter().enumerate().flat_map({
+            app.session_tab_entries()
+                .flat_map(|(ws_idx, tab_idx, ws, tab)| {
+                    let tab_label =
+                        crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
+                    tab.pane_details(&app.terminals).into_iter().map({
                         let session_label = session_label.clone();
-                        move |(tab_idx, tab)| {
-                            let tab_label = crate::workspace::session_tab_display_name(
-                                ws_idx, ws, tab_idx, tab,
-                            );
-                            tab.pane_details(&app.terminals).into_iter().map({
-                                let session_label = session_label.clone();
-                                move |detail| PanePanelEntry {
-                                    ws_idx,
-                                    tab_idx,
-                                    pane_id: detail.pane_id,
-                                    primary_label: session_label.clone(),
-                                    primary_tab_label: multi_tab.then_some(tab_label.clone()),
-                                }
-                            })
+                        move |detail| PanePanelEntry {
+                            ws_idx,
+                            tab_idx,
+                            pane_id: detail.pane_id,
+                            primary_label: session_label.clone(),
+                            primary_tab_label: multi_tab.then_some(tab_label.clone()),
                         }
                     })
                 })

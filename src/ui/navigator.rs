@@ -47,10 +47,8 @@ fn render_search(app: &AppState, frame: &mut Frame, area: Rect) {
         Style::default().fg(p.overlay0)
     };
     let count = app
-        .workspaces
-        .iter()
-        .flat_map(|workspace| workspace.tabs.iter())
-        .map(|tab| tab.panes.len())
+        .session_tab_entries()
+        .map(|(_, _, _, tab)| tab.panes.len())
         .sum::<usize>();
     let mut spans = vec![Span::styled(" / ", focus_style)];
     let query = app.navigator.query.trim();
@@ -291,7 +289,7 @@ fn pane_detail(
         .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
         .unwrap_or_else(|| "session".to_string());
     let mut parts = vec![session_label];
-    let multi_tab = app.workspaces.iter().map(|ws| ws.tabs.len()).sum::<usize>() > 1;
+    let multi_tab = app.session_tab_count() > 1;
     if multi_tab {
         let tab_label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
         parts.push(format!("tab: {tab_label}"));

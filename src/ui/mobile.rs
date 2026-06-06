@@ -367,19 +367,15 @@ fn mobile_switcher_content_height(app: &AppState) -> usize {
 
 fn mobile_switcher_tabs(app: &AppState) -> Vec<MobileSwitcherTabEntry> {
     let mut entries = Vec::new();
-    let mut flat_idx = 0usize;
-    for (ws_idx, ws) in app.workspaces.iter().enumerate() {
-        for (tab_idx, tab) in ws.tabs.iter().enumerate() {
-            entries.push(MobileSwitcherTabEntry {
-                ws_idx,
-                tab_idx,
-                flat_idx,
-                label: crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab),
-                auto_named: crate::workspace::session_tab_is_auto_named(ws_idx, ws, tab_idx, tab),
-                active: app.active == Some(ws_idx) && ws.active_tab == tab_idx,
-            });
-            flat_idx += 1;
-        }
+    for (flat_idx, (ws_idx, tab_idx, ws, tab)) in app.session_tab_entries().enumerate() {
+        entries.push(MobileSwitcherTabEntry {
+            ws_idx,
+            tab_idx,
+            flat_idx,
+            label: crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab),
+            auto_named: crate::workspace::session_tab_is_auto_named(ws_idx, ws, tab_idx, tab),
+            active: app.active == Some(ws_idx) && ws.active_tab == tab_idx,
+        });
     }
     entries
 }

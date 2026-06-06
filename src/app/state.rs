@@ -1144,6 +1144,28 @@ impl AppState {
         }
     }
 
+    pub(crate) fn session_tab_entries(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            usize,
+            usize,
+            &crate::workspace::Workspace,
+            &crate::workspace::Tab,
+        ),
+    > {
+        self.workspaces.iter().enumerate().flat_map(|(ws_idx, ws)| {
+            ws.tabs
+                .iter()
+                .enumerate()
+                .map(move |(tab_idx, tab)| (ws_idx, tab_idx, ws, tab))
+        })
+    }
+
+    pub(crate) fn session_tab_count(&self) -> usize {
+        self.session_tab_entries().count()
+    }
+
     /// Returns true when the given (workspace, tab, pane) refers to the
     /// currently focused pane in the active workspace's active tab.
     pub(crate) fn runtime_for_pane_in_workspace<'a>(
