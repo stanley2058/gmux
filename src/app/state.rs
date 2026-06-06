@@ -39,6 +39,12 @@ pub(crate) struct RightClickPassthroughGesture {
 use crate::terminal_theme::TerminalTheme;
 use crate::workspace::Workspace;
 
+/// UI state for one gmux session.
+///
+/// This is currently backed by the legacy `Workspace` implementation while
+/// the workspace layer is collapsed into `sessions -> tabs -> panes`.
+pub(crate) type SessionUiState = Workspace;
+
 // ---------------------------------------------------------------------------
 // Theme palette — all UI colors in one place, ready for theming
 // ---------------------------------------------------------------------------
@@ -960,7 +966,7 @@ pub struct AppState {
     /// Terminal ids whose size is currently owned by a direct attach client.
     pub direct_attach_resize_locks: std::collections::HashSet<crate::terminal::TerminalId>,
     pub(crate) pane_id_aliases: std::collections::HashMap<u32, PaneId>,
-    pub session_containers: Vec<Workspace>,
+    pub session_containers: Vec<SessionUiState>,
     pub active: Option<usize>,
     pub(crate) previous_pane_focus: Option<PaneFocusTarget>,
     pub selected: usize,
@@ -1144,11 +1150,11 @@ impl AppState {
         }
     }
 
-    pub(crate) fn session_containers(&self) -> &[crate::workspace::Workspace] {
+    pub(crate) fn session_containers(&self) -> &[SessionUiState] {
         &self.session_containers
     }
 
-    pub(crate) fn session_containers_mut(&mut self) -> &mut Vec<crate::workspace::Workspace> {
+    pub(crate) fn session_containers_mut(&mut self) -> &mut Vec<SessionUiState> {
         &mut self.session_containers
     }
 
