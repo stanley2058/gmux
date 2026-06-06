@@ -216,7 +216,7 @@ impl AppState {
         }
 
         let ws_idx = self.collapsed_detail_session_container_idx()?;
-        let ws = self.workspaces.get(ws_idx)?;
+        let ws = self.session_containers().get(ws_idx)?;
         let detail_idx = (row - detail_content_area.y) as usize;
         let details = ws.pane_details(&self.terminals);
         let detail = details.get(detail_idx)?;

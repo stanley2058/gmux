@@ -167,7 +167,7 @@ impl App {
 
         let mut cwd = None;
         if let Some(ws_idx) = self.state.session_container_index() {
-            if let Some(workspace) = self.state.workspaces.get(ws_idx) {
+            if let Some(workspace) = self.state.session_containers().get(ws_idx) {
                 let tab_idx = workspace.active_tab_index();
                 if let Some(tab_id) = self.public_tab_id(ws_idx, tab_idx) {
                     env.push(("GMUX_ACTIVE_TAB_ID".to_string(), tab_id));
@@ -236,7 +236,7 @@ impl App {
             .ok_or_else(|| std::io::Error::other("no active session"))?;
         let ws = self
             .state
-            .workspaces
+            .session_containers()
             .get(ws_idx)
             .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         let pane_id = ws
@@ -285,33 +285,44 @@ impl App {
         let new_cols = cols.max(10);
         let (env, _) = self.custom_command_env();
 
-        let ws = self
+        let (workspace_id, tab_idx, previous_focus, previous_zoomed, cwd) = {
+            let ws = self
+                .state
+                .session_containers()
+                .get(ws_idx)
+                .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
+            let tab_idx = ws.active_tab_index();
+            let previous_focus = ws
+                .focused_pane_id()
+                .ok_or_else(|| std::io::Error::other("no focused pane"))?;
+            let previous_zoomed = ws.active_tab().map(|tab| tab.zoomed).unwrap_or(false);
+            let cwd = ws.active_tab().and_then(|tab| {
+                tab.cwd_for_pane(
+                    previous_focus,
+                    &self.state.terminals,
+                    &self.terminal_runtimes,
+                )
+            });
+            (ws.id.clone(), tab_idx, previous_focus, previous_zoomed, cwd)
+        };
+
+        let pane_scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
+        let host_terminal_theme = self.state.host_terminal_theme;
+        let new_pane = self
             .state
-            .workspaces
+            .session_containers_mut()
             .get_mut(ws_idx)
-            .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
-        let tab_idx = ws.active_tab_index();
-        let previous_focus = ws
-            .focused_pane_id()
-            .ok_or_else(|| std::io::Error::other("no focused pane"))?;
-        let previous_zoomed = ws.active_tab().map(|tab| tab.zoomed).unwrap_or(false);
-        let cwd = ws.active_tab().and_then(|tab| {
-            tab.cwd_for_pane(
-                previous_focus,
-                &self.state.terminals,
-                &self.terminal_runtimes,
-            )
-        });
-        let new_pane = ws.split_focused_command(
-            Direction::Horizontal,
-            new_rows,
-            new_cols,
-            cwd,
-            command,
-            &env,
-            self.state.pane_scrollback_limit_bytes,
-            self.state.host_terminal_theme,
-        )?;
+            .ok_or_else(|| std::io::Error::other("active session state disappeared"))?
+            .split_focused_command(
+                Direction::Horizontal,
+                new_rows,
+                new_cols,
+                cwd,
+                command,
+                &env,
+                pane_scrollback_limit_bytes,
+                host_terminal_theme,
+            )?;
         let new_pane_id = new_pane.pane_id;
         self.terminal_runtimes
             .insert(new_pane.terminal.id.clone(), new_pane.runtime);
@@ -319,12 +330,17 @@ impl App {
             .terminals
             .insert(new_pane.terminal.id.clone(), new_pane.terminal);
         let new_focus_target = crate::app::state::PaneFocusTarget {
-            workspace_id: ws.id.clone(),
+            workspace_id,
             pane_id: new_pane_id,
         };
         if previous_focus_target.as_ref() != Some(&new_focus_target) {
             self.state.previous_pane_focus = previous_focus_target;
         }
+        let ws = self
+            .state
+            .session_containers_mut()
+            .get_mut(ws_idx)
+            .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         ws.active_tab_mut()
             .expect("workspace must have an active tab")
             .layout
