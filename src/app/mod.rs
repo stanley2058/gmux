@@ -770,7 +770,7 @@ impl App {
                 true
             }
             Err(err) => {
-                tracing::error!(err = %err, "failed to create default workspace");
+                tracing::error!(err = %err, "failed to create default session");
                 self.state.mode = Mode::Navigate;
                 false
             }

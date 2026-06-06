@@ -236,12 +236,12 @@ impl App {
         let ws_idx = self
             .state
             .active
-            .ok_or_else(|| std::io::Error::other("no active workspace"))?;
+            .ok_or_else(|| std::io::Error::other("no active session"))?;
         let ws = self
             .state
             .workspaces
             .get(ws_idx)
-            .ok_or_else(|| std::io::Error::other("active workspace disappeared"))?;
+            .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         let pane_id = ws
             .focused_pane_id()
             .ok_or_else(|| std::io::Error::other("no focused pane"))?;
@@ -279,7 +279,7 @@ impl App {
         temp_files: Vec<std::path::PathBuf>,
     ) -> std::io::Result<()> {
         let Some(ws_idx) = self.state.active else {
-            return Err(std::io::Error::other("no active workspace"));
+            return Err(std::io::Error::other("no active session"));
         };
         let previous_focus_target = self.state.current_pane_focus_target();
         let (rows, cols) = self.state.estimate_pane_size();
@@ -291,7 +291,7 @@ impl App {
             .state
             .workspaces
             .get_mut(ws_idx)
-            .ok_or_else(|| std::io::Error::other("active workspace disappeared"))?;
+            .ok_or_else(|| std::io::Error::other("active session state disappeared"))?;
         let tab_idx = ws.active_tab_index();
         let previous_focus = ws
             .focused_pane_id()

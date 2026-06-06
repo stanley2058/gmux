@@ -430,7 +430,7 @@ fn collect_visible_placements(
     let ws_idx = match app.active {
         Some(idx) => idx,
         None => {
-            tracing::debug!("collect_visible_placements: no active workspace");
+            tracing::debug!("collect_visible_placements: no active session");
             return Vec::new();
         }
     };

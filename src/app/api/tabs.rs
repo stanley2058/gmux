@@ -62,10 +62,10 @@ impl App {
                     }
                     let tab = self
                         .tab_info(ws_idx, 0)
-                        .expect("new workspace should have an initial tab");
+                        .expect("new session should have an initial tab");
                     let root_pane = self
                         .root_pane_info(ws_idx, 0)
-                        .expect("new workspace should have an initial root pane");
+                        .expect("new session should have an initial root pane");
                     self.emit_event(EventEnvelope {
                         event: EventKind::TabCreated,
                         data: EventData::TabCreated { tab: tab.clone() },
@@ -79,7 +79,7 @@ impl App {
                     encode_success(
                         id,
                         self.tab_created_result(ws_idx, 0)
-                            .expect("new workspace should produce a tab create response"),
+                            .expect("new session should produce a tab create response"),
                     )
                 }
                 Err(err) => encode_error(id, "tab_create_failed", err.to_string()),
@@ -100,7 +100,7 @@ impl App {
             .state
             .workspaces
             .get_mut(ws_idx)
-            .ok_or_else(|| std::io::Error::other("workspace disappeared"))
+            .ok_or_else(|| std::io::Error::other("session state disappeared"))
             .and_then(|ws| {
                 ws.create_tab(
                     rows,
@@ -215,7 +215,7 @@ impl App {
             return encode_error(
                 id,
                 "tab_close_failed",
-                "cannot close the last tab in a workspace",
+                "cannot close the last tab in a session",
             );
         }
         if !ws.close_tab(tab_idx) {
