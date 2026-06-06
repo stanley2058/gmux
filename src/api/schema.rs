@@ -809,16 +809,16 @@ mod tests {
     }
 
     #[test]
-    fn event_wait_rejects_agent_matches() {
+    fn event_wait_rejects_unknown_match_events() {
         let json = r#"
         {
             "id": "req_9",
             "method": "events.wait",
             "params": {
                 "match_event": {
-                    "event": "pane_agent_status_changed",
+                    "event": "pane_closed_for_lunch",
                     "pane_id": "p_1",
-                    "agent_status": "done"
+                    "reason": "done"
                 },
                 "timeout_ms": 30000
             }
@@ -832,7 +832,7 @@ mod tests {
     }
 
     #[test]
-    fn event_wait_rejects_workspace_filters() {
+    fn event_wait_rejects_unknown_match_event_fields() {
         let json = r#"
         {
             "id": "req_10",
@@ -840,7 +840,7 @@ mod tests {
             "params": {
                 "match_event": {
                     "event": "tab_created",
-                    "workspace_id": "1"
+                    "session_id": "1"
                 }
             }
         }
@@ -849,6 +849,6 @@ mod tests {
         let err = serde_json::from_str::<Request>(json)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("workspace_id"), "error: {err}");
+        assert!(err.contains("session_id"), "error: {err}");
     }
 }
