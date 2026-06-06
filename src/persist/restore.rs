@@ -35,7 +35,7 @@ type RestoredSession = (
     HashMap<TerminalId, TerminalState>,
     HashMap<TerminalId, TerminalRuntime>,
 );
-type RestoredSessionContainer = (
+type RestoredSessionState = (
     SessionUiState,
     Vec<TerminalState>,
     HashMap<TerminalId, TerminalRuntime>,
@@ -47,7 +47,7 @@ type RestoredTab = (
 );
 type RestoreFailures<T> = (T, usize);
 
-/// Restore the session container from a snapshot. Each pane gets a fresh shell in its saved cwd.
+/// Restore the session state from a snapshot. Each pane gets a fresh shell in its saved cwd.
 pub fn restore(
     snapshot: &SessionSnapshot,
     history: Option<&SessionHistorySnapshot>,
@@ -106,8 +106,8 @@ pub fn handoff_pane_aliases(
     sessions: &[SessionUiState],
 ) -> HashMap<u32, PaneId> {
     let mut aliases = HashMap::new();
-    if let Some(container) = sessions.first() {
-        for (tab_snap, tab) in snapshot.tabs.iter().zip(&container.tabs) {
+    if let Some(session_state) = sessions.first() {
+        for (tab_snap, tab) in snapshot.tabs.iter().zip(&session_state.tabs) {
             let old_ids = collect_snapshot_pane_ids(&tab_snap.layout);
             let new_ids = tab.layout.pane_ids();
             for (old_id, new_id) in old_ids.into_iter().zip(new_ids) {
@@ -228,7 +228,7 @@ fn restore_with_imports_and_failures(
             render_notify: render_notify.clone(),
             render_dirty: render_dirty.clone(),
         };
-        let (restored, container_failed_imports) = restore_session_container(
+        let (restored, session_failed_imports) = restore_session_state(
             &snapshot.tabs,
             snapshot.active_tab,
             history,
@@ -237,19 +237,19 @@ fn restore_with_imports_and_failures(
             &runtime_context,
             imported_panes,
         );
-        failed_imports += container_failed_imports;
-        if let Some((container, restored_terminals, restored_runtimes)) = restored {
+        failed_imports += session_failed_imports;
+        if let Some((session_state, restored_terminals, restored_runtimes)) = restored {
             for terminal in restored_terminals {
                 terminals.insert(terminal.id.clone(), terminal);
             }
             terminal_runtimes.extend(restored_runtimes);
-            sessions.push(container);
+            sessions.push(session_state);
         }
     }
     ((sessions, terminals, terminal_runtimes), failed_imports)
 }
 
-fn restore_session_container(
+fn restore_session_state(
     tab_snaps: &[TabSnapshot],
     active_tab: usize,
     history: Option<&SessionHistorySnapshot>,
@@ -257,7 +257,7 @@ fn restore_session_container(
     cols: u16,
     runtime_context: &RestoreRuntimeContext<'_>,
     imported_panes: &mut HashMap<u32, crate::handoff_runtime::ImportedHandoffRuntime>,
-) -> RestoreFailures<Option<RestoredSessionContainer>> {
+) -> RestoreFailures<Option<RestoredSessionState>> {
     let mut tabs = Vec::new();
     let mut terminals = Vec::new();
     let mut terminal_runtimes = HashMap::new();
@@ -304,7 +304,7 @@ fn restore_session_container(
             #[cfg(test)]
             test_runtimes: HashMap::new(),
         })
-        .map(|container| (container, terminals, terminal_runtimes)),
+        .map(|session_state| (session_state, terminals, terminal_runtimes)),
         failed_imports,
     )
 }

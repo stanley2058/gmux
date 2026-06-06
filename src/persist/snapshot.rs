@@ -43,7 +43,7 @@ pub struct TabHistorySnapshot {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SessionContainerSnapshot {
+pub struct SessionStateSnapshot {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
@@ -113,7 +113,7 @@ pub enum DirectionSnapshot {
     Vertical,
 }
 
-impl From<LegacyWorkspaceSnapshot> for SessionContainerSnapshot {
+impl From<LegacyWorkspaceSnapshot> for SessionStateSnapshot {
     fn from(snap: LegacyWorkspaceSnapshot) -> Self {
         let identity_cwd = legacy_identity_cwd(&snap);
         let tab = TabSnapshot {
@@ -154,13 +154,13 @@ fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> 
         let active_tab = raw.active_tab.min(tabs.len().saturating_sub(1));
         (tabs, active_tab)
     } else {
-        let legacy_containers = raw
+        let legacy_sessions = raw
             .workspaces
             .into_iter()
             .map(migrate_legacy_workspace)
             .collect::<Result<Vec<_>, _>>()?;
-        let active_tab = active_tab_from_sessions(&legacy_containers, raw.active);
-        let tabs = flatten_session_container_tabs(&legacy_containers);
+        let active_tab = active_tab_from_sessions(&legacy_sessions, raw.active);
+        let tabs = flatten_session_state_tabs(&legacy_sessions);
         (tabs, active_tab)
     };
     Ok(SessionSnapshot {
@@ -170,43 +170,43 @@ fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> 
     })
 }
 
-fn flatten_session_container_tabs(containers: &[SessionContainerSnapshot]) -> Vec<TabSnapshot> {
+fn flatten_session_state_tabs(session_states: &[SessionStateSnapshot]) -> Vec<TabSnapshot> {
     let mut tabs = Vec::new();
-    for container in containers {
-        let mut container_tabs = container.tabs.clone();
+    for session_state in session_states {
+        let mut session_tabs = session_state.tabs.clone();
         if let (Some(name), Some(first_tab)) =
-            (container.custom_name.as_ref(), container_tabs.first_mut())
+            (session_state.custom_name.as_ref(), session_tabs.first_mut())
         {
             if first_tab.custom_name.is_none() {
                 first_tab.custom_name = Some(name.clone());
             }
         }
-        tabs.extend(container_tabs);
+        tabs.extend(session_tabs);
     }
     tabs
 }
 
 fn active_tab_from_sessions(
-    containers: &[SessionContainerSnapshot],
-    active_container: Option<usize>,
+    session_states: &[SessionStateSnapshot],
+    active_session: Option<usize>,
 ) -> usize {
-    let Some(active_container) = active_container else {
+    let Some(active_session) = active_session else {
         return 0;
     };
     let mut offset = 0;
-    for (idx, container) in containers.iter().enumerate() {
-        if idx == active_container {
+    for (idx, session_state) in session_states.iter().enumerate() {
+        if idx == active_session {
             return offset
-                + container
+                + session_state
                     .active_tab
-                    .min(container.tabs.len().saturating_sub(1));
+                    .min(session_state.tabs.len().saturating_sub(1));
         }
-        offset += container.tabs.len();
+        offset += session_state.tabs.len();
     }
     0
 }
 
-fn migrate_legacy_workspace(raw: serde_json::Value) -> Result<SessionContainerSnapshot, String> {
+fn migrate_legacy_workspace(raw: serde_json::Value) -> Result<SessionStateSnapshot, String> {
     if raw.get("identity_cwd").is_some() {
         return serde_json::from_value(raw).map_err(|e| e.to_string());
     }
@@ -261,19 +261,19 @@ pub fn capture(
     >,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionSnapshot {
-    let containers: Vec<_> = sessions
+    let session_states: Vec<_> = sessions
         .iter()
-        .map(|container| capture_session_container(container, terminals, terminal_runtimes))
+        .map(|session_state| capture_session_state(session_state, terminals, terminal_runtimes))
         .collect();
-    let active_tab = containers
+    let active_tab = session_states
         .first()
-        .map(|container| {
-            container
+        .map(|session_state| {
+            session_state
                 .active_tab
-                .min(container.tabs.len().saturating_sub(1))
+                .min(session_state.tabs.len().saturating_sub(1))
         })
         .unwrap_or(0);
-    let tabs = flatten_session_container_tabs(&containers);
+    let tabs = flatten_session_state_tabs(&session_states);
     SessionSnapshot {
         version: SNAPSHOT_VERSION,
         tabs,
@@ -281,15 +281,15 @@ pub fn capture(
     }
 }
 
-fn capture_session_container(
+fn capture_session_state(
     ws: &SessionUiState,
     terminals: &std::collections::HashMap<
         crate::terminal::TerminalId,
         crate::terminal::TerminalState,
     >,
     terminal_runtimes: &TerminalRuntimeRegistry,
-) -> SessionContainerSnapshot {
-    SessionContainerSnapshot {
+) -> SessionStateSnapshot {
+    SessionStateSnapshot {
         id: Some(ws.id.clone()),
         custom_name: ws.custom_name.clone(),
         identity_cwd: ws
@@ -353,7 +353,7 @@ pub fn capture_history(
 ) -> SessionHistorySnapshot {
     let tabs = sessions
         .iter()
-        .flat_map(|container| &container.tabs)
+        .flat_map(|session_state| &session_state.tabs)
         .map(|tab| TabHistorySnapshot {
             panes: capture_tab_history(tab, terminal_runtimes),
         })
@@ -707,7 +707,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_uses_first_session_container_as_active_tab_source() {
+    fn capture_contract_uses_first_session_state_as_active_tab_source() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
         state.sessions.swap(0, 1);
         state.active = Some(0);
@@ -825,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_contract_tracks_session_container_cwds() {
+    fn capture_contract_tracks_session_state_cwds() {
         let mut state = state_with_workspaces(&["one"]);
         let root = state.sessions[0].tabs[0].root_pane;
         state.sessions[0].identity_cwd = PathBuf::from("/tmp/pion");
@@ -938,8 +938,8 @@ mod tests {
     #[test]
     fn active_tab_default_is_zero() {
         let json = r#"{"custom_name":"test","identity_cwd":"/tmp","tabs":[]}"#;
-        let container: SessionContainerSnapshot = serde_json::from_str(json).unwrap();
-        assert_eq!(container.active_tab, 0);
+        let session_state: SessionStateSnapshot = serde_json::from_str(json).unwrap();
+        assert_eq!(session_state.active_tab, 0);
     }
 
     #[test]
