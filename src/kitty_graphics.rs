@@ -230,7 +230,7 @@ pub(crate) fn has_visible_pane_graphics(
     if app
         .session_containers()
         .get(ws_idx)
-        .and_then(crate::workspace::Workspace::active_tab)
+        .and_then(|session| session.active_tab())
         .is_none()
     {
         return false;
@@ -438,7 +438,7 @@ fn collect_visible_placements(
     if app
         .session_containers()
         .get(ws_idx)
-        .and_then(crate::workspace::Workspace::active_tab)
+        .and_then(|session| session.active_tab())
         .is_none()
     {
         tracing::debug!(ws_idx, "collect_visible_placements: no active tab");

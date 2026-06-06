@@ -6,6 +6,7 @@ use tracing::{info, warn};
 use crate::events::AppEvent;
 use crate::layout::{find_in_direction, NavDirection, PaneId};
 use crate::selection::Selection;
+use crate::workspace::SessionUiState;
 use unicode_width::UnicodeWidthChar;
 
 use super::state::{
@@ -478,12 +479,12 @@ impl AppState {
             .or_else(|| (!self.session_containers().is_empty()).then_some(0))
     }
 
-    pub(crate) fn session_container(&self) -> Option<&crate::workspace::Workspace> {
+    pub(crate) fn session_container(&self) -> Option<&SessionUiState> {
         self.session_container_index()
             .and_then(|idx| self.session_containers().get(idx))
     }
 
-    pub(crate) fn session_container_mut(&mut self) -> Option<&mut crate::workspace::Workspace> {
+    pub(crate) fn session_container_mut(&mut self) -> Option<&mut SessionUiState> {
         let idx = self.session_container_index()?;
         self.session_containers_mut().get_mut(idx)
     }
@@ -663,7 +664,7 @@ impl AppState {
     pub(crate) fn mark_active_tab_seen(&mut self) -> bool {
         let Some(tab) = self
             .session_container_mut()
-            .and_then(crate::workspace::Workspace::active_tab_mut)
+            .and_then(SessionUiState::active_tab_mut)
         else {
             return false;
         };
@@ -742,7 +743,7 @@ impl AppState {
             && self
                 .session_containers()
                 .get(ws_idx)
-                .and_then(crate::workspace::Workspace::focused_pane_id)
+                .and_then(SessionUiState::focused_pane_id)
                 == Some(pane_id)
         {
             self.ensure_pane_panel_entry_visible(idx);
@@ -764,7 +765,7 @@ impl AppState {
 
         let focused = self
             .session_container()
-            .and_then(crate::workspace::Workspace::focused_pane_id);
+            .and_then(SessionUiState::focused_pane_id);
         let current_idx =
             focused.and_then(|pane_id| entries.iter().position(|entry| entry.pane_id == pane_id));
         let target_idx = match (current_idx, forward) {

@@ -320,7 +320,7 @@ pub(crate) fn visible_hyperlinks(
     let Some(tab) = app_state
         .session_containers()
         .get(ws_idx)
-        .and_then(crate::workspace::Workspace::active_tab)
+        .and_then(|session| session.active_tab())
     else {
         return Vec::new();
     };
