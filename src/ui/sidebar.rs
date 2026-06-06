@@ -752,7 +752,7 @@ fn render_workspace_list(
     if app.mouse_capture && list_bottom > area.y {
         let new_rect = app.sidebar_new_button_rect();
         frame.render_widget(
-            Paragraph::new(Span::styled(" new", Style::default().fg(p.overlay0))),
+            Paragraph::new(Span::styled(" tab", Style::default().fg(p.overlay0))),
             new_rect,
         );
 

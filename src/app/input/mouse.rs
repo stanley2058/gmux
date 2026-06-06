@@ -321,7 +321,7 @@ impl AppState {
                         && mouse.column >= new_button.x
                         && mouse.column < new_button.x + new_button.width;
                     if on_new_button {
-                        self.request_new_workspace = true;
+                        open_new_tab_dialog(self);
                         return None;
                     }
 
@@ -808,9 +808,6 @@ impl AppState {
         }
 
         match crate::ui::mobile_switcher_target_at(self, mouse.column, mouse.row) {
-            Some(crate::ui::MobileSwitcherTarget::NewSession) => {
-                self.request_new_workspace = true;
-            }
             Some(crate::ui::MobileSwitcherTarget::Workspace(ws_idx)) => {
                 self.switch_workspace(ws_idx);
                 self.mode = Mode::Terminal;
@@ -2540,13 +2537,13 @@ mod tests {
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             viewport.x + 2,
-            viewport.y + 4,
+            viewport.y + 3,
         ));
         assert_eq!(app.state.workspaces[0].active_tab, 2);
     }
 
     #[test]
-    fn mobile_switcher_action_rows_create_session_and_open_tab_dialog() {
+    fn mobile_switcher_action_row_opens_tab_dialog() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("logs"));
@@ -2567,19 +2564,11 @@ mod tests {
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             viewport.x + 2,
-            viewport.y + 1,
-        ));
-        assert!(app.state.request_new_workspace);
-
-        app.state.request_new_workspace = false;
-        app.state.mode = Mode::Navigate;
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            viewport.x + 2,
-            viewport.y + 5,
+            viewport.y + 4,
         ));
         assert_eq!(app.state.mode, Mode::RenameTab);
         assert!(app.state.creating_new_tab);
+        assert!(!app.state.request_new_workspace);
     }
 
     #[test]
