@@ -1112,8 +1112,7 @@ impl AppState {
     ) -> bool {
         self.mode == Mode::Terminal
             && self
-                .active
-                .and_then(|idx| self.focused_runtime_in_workspace(terminal_runtimes, idx))
+                .focused_runtime_in_session_container(terminal_runtimes)
                 .and_then(crate::terminal::TerminalRuntime::input_state)
                 .is_some_and(crate::pane::InputState::mouse_reporting_enabled)
     }
@@ -1191,6 +1190,14 @@ impl AppState {
         let ws = self.workspaces.get(ws_idx)?;
         let pane_id = ws.focused_pane_id()?;
         self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)
+    }
+
+    pub(crate) fn focused_runtime_in_session_container<'a>(
+        &'a self,
+        terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
+    ) -> Option<&'a crate::terminal::TerminalRuntime> {
+        let ws_idx = self.session_container_index()?;
+        self.focused_runtime_in_workspace(terminal_runtimes, ws_idx)
     }
 
     pub fn is_active_pane(

@@ -109,12 +109,9 @@ impl App {
     }
 
     fn pass_through_key_to_focused_pane(&mut self, key: TerminalKey) -> bool {
-        let Some(ws_idx) = self.state.active else {
-            return false;
-        };
         let Some(rt) = self
             .state
-            .focused_runtime_in_workspace(&self.terminal_runtimes, ws_idx)
+            .focused_runtime_in_session_container(&self.terminal_runtimes)
         else {
             return false;
         };

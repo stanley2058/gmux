@@ -94,13 +94,11 @@ impl App {
         if self.state.mode != Mode::Terminal {
             return;
         }
-        if let Some(ws_idx) = self.state.active {
-            if let Some(rt) = self
-                .state
-                .focused_runtime_in_workspace(&self.terminal_runtimes, ws_idx)
-            {
-                let _ = rt.send_paste(text).await;
-            }
+        if let Some(rt) = self
+            .state
+            .focused_runtime_in_session_container(&self.terminal_runtimes)
+        {
+            let _ = rt.send_paste(text).await;
         }
     }
 

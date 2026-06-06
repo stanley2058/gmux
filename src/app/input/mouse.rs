@@ -1109,13 +1109,11 @@ impl AppState {
             return;
         }
 
-        if let Some(ws_idx) = self.active {
-            if let Some(rt) = self.focused_runtime_in_workspace(terminal_runtimes, ws_idx) {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => rt.scroll_up(lines_per_notch),
-                    MouseEventKind::ScrollDown => rt.scroll_down(lines_per_notch),
-                    _ => {}
-                }
+        if let Some(rt) = self.focused_runtime_in_session_container(terminal_runtimes) {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => rt.scroll_up(lines_per_notch),
+                MouseEventKind::ScrollDown => rt.scroll_down(lines_per_notch),
+                _ => {}
             }
         }
     }
