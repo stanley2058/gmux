@@ -189,7 +189,7 @@ impl AppState {
         self.mark_session_dirty();
     }
 
-    fn collapsed_detail_workspace_idx(&self) -> Option<usize> {
+    fn collapsed_detail_session_container_idx(&self) -> Option<usize> {
         self.session_container_index()
     }
 
@@ -215,7 +215,7 @@ impl AppState {
             return None;
         }
 
-        let ws_idx = self.collapsed_detail_workspace_idx()?;
+        let ws_idx = self.collapsed_detail_session_container_idx()?;
         let ws = self.workspaces.get(ws_idx)?;
         let detail_idx = (row - detail_content_area.y) as usize;
         let details = ws.pane_details(&self.terminals);
@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_all_workspaces_pane_row_switches_to_correct_workspace() {
+    fn clicking_all_scope_pane_row_collapses_to_session_tab() {
         let mut app = app_for_mouse_test();
         let first = Workspace::test_new("one");
 
@@ -645,7 +645,7 @@ mod tests {
     }
 
     #[test]
-    fn clicking_collapsed_pane_row_uses_session_container_not_selected_workspace() {
+    fn clicking_collapsed_pane_row_uses_session_container_not_selected_legacy_workspace() {
         let mut app = app_for_mouse_test();
         let mut first = Workspace::test_new("one");
         let second_tab = first.test_add_tab(Some("logs"));
