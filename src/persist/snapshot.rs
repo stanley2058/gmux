@@ -487,9 +487,9 @@ mod tests {
 
     fn state_with_workspaces(names: &[&str]) -> AppState {
         let mut state = AppState::test_new();
-        state.workspaces = names.iter().map(|name| Workspace::test_new(name)).collect();
+        state.session_containers = names.iter().map(|name| Workspace::test_new(name)).collect();
         state.ensure_test_terminals();
-        if !state.workspaces.is_empty() {
+        if !state.session_containers.is_empty() {
             state.active = Some(0);
             state.selected = 0;
             state.mode = Mode::Terminal;
@@ -506,14 +506,18 @@ mod tests {
         state: &AppState,
         terminal_runtimes: &TerminalRuntimeRegistry,
     ) -> SessionSnapshot {
-        capture(&state.workspaces, &state.terminals, terminal_runtimes)
+        capture(
+            &state.session_containers,
+            &state.terminals,
+            terminal_runtimes,
+        )
     }
 
     fn capture_history_from_state_with_runtimes(
         state: &AppState,
         terminal_runtimes: &TerminalRuntimeRegistry,
     ) -> SessionHistorySnapshot {
-        capture_history(&state.workspaces, terminal_runtimes)
+        capture_history(&state.session_containers, terminal_runtimes)
     }
 
     fn root_split_ratio(tab: &TabSnapshot) -> Option<f32> {
@@ -709,7 +713,7 @@ mod tests {
     #[test]
     fn capture_contract_uses_first_session_container_as_active_tab_source() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
-        state.workspaces.swap(0, 1);
+        state.session_containers.swap(0, 1);
         state.active = Some(0);
         state.selected = 2;
 
@@ -726,10 +730,10 @@ mod tests {
     #[test]
     fn capture_contract_tracks_session_tab_names_and_active_tab() {
         let mut state = state_with_workspaces(&["one"]);
-        state.workspaces[0].custom_name = Some("renamed-workspace".into());
-        let second_tab = state.workspaces[0].test_add_tab(Some("logs"));
-        state.workspaces[0].switch_tab(second_tab);
-        state.workspaces[0].tabs[0].set_custom_name("main".into());
+        state.session_containers[0].custom_name = Some("renamed-workspace".into());
+        let second_tab = state.session_containers[0].test_add_tab(Some("logs"));
+        state.session_containers[0].switch_tab(second_tab);
+        state.session_containers[0].tabs[0].set_custom_name("main".into());
 
         let snapshot = capture_from_state(&state);
         assert_eq!(snapshot.active_tab, second_tab);
@@ -753,9 +757,11 @@ mod tests {
     #[test]
     fn capture_contract_tracks_layout_focus_zoom_and_root_pane() {
         let mut state = state_with_workspaces(&["one"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let second = state.workspaces[0].test_split(Direction::Horizontal);
-        state.workspaces[0].tabs[0].layout.focus_pane(second);
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let second = state.session_containers[0].test_split(Direction::Horizontal);
+        state.session_containers[0].tabs[0]
+            .layout
+            .focus_pane(second);
         state.toggle_zoom();
 
         let snapshot = capture_from_state(&state);
@@ -770,8 +776,8 @@ mod tests {
     #[test]
     fn capture_contract_tracks_focus_navigation() {
         let mut state = state_with_workspaces(&["one"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let second = state.workspaces[0].test_split(Direction::Horizontal);
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let second = state.session_containers[0].test_split(Direction::Horizontal);
         crate::ui::compute_view(&mut state, Rect::new(0, 0, 106, 20));
 
         state.navigate_pane(NavDirection::Right);
@@ -784,7 +790,7 @@ mod tests {
     #[test]
     fn capture_contract_tracks_resize_ratio_changes() {
         let mut state = state_with_workspaces(&["one"]);
-        state.workspaces[0].test_split(Direction::Horizontal);
+        state.session_containers[0].test_split(Direction::Horizontal);
         crate::ui::compute_view(&mut state, Rect::new(0, 0, 106, 20));
         let before = capture_from_state(&state);
 
@@ -799,7 +805,7 @@ mod tests {
     #[test]
     fn capture_contract_tracks_tab_closure() {
         let mut state = state_with_workspaces(&["one"]);
-        let second_tab = state.workspaces[0].test_add_tab(Some("logs"));
+        let second_tab = state.session_containers[0].test_add_tab(Some("logs"));
         state.switch_tab(second_tab);
 
         state.close_tab();
@@ -813,7 +819,7 @@ mod tests {
     #[test]
     fn capture_contract_tracks_pane_closure() {
         let mut state = state_with_workspaces(&["one"]);
-        state.workspaces[0].test_split(Direction::Horizontal);
+        state.session_containers[0].test_split(Direction::Horizontal);
 
         state.close_pane();
 
@@ -827,15 +833,15 @@ mod tests {
     #[test]
     fn capture_contract_tracks_session_container_cwds() {
         let mut state = state_with_workspaces(&["one"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        state.workspaces[0].identity_cwd = PathBuf::from("/tmp/pion");
-        let second = state.workspaces[0].test_split(Direction::Horizontal);
+        let root = state.session_containers[0].tabs[0].root_pane;
+        state.session_containers[0].identity_cwd = PathBuf::from("/tmp/pion");
+        let second = state.session_containers[0].test_split(Direction::Horizontal);
         state.ensure_test_terminals();
-        let root_terminal_id = state.workspaces[0].tabs[0].panes[&root]
+        let root_terminal_id = state.session_containers[0].tabs[0].panes[&root]
             .attached_terminal_id
             .clone();
         state.terminals.get_mut(&root_terminal_id).unwrap().cwd = PathBuf::from("/tmp/pion");
-        let second_terminal_id = state.workspaces[0].tabs[0].panes[&second]
+        let second_terminal_id = state.session_containers[0].tabs[0].panes[&second]
             .attached_terminal_id
             .clone();
         state.terminals.get_mut(&second_terminal_id).unwrap().cwd = PathBuf::from("/tmp/gmux");
@@ -849,8 +855,8 @@ mod tests {
     #[tokio::test]
     async fn capture_contract_tracks_pane_history_from_runtime() {
         let state = state_with_workspaces(&["one"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let terminal_id = state.workspaces[0].tabs[0].panes[&root]
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let terminal_id = state.session_containers[0].tabs[0].panes[&root]
             .attached_terminal_id
             .clone();
         let mut terminal_runtimes = TerminalRuntimeRegistry::new();
@@ -880,12 +886,12 @@ mod tests {
     #[tokio::test]
     async fn capture_contract_tracks_history_for_each_pane() {
         let mut state = state_with_workspaces(&["one"]);
-        let first = state.workspaces[0].tabs[0].root_pane;
-        let second = state.workspaces[0].test_split(Direction::Horizontal);
-        let first_terminal_id = state.workspaces[0].tabs[0].panes[&first]
+        let first = state.session_containers[0].tabs[0].root_pane;
+        let second = state.session_containers[0].test_split(Direction::Horizontal);
+        let first_terminal_id = state.session_containers[0].tabs[0].panes[&first]
             .attached_terminal_id
             .clone();
-        let second_terminal_id = state.workspaces[0].tabs[0].panes[&second]
+        let second_terminal_id = state.session_containers[0].tabs[0].panes[&second]
             .attached_terminal_id
             .clone();
         let mut terminal_runtimes = TerminalRuntimeRegistry::new();

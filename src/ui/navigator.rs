@@ -377,7 +377,7 @@ mod tests {
         let pane_id = second.tabs[0].root_pane;
 
         let mut app = AppState::test_new();
-        app.workspaces = vec![first, second];
+        app.session_containers = vec![first, second];
         app.active = Some(0);
         app.selected = 0;
 

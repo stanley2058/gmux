@@ -904,11 +904,11 @@ mod tests {
 
         state.split_pane(&mut terminal_runtimes, Direction::Horizontal);
 
-        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.session_containers.len(), 1);
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
-        assert_eq!(state.workspaces[0].active_tab, 1);
-        assert_eq!(state.workspaces[0].tabs[1].layout.pane_count(), 2);
+        assert_eq!(state.session_containers[0].active_tab, 1);
+        assert_eq!(state.session_containers[0].tabs[1].layout.pane_count(), 2);
         assert_eq!(state.mode, Mode::Terminal);
     }
 
@@ -961,8 +961,8 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Navigate;
         state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
-        let target_workspace_id = state.workspaces[1].id.clone();
-        let target_pane = state.workspaces[1].tabs[0].root_pane;
+        let target_workspace_id = state.session_containers[1].id.clone();
+        let target_pane = state.session_containers[1].tabs[0].root_pane;
         state.toast = Some(crate::app::state::ToastNotification {
             kind: crate::app::state::ToastKind::NeedsAttention,
             title: "pi needs attention".into(),
@@ -978,11 +978,14 @@ mod tests {
             KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.session_containers.len(), 1);
         assert_eq!(state.active, Some(0));
         assert_eq!(state.selected, 0);
-        assert_eq!(state.workspaces[0].active_tab, 1);
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(target_pane));
+        assert_eq!(state.session_containers[0].active_tab, 1);
+        assert_eq!(
+            state.session_containers[0].focused_pane_id(),
+            Some(target_pane)
+        );
         assert!(state.toast.is_none());
         assert_eq!(state.mode, Mode::Terminal);
     }
@@ -994,8 +997,8 @@ mod tests {
         state.selected = 0;
         state.mode = Mode::Navigate;
         state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
-        let target_workspace_id = state.workspaces[1].id.clone();
-        let target_pane = state.workspaces[1].tabs[0].root_pane;
+        let target_workspace_id = state.session_containers[1].id.clone();
+        let target_pane = state.session_containers[1].tabs[0].root_pane;
         state.toast = Some(crate::app::state::ToastNotification {
             kind: crate::app::state::ToastKind::NeedsAttention,
             title: "pi needs attention".into(),
@@ -1006,16 +1009,19 @@ mod tests {
             }),
         });
         state.collapse_to_single_session_workspace();
-        state.workspaces[0].switch_tab(0);
+        state.session_containers[0].switch_tab(0);
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.workspaces.len(), 1);
-        assert_eq!(state.workspaces[0].active_tab, 1);
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(target_pane));
+        assert_eq!(state.session_containers.len(), 1);
+        assert_eq!(state.session_containers[0].active_tab, 1);
+        assert_eq!(
+            state.session_containers[0].focused_pane_id(),
+            Some(target_pane)
+        );
         assert!(state.toast.is_none());
         assert_eq!(state.mode, Mode::Terminal);
     }
@@ -1060,10 +1066,10 @@ navigate_pane_down = "ctrl+j"
     #[test]
     fn navigate_pane_keys_are_configurable() {
         let mut state = state_with_workspaces(&["test"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let below = state.workspaces[0].test_split(Direction::Vertical);
-        state.workspaces[0].layout.focus_pane(root);
-        state.view.pane_infos = state.workspaces[0]
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let below = state.session_containers[0].test_split(Direction::Vertical);
+        state.session_containers[0].layout.focus_pane(root);
+        state.view.pane_infos = state.session_containers[0]
             .active_tab()
             .unwrap()
             .layout
@@ -1082,17 +1088,17 @@ navigate_pane_down = "ctrl+j"
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
         );
 
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(below));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(below));
         assert_eq!(state.mode, Mode::Navigate);
     }
 
     #[test]
     fn focus_pane_prefix_rhs_does_not_create_navigate_mode_pane_shortcut() {
         let mut state = state_with_workspaces(&["test"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let below = state.workspaces[0].test_split(Direction::Vertical);
-        state.workspaces[0].layout.focus_pane(root);
-        state.view.pane_infos = state.workspaces[0]
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let below = state.session_containers[0].test_split(Direction::Vertical);
+        state.session_containers[0].layout.focus_pane(root);
+        state.view.pane_infos = state.session_containers[0]
             .active_tab()
             .unwrap()
             .layout
@@ -1110,23 +1116,23 @@ focus_pane_down = "prefix+f"
             &mut state,
             KeyEvent::new(KeyCode::Char('f'), KeyModifiers::empty()),
         );
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(root));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
         );
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(below));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(below));
         assert_eq!(state.mode, Mode::Navigate);
     }
 
     #[test]
     fn customized_navigate_pane_key_disables_matching_prefix_rhs_fallback() {
         let mut state = state_with_workspaces(&["test"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let below = state.workspaces[0].test_split(Direction::Vertical);
-        state.workspaces[0].layout.focus_pane(root);
-        state.view.pane_infos = state.workspaces[0]
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let below = state.session_containers[0].test_split(Direction::Vertical);
+        state.session_containers[0].layout.focus_pane(root);
+        state.view.pane_infos = state.session_containers[0]
             .active_tab()
             .unwrap()
             .layout
@@ -1144,22 +1150,22 @@ navigate_pane_down = "ctrl+j"
             &mut state,
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
         );
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(root));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
         );
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(below));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(below));
         assert_eq!(state.mode, Mode::Navigate);
     }
 
     #[test]
     fn left_and_right_arrows_remain_permanent_navigate_pane_aliases() {
         let mut state = state_with_workspaces(&["test"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let right = state.workspaces[0].test_split(Direction::Horizontal);
-        state.workspaces[0].layout.focus_pane(right);
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let right = state.session_containers[0].test_split(Direction::Horizontal);
+        state.session_containers[0].layout.focus_pane(right);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 24));
         let config: Config = toml::from_str(
             r#"
@@ -1175,14 +1181,14 @@ navigate_pane_right = "ctrl+l"
             &mut state,
             KeyEvent::new(KeyCode::Left, KeyModifiers::empty()),
         );
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(root));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(root));
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 24));
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Right, KeyModifiers::empty()),
         );
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(right));
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(right));
         assert_eq!(state.mode, Mode::Navigate);
     }
 
@@ -1288,7 +1294,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
@@ -1310,7 +1316,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
@@ -1332,7 +1338,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
@@ -1353,7 +1359,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
@@ -1373,14 +1379,14 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
-        let root = app.state.workspaces[0].tabs[0].root_pane;
-        let right = app.state.workspaces[0].test_split(Direction::Horizontal);
-        app.state.workspaces[0].layout.focus_pane(right);
-        app.state.view.pane_infos = app.state.workspaces[0]
+        let root = app.state.session_containers[0].tabs[0].root_pane;
+        let right = app.state.session_containers[0].test_split(Direction::Horizontal);
+        app.state.session_containers[0].layout.focus_pane(right);
+        app.state.view.pane_infos = app.state.session_containers[0]
             .active_tab()
             .unwrap()
             .layout
@@ -1394,7 +1400,10 @@ last_pane = "prefix+tab"
         app.handle_key(TerminalKey::new(KeyCode::Char('h'), KeyModifiers::empty()))
             .await;
 
-        assert_eq!(app.state.workspaces[0].focused_pane_id(), Some(root));
+        assert_eq!(
+            app.state.session_containers[0].focused_pane_id(),
+            Some(root)
+        );
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -1408,7 +1417,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1434,7 +1443,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1460,7 +1469,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1526,7 +1535,7 @@ last_pane = "prefix+tab"
         assert_eq!(state.mode, Mode::Navigate);
         assert!(!state.creating_new_tab);
         assert!(!state.request_new_tab);
-        assert!(state.workspaces.is_empty());
+        assert!(state.session_containers.is_empty());
     }
 
     #[tokio::test]
@@ -1539,7 +1548,7 @@ last_pane = "prefix+tab"
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("test")];
+        app.state.session_containers = vec![Workspace::test_new("test")];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1600,7 +1609,7 @@ last_pane = "prefix+tab"
         )
         .expect("workspace should spawn");
         let root_pane = workspace.tabs[0].root_pane;
-        app.state.workspaces = vec![workspace];
+        app.state.session_containers = vec![workspace];
         app.terminal_runtimes.insert(terminal.id.clone(), runtime);
         app.state.terminals.insert(terminal.id.clone(), terminal);
         app.state.active = Some(0);
@@ -1625,20 +1634,26 @@ last_pane = "prefix+tab"
         app.handle_key(TerminalKey::new(KeyCode::Char('m'), KeyModifiers::empty()))
             .await;
 
-        assert_eq!(app.state.workspaces[0].tabs[0].layout.pane_count(), 2);
+        assert_eq!(
+            app.state.session_containers[0].tabs[0].layout.pane_count(),
+            2
+        );
         assert_eq!(app.terminal_runtimes.len(), 2);
-        assert!(app.state.workspaces[0].tabs[0].zoomed);
-        let overlay_pane = app.state.workspaces[0].focused_pane_id().unwrap();
+        assert!(app.state.session_containers[0].tabs[0].zoomed);
+        let overlay_pane = app.state.session_containers[0].focused_pane_id().unwrap();
         assert_ne!(overlay_pane, root_pane);
 
         app.state.last_pane();
 
-        assert_eq!(app.state.workspaces[0].focused_pane_id(), Some(root_pane));
+        assert_eq!(
+            app.state.session_containers[0].focused_pane_id(),
+            Some(root_pane)
+        );
 
         app.state.last_pane();
 
         assert_eq!(
-            app.state.workspaces[0].focused_pane_id(),
+            app.state.session_containers[0].focused_pane_id(),
             Some(overlay_pane)
         );
 
@@ -1646,15 +1661,18 @@ last_pane = "prefix+tab"
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
         while std::time::Instant::now() < deadline {
             if app.drain_internal_events()
-                && app.state.workspaces[0].tabs[0].layout.pane_count() == 1
+                && app.state.session_containers[0].tabs[0].layout.pane_count() == 1
             {
                 break;
             }
             std::thread::sleep(Duration::from_millis(20));
         }
 
-        assert_eq!(app.state.workspaces[0].tabs[0].layout.pane_count(), 1);
-        assert!(!app.state.workspaces[0].tabs[0].zoomed);
+        assert_eq!(
+            app.state.session_containers[0].tabs[0].layout.pane_count(),
+            1
+        );
+        assert!(!app.state.session_containers[0].tabs[0].zoomed);
         assert_eq!(app.state.mode, Mode::Terminal);
         let _ = std::fs::remove_file(output_path);
 
@@ -1685,7 +1703,7 @@ last_pane = "prefix+tab"
                 b"alpha\nbeta\n",
             ),
         );
-        app.state.workspaces = vec![workspace];
+        app.state.session_containers = vec![workspace];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -1722,7 +1740,7 @@ last_pane = "prefix+tab"
     #[test]
     fn zoom_action_exits_navigate_mode() {
         let mut state = state_with_workspaces(&["test"]);
-        state.workspaces[0].test_split(Direction::Horizontal);
+        state.session_containers[0].test_split(Direction::Horizontal);
         state.keybinds.zoom = crate::config::ActionKeybinds::prefix("g");
 
         handle_navigate_key(
@@ -1730,23 +1748,23 @@ last_pane = "prefix+tab"
             KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
         );
 
-        assert!(state.workspaces[0].zoomed);
+        assert!(state.session_containers[0].zoomed);
         assert_eq!(state.mode, Mode::Terminal);
     }
 
     #[test]
     fn focus_pane_action_keeps_zoomed_when_changing_focus() {
         let mut state = state_with_workspaces(&["test"]);
-        let root = state.workspaces[0].tabs[0].root_pane;
-        let right = state.workspaces[0].test_split(Direction::Horizontal);
-        state.workspaces[0].layout.focus_pane(root);
-        state.workspaces[0].zoomed = true;
+        let root = state.session_containers[0].tabs[0].root_pane;
+        let right = state.session_containers[0].test_split(Direction::Horizontal);
+        state.session_containers[0].layout.focus_pane(root);
+        state.session_containers[0].zoomed = true;
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 20));
 
         execute_navigate_action(&mut state, NavigateAction::FocusPaneRight);
 
-        assert!(state.workspaces[0].zoomed);
-        assert_eq!(state.workspaces[0].focused_pane_id(), Some(right));
+        assert!(state.session_containers[0].zoomed);
+        assert_eq!(state.session_containers[0].focused_pane_id(), Some(right));
     }
 
     #[test]
@@ -1772,7 +1790,7 @@ last_pane = "prefix+tab"
         assert_eq!(state.name_input, "2");
         assert!(state.name_input_replace_on_type);
         assert!(!state.request_new_tab);
-        assert_eq!(state.workspaces[0].tabs.len(), 1);
+        assert_eq!(state.session_containers[0].tabs.len(), 1);
     }
 
     #[test]

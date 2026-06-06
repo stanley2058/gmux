@@ -398,7 +398,7 @@ mod tests {
             api_rx,
             crate::api::EventHub::default(),
         );
-        app.state.workspaces = vec![Workspace::test_new("issue")];
+        app.state.session_containers = vec![Workspace::test_new("issue")];
         app.state.ensure_test_terminals();
         app
     }
@@ -406,7 +406,7 @@ mod tests {
     #[test]
     fn api_pane_close_closes_single_pane_session() {
         let mut app = app_with_session_container();
-        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let pane_id = app.state.session_containers[0].tabs[0].root_pane;
         let public_pane_id = app.public_pane_id(0, pane_id).unwrap();
 
         let response = app.handle_pane_close(
@@ -418,13 +418,13 @@ mod tests {
 
         let success: SuccessResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(success.id, "req");
-        assert!(app.state.workspaces.is_empty());
+        assert!(app.state.session_containers.is_empty());
     }
 
     #[test]
     fn api_pane_focus_targets_pane() {
         let mut app = app_with_session_container();
-        let pane_id = app.state.workspaces[0].tabs[0].root_pane;
+        let pane_id = app.state.session_containers[0].tabs[0].root_pane;
         let public_pane_id = app.public_pane_id(0, pane_id).unwrap();
 
         let response = app.handle_pane_focus(
@@ -452,7 +452,7 @@ mod tests {
         let first = Workspace::test_new("one");
         let second = Workspace::test_new("two");
         let pane_id = second.tabs[0].root_pane;
-        app.state.workspaces = vec![first, second];
+        app.state.session_containers = vec![first, second];
         app.state.ensure_test_terminals();
         app.state.active = Some(0);
         app.state.selected = 0;
@@ -468,10 +468,10 @@ mod tests {
 
         let success: SuccessResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(success.id, "req");
-        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.session_containers.len(), 1);
         assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.selected, 0);
-        assert_eq!(app.state.workspaces[0].active_tab, 1);
+        assert_eq!(app.state.session_containers[0].active_tab, 1);
         let ResponseResult::PaneInfo { pane } = success.result else {
             panic!("expected pane info response");
         };

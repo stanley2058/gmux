@@ -960,7 +960,7 @@ pub struct AppState {
     /// Terminal ids whose size is currently owned by a direct attach client.
     pub direct_attach_resize_locks: std::collections::HashSet<crate::terminal::TerminalId>,
     pub(crate) pane_id_aliases: std::collections::HashMap<u32, PaneId>,
-    pub workspaces: Vec<Workspace>,
+    pub session_containers: Vec<Workspace>,
     pub active: Option<usize>,
     pub(crate) previous_pane_focus: Option<PaneFocusTarget>,
     pub selected: usize,
@@ -1145,11 +1145,11 @@ impl AppState {
     }
 
     pub(crate) fn session_containers(&self) -> &[crate::workspace::Workspace] {
-        &self.workspaces
+        &self.session_containers
     }
 
     pub(crate) fn session_containers_mut(&mut self) -> &mut Vec<crate::workspace::Workspace> {
-        &mut self.workspaces
+        &mut self.session_containers
     }
 
     pub(crate) fn session_tab_entries(
@@ -1294,7 +1294,7 @@ impl AppState {
             terminals: std::collections::HashMap::new(),
             direct_attach_resize_locks: std::collections::HashSet::new(),
             pane_id_aliases: std::collections::HashMap::new(),
-            workspaces: Vec::new(),
+            session_containers: Vec::new(),
             active: None,
             previous_pane_focus: None,
             selected: 0,

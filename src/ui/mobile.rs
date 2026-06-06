@@ -762,9 +762,9 @@ mod tests {
         workspace.identity_cwd = stale_cwd.clone();
         let pane = workspace.tabs[0].root_pane;
 
-        app.workspaces = vec![workspace];
+        app.session_containers = vec![workspace];
         app.ensure_test_terminals();
-        let terminal_id = app.workspaces[0].tabs[0].panes[&pane]
+        let terminal_id = app.session_containers[0].tabs[0].panes[&pane]
             .attached_terminal_id
             .clone();
         app.terminals.get_mut(&terminal_id).unwrap().cwd = stale_cwd;

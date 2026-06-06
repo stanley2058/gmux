@@ -422,11 +422,11 @@ impl AppState {
 #[cfg(test)]
 fn state_with_workspaces(names: &[&str]) -> AppState {
     let mut state = AppState::test_new();
-    state.workspaces = names
+    state.session_containers = names
         .iter()
         .map(|name| crate::workspace::Workspace::test_new(name))
         .collect();
-    if !state.workspaces.is_empty() {
+    if !state.session_containers.is_empty() {
         state.active = Some(0);
         state.selected = 0;
         state.mode = Mode::Navigate;
@@ -477,7 +477,11 @@ fn numbered_lines_bytes(count: usize) -> Vec<u8> {
 #[cfg(test)]
 fn capture_snapshot(state: &AppState) -> crate::persist::SessionSnapshot {
     let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
-    crate::persist::capture(&state.workspaces, &state.terminals, &terminal_runtimes)
+    crate::persist::capture(
+        &state.session_containers,
+        &state.terminals,
+        &terminal_runtimes,
+    )
 }
 
 #[cfg(test)]

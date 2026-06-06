@@ -683,7 +683,7 @@ mod tests {
             pane_id,
             runtime(info.inner_rect.width, info.inner_rect.height),
         );
-        app.state.workspaces = vec![ws];
+        app.state.session_containers = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
