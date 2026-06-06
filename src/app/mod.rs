@@ -2831,7 +2831,7 @@ last_pane = "prefix+tab"
         app.state.selected = 0;
         app.state.keybinds = config.keybinds();
         app.state.mode = Mode::Terminal;
-        app.state.focus_session_tab(0, first_second_tab);
+        app.state.workspaces[0].switch_tab(first_second_tab);
         app.state.focus_session_tab(1, 0);
 
         app.route_client_input(vec![0x02, b'\t']);
@@ -2846,8 +2846,10 @@ last_pane = "prefix+tab"
 
         app.route_client_input(vec![0x02, b'\t']);
 
-        assert_eq!(app.state.active, Some(1));
-        assert_eq!(app.state.workspaces[1].focused_pane_id(), Some(second_root));
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.workspaces[0].active_tab, 2);
+        assert_eq!(app.state.workspaces[0].focused_pane_id(), Some(second_root));
     }
 
     #[tokio::test]

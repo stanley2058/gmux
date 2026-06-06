@@ -535,11 +535,12 @@ mod tests {
             detail_area.y + 6,
         ));
 
-        assert_eq!(app.state.active, Some(1));
-        assert_eq!(app.state.selected, 1);
-        assert_eq!(app.state.workspaces[1].active_tab, 0);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
         assert_eq!(
-            app.state.workspaces[1].tabs[0].layout.focused(),
+            app.state.workspaces[0].tabs[1].layout.focused(),
             second_pane
         );
     }

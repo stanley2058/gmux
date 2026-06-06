@@ -942,9 +942,11 @@ mod tests {
             KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.active, Some(1));
-        assert_eq!(state.selected, 1);
-        assert_eq!(state.workspaces[1].focused_pane_id(), Some(target_pane));
+        assert_eq!(state.workspaces.len(), 1);
+        assert_eq!(state.active, Some(0));
+        assert_eq!(state.selected, 0);
+        assert_eq!(state.workspaces[0].active_tab, 1);
+        assert_eq!(state.workspaces[0].focused_pane_id(), Some(target_pane));
         assert!(state.toast.is_none());
         assert_eq!(state.mode, Mode::Terminal);
     }

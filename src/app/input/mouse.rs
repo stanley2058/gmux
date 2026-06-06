@@ -1840,8 +1840,8 @@ mod tests {
             confirm.y,
         ));
 
-        assert_eq!(app.state.workspaces.len(), 1);
-        assert_eq!(app.state.mode, Mode::Terminal);
+        assert!(app.state.workspaces.is_empty());
+        assert_eq!(app.state.mode, Mode::Navigate);
     }
 
     #[tokio::test]

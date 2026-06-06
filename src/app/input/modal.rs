@@ -1081,6 +1081,6 @@ mod tests {
             &mut state,
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
-        assert_eq!(state.workspaces.len(), 1);
+        assert!(state.workspaces.is_empty());
     }
 }
