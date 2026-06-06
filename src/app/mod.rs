@@ -1353,6 +1353,24 @@ mod tests {
         assert_eq!(restore_calls.get(), 0);
     }
 
+    #[test]
+    fn create_workspace_with_existing_container_collapses_instead_of_appending() {
+        let mut app = test_app();
+        app.state.workspaces = vec![Workspace::test_new("one"), Workspace::test_new("two")];
+        app.state.active = None;
+        app.state.selected = 1;
+
+        let idx = app
+            .create_workspace_with_options(std::path::PathBuf::from("/tmp"), true)
+            .expect("existing session container should be reused");
+
+        assert_eq!(idx, 0);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].tabs.len(), 2);
+    }
+
     #[tokio::test]
     async fn raw_input_dispatch_restores_input_source_when_leaving_prefix() {
         // Leaving prefix mode happens inside the raw-input dispatch, not in

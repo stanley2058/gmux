@@ -84,6 +84,9 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
+        if self.state.active.is_none() && !self.state.workspaces.is_empty() {
+            self.state.collapse_to_single_session_workspace();
+        }
         let Some(ws_idx) = self.state.active else {
             return self.create_workspace_with_options(initial_cwd, focus);
         };
@@ -120,6 +123,11 @@ impl App {
         initial_cwd: PathBuf,
         focus: bool,
     ) -> std::io::Result<usize> {
+        if !self.state.workspaces.is_empty() {
+            self.state.collapse_to_single_session_workspace();
+            return Ok(self.state.active.unwrap_or(0));
+        }
+
         let (rows, cols) = self.state.estimate_pane_size();
         let (ws, terminal, runtime) = Workspace::new(
             initial_cwd,
