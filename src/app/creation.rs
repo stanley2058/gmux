@@ -88,7 +88,10 @@ impl App {
         let default_shell = self.state.default_shell.clone();
         let shell_mode = self.state.shell_mode;
         let (idx, terminal, runtime, session_id, root_pane) = {
-            let session = &mut self.state.sessions_mut()[session_idx];
+            let session = self
+                .state
+                .session_mut()
+                .expect("collapsed active session should exist");
             let (idx, terminal, runtime) = session.create_tab(
                 rows,
                 cols,
@@ -160,15 +163,14 @@ impl App {
 
     pub(super) fn collect_panes(&self) -> Vec<crate::api::schema::PaneInfo> {
         self.state
-            .sessions()
-            .iter()
-            .enumerate()
-            .flat_map(|(session_idx, session)| {
-                session
-                    .tabs
-                    .iter()
-                    .flat_map(|tab| tab.layout.pane_ids().into_iter())
-                    .filter_map(move |pane_id| self.pane_info(session_idx, pane_id))
+            .session_tab_entries()
+            .flat_map(|entry| {
+                entry
+                    .tab
+                    .layout
+                    .pane_ids()
+                    .into_iter()
+                    .filter_map(move |pane_id| self.pane_info(entry.session_idx, pane_id))
             })
             .collect()
     }
