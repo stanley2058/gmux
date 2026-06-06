@@ -1,0 +1,11 @@
+feature	automated_check	manual_local	manual_remote	notes
+osc52_clipboard	cargo test --locked clipboard	Printf an OSC 52 copy sequence inside a pane and confirm the host clipboard updates.	Run the same check through gmux --remote and confirm the local clipboard updates.	Required for editor and shell clipboard integration.
+osc8_hyperlinks	cargo test --locked hyperlink	Cat OSC 8 hyperlink text inside a pane and confirm supported terminals expose a clickable link.	Repeat through gmux --remote and confirm the local client preserves the link.	Requires a terminal with OSC 8 hyperlink support.
+kitty_keyboard	cargo test --locked keyboard_protocol	Run a CSI-u aware app or fixture and confirm modified keys reach the child process.	Repeat through gmux --remote with local keybindings and server keybindings.	Important for modern editors and shells.
+kitty_graphics	cargo test --locked kitty_graphics	Render a small Kitty graphics sample with experimental.kitty_graphics enabled.	Repeat through gmux --remote and confirm graphics render or degrade without corrupting text.	Requires Kitty graphics support in the host terminal.
+bracketed_paste	cargo test --locked bracketed_paste	Paste multi-line text into a shell or editor and confirm it arrives atomically.	Repeat through gmux --remote.	Protects pasted commands and editor input.
+mouse_mode	cargo test --locked mouse	Run a mouse-reporting TUI, click, drag, scroll, and resize pane borders.	Repeat through gmux --remote.	Covers SGR mouse routing and gmux mouse controls.
+focus_events	cargo test --locked focus	Run a focus-aware program and switch terminal focus in and out.	Repeat through gmux --remote.	Covers focus mode tracking and forwarding.
+cursor_shape	cargo test --locked cursor_shape	Run shell prompts or apps that change cursor shape and confirm the attached client follows.	Repeat through gmux --remote.	Host terminal must expose cursor shape changes.
+synchronized_output	cargo test --locked render_ansi	Run rapid output and confirm frames do not visibly tear.	Repeat through gmux --remote over a slower connection.	Protects the ANSI blitter and semantic frame path.
+wide_graphemes	cargo test --locked grapheme	Render emoji, flags, combining accents, and wide CJK text in a pane.	Repeat through gmux --remote.	Protects diff rendering and cell invalidation.
