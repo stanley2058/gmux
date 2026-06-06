@@ -551,7 +551,9 @@ impl AppState {
         }
 
         if self.view.layout == ViewLayout::Mobile && self.mode == Mode::Navigate {
-            self.ensure_mobile_session_visible(idx);
+            self.mobile_switcher_scroll = self
+                .mobile_switcher_scroll
+                .min(crate::ui::mobile_switcher_max_scroll(self));
             return;
         }
 
@@ -603,25 +605,6 @@ impl AppState {
                 break;
             }
         }
-    }
-
-    fn ensure_mobile_session_visible(&mut self, idx: usize) {
-        let viewport = crate::ui::mobile_switcher_areas(self).viewport;
-        if viewport.height == 0 {
-            return;
-        }
-
-        let row_range = crate::ui::mobile_switcher_session_doc_range(idx);
-        let visible_start = self.mobile_switcher_scroll;
-        let visible_end = visible_start.saturating_add(viewport.height as usize);
-        if row_range.start < visible_start {
-            self.mobile_switcher_scroll = row_range.start;
-        } else if row_range.end > visible_end {
-            self.mobile_switcher_scroll = row_range.end.saturating_sub(viewport.height as usize);
-        }
-        self.mobile_switcher_scroll = self
-            .mobile_switcher_scroll
-            .min(crate::ui::mobile_switcher_max_scroll(self));
     }
 
     pub fn switch_tab(&mut self, idx: usize) {

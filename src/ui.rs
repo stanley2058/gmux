@@ -67,8 +67,8 @@ pub(crate) use self::{
 pub(crate) use self::{
     keybind_help::keybind_help_lines,
     mobile::{
-        mobile_switcher_areas, mobile_switcher_max_scroll, mobile_switcher_session_doc_range,
-        mobile_switcher_target_at, MobileSwitcherTarget,
+        mobile_switcher_areas, mobile_switcher_max_scroll, mobile_switcher_target_at,
+        MobileSwitcherTarget,
     },
     panes::pane_is_scrolled_back,
     tabs::compute_tab_bar_view,

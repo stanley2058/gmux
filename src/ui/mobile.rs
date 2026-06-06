@@ -25,7 +25,6 @@ pub(crate) struct MobileSwitcherAreas {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MobileSwitcherTarget {
-    Workspace(usize),
     NewTab,
     Tab(usize),
     Menu(usize),
@@ -79,11 +78,6 @@ pub(crate) fn mobile_switcher_max_scroll_for_height(app: &AppState, viewport_hei
     mobile_switcher_content_height(app).saturating_sub(viewport_height as usize)
 }
 
-pub(crate) fn mobile_switcher_session_doc_range(idx: usize) -> std::ops::Range<usize> {
-    let start = 1 + idx * 2;
-    start..start + 2
-}
-
 pub(crate) fn mobile_switcher_max_scroll(app: &AppState) -> usize {
     mobile_switcher_max_scroll_for_height(app, mobile_switcher_areas(app).viewport.height)
 }
@@ -103,13 +97,6 @@ pub(crate) fn mobile_switcher_target_at(
         .mobile_switcher_scroll
         .saturating_add(row.saturating_sub(areas.viewport.y) as usize);
     let mut cursor = 0usize;
-
-    cursor += 1; // sessions title
-    let sessions_end = cursor + app.workspaces.len() * 2;
-    if doc_row >= cursor && doc_row < sessions_end {
-        return Some(MobileSwitcherTarget::Workspace((doc_row - cursor) / 2));
-    }
-    cursor = sessions_end;
 
     if let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) {
         cursor += 1; // tabs title
@@ -357,19 +344,18 @@ fn render_close_button(app: &AppState, frame: &mut Frame, area: Rect) {
 }
 
 fn mobile_switcher_content_height(app: &AppState) -> usize {
-    let sessions_h = 1 + app.workspaces.len() * 2;
     let tabs_h = app
         .active
         .and_then(|idx| app.workspaces.get(idx))
         .map(|ws| 2 + ws.tabs.len())
         .unwrap_or(0);
     let menu_h = 1 + app.global_menu_labels().len();
-    sessions_h + tabs_h + menu_h
+    tabs_h + menu_h
 }
 
 fn render_mobile_switcher_content(
     app: &AppState,
-    terminal_runtimes: &TerminalRuntimeRegistry,
+    _terminal_runtimes: &TerminalRuntimeRegistry,
     frame: &mut Frame,
     viewport: Rect,
 ) {
@@ -393,51 +379,6 @@ fn render_mobile_switcher_content(
     }
 
     let mut doc_y = 0usize;
-    render_section_title_at(
-        frame,
-        viewport,
-        content,
-        doc_y,
-        app.mobile_switcher_scroll,
-        "sessions",
-        p,
-    );
-    doc_y += 1;
-    for (idx, ws) in app.workspaces.iter().enumerate() {
-        let active = Some(idx) == app.active;
-        let selected = idx == app.selected;
-        let bg = mobile_item_bg(selected, active, p);
-        let (dot, dot_style) = mobile_session_dot(active, p);
-        let title = Line::from(vec![
-            Span::styled("  ", Style::default().bg(bg)),
-            Span::styled(dot, dot_style.bg(bg)),
-            Span::styled(" ", Style::default().bg(bg)),
-            Span::styled(
-                truncate(
-                    &ws.display_name_from(&app.terminals, terminal_runtimes),
-                    content.width.saturating_sub(5) as usize,
-                ),
-                Style::default()
-                    .fg(p.text)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]);
-        let detail = format!("  shell · tab {}/{}", ws.active_tab + 1, ws.tabs.len());
-        render_two_line_item(
-            frame,
-            viewport,
-            content,
-            doc_y,
-            app.mobile_switcher_scroll,
-            bg,
-            title,
-            truncate(&detail, content.width as usize),
-            p.overlay0,
-        );
-        doc_y += 2;
-    }
-
     if let Some(ws) = app.active.and_then(|idx| app.workspaces.get(idx)) {
         render_section_title_at(
             frame,
@@ -568,40 +509,6 @@ fn render_one_line_item(
     if let Some(y) = visible_y(viewport, scroll, doc_y) {
         frame.render_widget(
             Paragraph::new(title),
-            Rect::new(content.x, y, content.width, 1),
-        );
-    }
-}
-
-fn render_two_line_item(
-    frame: &mut Frame,
-    viewport: Rect,
-    content: Rect,
-    doc_y: usize,
-    scroll: usize,
-    bg: ratatui::style::Color,
-    title: Line<'_>,
-    detail: String,
-    detail_fg: ratatui::style::Color,
-) {
-    fill_visible_doc_rect(
-        frame,
-        viewport,
-        content,
-        doc_y,
-        2,
-        Style::default().bg(bg),
-        scroll,
-    );
-    if let Some(y) = visible_y(viewport, scroll, doc_y) {
-        frame.render_widget(
-            Paragraph::new(title),
-            Rect::new(content.x, y, content.width, 1),
-        );
-    }
-    if let Some(y) = visible_y(viewport, scroll, doc_y + 1) {
-        frame.render_widget(
-            Paragraph::new(detail).style(Style::default().fg(detail_fg).bg(bg)),
             Rect::new(content.x, y, content.width, 1),
         );
     }

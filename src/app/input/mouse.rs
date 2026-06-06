@@ -808,10 +808,6 @@ impl AppState {
         }
 
         match crate::ui::mobile_switcher_target_at(self, mouse.column, mouse.row) {
-            Some(crate::ui::MobileSwitcherTarget::Workspace(ws_idx)) => {
-                self.switch_workspace(ws_idx);
-                self.mode = Mode::Terminal;
-            }
             Some(crate::ui::MobileSwitcherTarget::NewTab) => {
                 open_new_tab_dialog(self);
             }
@@ -2433,9 +2429,11 @@ mod tests {
     }
 
     #[test]
-    fn mobile_switch_button_opens_switcher_and_workspace_row_switches_workspace() {
+    fn mobile_switch_button_opens_switcher_and_tab_row_switches_tab() {
         let mut app = app_for_mouse_test();
-        app.state.workspaces = vec![Workspace::test_new("one"), Workspace::test_new("two")];
+        let mut ws = Workspace::test_new("one");
+        ws.test_add_tab(Some("two"));
+        app.state.workspaces = vec![ws];
         app.state.active = Some(0);
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
@@ -2456,15 +2454,16 @@ mod tests {
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             viewport.x + 2,
-            viewport.y + 4,
+            viewport.y + 3,
         ));
 
-        assert_eq!(app.state.active, Some(1));
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.workspaces[0].active_tab, 1);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
     #[test]
-    fn mobile_workspace_panel_scroll_reaches_extra_workspaces() {
+    fn mobile_switcher_ignores_inactive_workspace_rows() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = (0..12)
             .map(|idx| Workspace::test_new(&format!("ws-{idx}")))
@@ -2489,7 +2488,7 @@ mod tests {
             viewport.y,
         ));
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));
-        assert_eq!(app.state.mobile_switcher_scroll, 2);
+        assert_eq!(app.state.mobile_switcher_scroll, 0);
 
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
@@ -2497,7 +2496,7 @@ mod tests {
             viewport.y + 2,
         ));
 
-        assert_eq!(app.state.active, Some(1));
+        assert_eq!(app.state.active, Some(0));
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 
@@ -2533,11 +2532,11 @@ mod tests {
             viewport.x + 2,
             viewport.y,
         ));
-        assert_eq!(app.state.mobile_switcher_scroll, 4);
+        assert_eq!(app.state.mobile_switcher_scroll, 2);
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             viewport.x + 2,
-            viewport.y + 3,
+            viewport.y + 2,
         ));
         assert_eq!(app.state.workspaces[0].active_tab, 2);
     }
@@ -2564,7 +2563,7 @@ mod tests {
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             viewport.x + 2,
-            viewport.y + 4,
+            viewport.y + 1,
         ));
         assert_eq!(app.state.mode, Mode::RenameTab);
         assert!(app.state.creating_new_tab);
