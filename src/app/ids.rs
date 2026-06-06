@@ -25,26 +25,20 @@ impl App {
     }
 
     fn public_tab_number(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {
-        self.state.workspaces.get(ws_idx)?.tabs.get(tab_idx)?;
-        let preceding = self
-            .state
-            .workspaces
-            .iter()
-            .take(ws_idx)
-            .map(|ws| ws.tabs.len())
-            .sum::<usize>();
-        Some(preceding + tab_idx + 1)
+        self.state
+            .session_tab_entries()
+            .position(|(entry_ws_idx, entry_tab_idx, _, _)| {
+                entry_ws_idx == ws_idx && entry_tab_idx == tab_idx
+            })
+            .map(|idx| idx + 1)
     }
 
     fn tab_by_public_number(&self, number: usize) -> Option<(usize, usize)> {
-        let mut remaining = number.checked_sub(1)?;
-        for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
-            if remaining < ws.tabs.len() {
-                return Some((ws_idx, remaining));
-            }
-            remaining = remaining.checked_sub(ws.tabs.len())?;
-        }
-        None
+        let idx = number.checked_sub(1)?;
+        self.state
+            .session_tab_entries()
+            .nth(idx)
+            .map(|(ws_idx, tab_idx, _, _)| (ws_idx, tab_idx))
     }
 
     fn public_pane_number(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> Option<usize> {
