@@ -569,9 +569,18 @@ impl AppState {
     }
 
     pub fn focus_session(&mut self, idx: usize) {
-        let Some(active_tab) = self.sessions().get(idx).and_then(|ws| {
-            (!ws.tabs.is_empty()).then_some(ws.active_tab.min(ws.tabs.len().saturating_sub(1)))
-        }) else {
+        let Some(active_tab) = self
+            .session_entries()
+            .find(|entry| entry.session_idx == idx)
+            .and_then(|entry| {
+                (!entry.session.tabs.is_empty()).then_some(
+                    entry
+                        .session
+                        .active_tab
+                        .min(entry.session.tabs.len().saturating_sub(1)),
+                )
+            })
+        else {
             return;
         };
 
@@ -619,7 +628,7 @@ impl AppState {
     }
 
     pub(crate) fn ensure_session_visible(&mut self, idx: usize) {
-        if idx >= self.sessions().len() {
+        if !self.session_entries().any(|entry| entry.session_idx == idx) {
             return;
         }
 
@@ -731,11 +740,7 @@ impl AppState {
         let pane_id = target.pane_id;
 
         if self.session_index() == Some(ws_idx)
-            && self
-                .sessions()
-                .get(ws_idx)
-                .and_then(SessionUiState::focused_pane_id)
-                == Some(pane_id)
+            && self.session().and_then(SessionUiState::focused_pane_id) == Some(pane_id)
         {
             self.ensure_pane_panel_entry_visible(idx);
             return true;
@@ -985,11 +990,11 @@ impl AppState {
             self.previous_pane_focus = None;
             return;
         };
-        if let Some(tab) = self
-            .sessions_mut()
-            .get_mut(ws_idx)
-            .and_then(|ws| ws.tabs.get_mut(tab_idx))
-        {
+        if self.session_index() != Some(ws_idx) {
+            self.previous_pane_focus = None;
+            return;
+        }
+        if let Some(tab) = self.session_mut().and_then(|ws| ws.tabs.get_mut(tab_idx)) {
             tab.layout.focus_pane(target.pane_id);
             self.previous_pane_focus = current;
             self.mark_session_dirty();
@@ -1014,8 +1019,7 @@ impl AppState {
         self.mark_session_dirty();
         let terminal_ids = active
             .and_then(|i| {
-                self.sessions()
-                    .get(i)
+                self.session()
                     .and_then(|ws| ws.focused_pane_id().map(|pane_id| (i, pane_id)))
             })
             .and_then(|(i, pane_id)| self.terminal_id_for_pane(i, pane_id))
