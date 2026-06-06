@@ -490,8 +490,8 @@ mod tests {
         state.sessions = names.iter().map(|name| Workspace::test_new(name)).collect();
         state.ensure_test_terminals();
         if !state.sessions.is_empty() {
-            state.active = Some(0);
-            state.selected = 0;
+            state.active_session = Some(0);
+            state.selected_session = 0;
             state.mode = Mode::Terminal;
         }
         state
@@ -710,8 +710,8 @@ mod tests {
     fn capture_contract_uses_first_session_state_as_active_tab_source() {
         let mut state = state_with_workspaces(&["a", "b", "c"]);
         state.sessions.swap(0, 1);
-        state.active = Some(0);
-        state.selected = 2;
+        state.active_session = Some(0);
+        state.selected_session = 2;
 
         let snapshot = capture_from_state(&state);
         let names: Vec<_> = snapshot
@@ -740,8 +740,8 @@ mod tests {
     #[test]
     fn capture_contract_tracks_session_closure() {
         let mut state = state_with_workspaces(&["one", "two"]);
-        state.selected = 1;
-        state.active = Some(1);
+        state.selected_session = 1;
+        state.active_session = Some(1);
 
         state.close_session();
 

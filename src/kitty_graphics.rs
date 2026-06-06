@@ -171,7 +171,7 @@ pub(crate) fn encode_local_pane_graphics(
         cell_ok,
         cell_width_px = cell_size.width_px,
         cell_height_px = cell_size.height_px,
-        active = ?app.active,
+        active = ?app.active_session,
         pane_infos_len = app.view.pane_infos.len(),
         "paint_local_pane_graphics entry"
     );
@@ -224,7 +224,7 @@ pub(crate) fn has_visible_pane_graphics(
         return false;
     }
 
-    let Some(ws_idx) = app.active else {
+    let Some(ws_idx) = app.active_session else {
         return false;
     };
     if app
@@ -413,7 +413,7 @@ impl HostGraphicsCache {
 }
 
 fn active_view_key(app: &AppState) -> Option<HostViewKey> {
-    let ws_idx = app.active?;
+    let ws_idx = app.active_session?;
     let ws = app.sessions().get(ws_idx)?;
     Some(HostViewKey {
         workspace_index: ws_idx,
@@ -427,7 +427,7 @@ fn collect_visible_placements(
     cell_size: HostCellSize,
     uploaded_images: &HashMap<u32, ImageSignature>,
 ) -> Vec<HostPlacement> {
-    let ws_idx = match app.active {
+    let ws_idx = match app.active_session {
         Some(idx) => idx,
         None => {
             tracing::debug!("collect_visible_placements: no active session");

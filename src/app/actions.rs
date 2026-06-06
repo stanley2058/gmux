@@ -87,7 +87,7 @@ impl AppState {
             pane_id,
         };
         if self.sessions().len() == 1
-            && self.active == Some(ws_idx)
+            && self.active_session == Some(ws_idx)
             && previous.as_ref() == Some(&target)
         {
             return false;
@@ -463,7 +463,7 @@ fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
 
 impl AppState {
     pub(crate) fn session_index(&self) -> Option<usize> {
-        self.active
+        self.active_session
             .filter(|idx| self.sessions().get(*idx).is_some())
             .or_else(|| (!self.sessions().is_empty()).then_some(0))
     }
@@ -481,22 +481,22 @@ impl AppState {
     pub(crate) fn collapse_to_single_session(&mut self) -> bool {
         match self.sessions().len() {
             0 => {
-                let changed = self.active.take().is_some() || self.selected != 0;
-                self.selected = 0;
+                let changed = self.active_session.take().is_some() || self.selected_session != 0;
+                self.selected_session = 0;
                 self.tab_scroll = 0;
                 self.tab_scroll_follow_active = true;
                 changed
             }
             1 => {
-                let changed = self.active != Some(0) || self.selected != 0;
-                self.active = Some(0);
-                self.selected = 0;
+                let changed = self.active_session != Some(0) || self.selected_session != 0;
+                self.active_session = Some(0);
+                self.selected_session = 0;
                 changed
             }
             _ => {
                 let active_ws_idx = self
-                    .active
-                    .unwrap_or(self.selected)
+                    .active_session
+                    .unwrap_or(self.selected_session)
                     .min(self.sessions().len().saturating_sub(1));
                 let active_tab = self
                     .sessions()
@@ -526,8 +526,8 @@ impl AppState {
 
                 if primary.tabs.is_empty() {
                     self.sessions_mut().clear();
-                    self.active = None;
-                    self.selected = 0;
+                    self.active_session = None;
+                    self.selected_session = 0;
                     self.tab_scroll = 0;
                     self.tab_scroll_follow_active = true;
                     return true;
@@ -551,8 +551,8 @@ impl AppState {
                 }
                 primary.next_public_pane_number = next_public_pane_number;
 
-                self.active = Some(0);
-                self.selected = 0;
+                self.active_session = Some(0);
+                self.selected_session = 0;
                 self.mobile_switcher_scroll = 0;
                 self.pane_panel_scroll = 0;
                 self.tab_scroll_follow_active = true;
@@ -578,13 +578,13 @@ impl AppState {
         };
 
         let previous_focus = self.current_pane_focus_target();
-        let workspace_changed = self.active != Some(ws_idx) || self.sessions().len() > 1;
+        let workspace_changed = self.active_session != Some(ws_idx) || self.sessions().len() > 1;
         self.selection = None;
         self.selection_autoscroll = None;
 
         self.collapse_to_single_session();
-        self.active = Some(0);
-        self.selected = 0;
+        self.active_session = Some(0);
+        self.selected_session = 0;
         let session_id = self.sessions()[0].id.clone();
         if workspace_changed {
             crate::logging::session_focused(&session_id);
@@ -862,16 +862,16 @@ impl AppState {
         self.sessions_mut().remove(close_idx);
         self.remove_unattached_terminal_ids(terminal_ids);
         if self.sessions().is_empty() {
-            self.active = None;
-            self.selected = 0;
+            self.active_session = None;
+            self.selected_session = 0;
             self.tab_scroll = 0;
             self.tab_scroll_follow_active = true;
         } else {
-            if self.selected >= self.sessions().len() {
-                self.selected = self.sessions().len() - 1;
+            if self.selected_session >= self.sessions().len() {
+                self.selected_session = self.sessions().len() - 1;
             }
-            self.active = Some(self.selected);
-            self.ensure_session_visible(self.selected);
+            self.active_session = Some(self.selected_session);
+            self.ensure_session_visible(self.selected_session);
             self.tab_scroll_follow_active = true;
             self.refresh_tab_bar_view();
         }
@@ -1541,8 +1541,8 @@ impl AppState {
         if should_close_session {
             self.sessions_mut().remove(ws_idx);
             self.remove_unattached_terminal_ids(session_terminal_ids);
-            self.active = None;
-            self.selected = 0;
+            self.active_session = None;
+            self.selected_session = 0;
             if self.mode == Mode::Terminal {
                 self.mode = Mode::Navigate;
             }
@@ -1570,7 +1570,7 @@ mod tests {
         }
         state.ensure_test_terminals();
         if !state.sessions.is_empty() {
-            state.active = Some(0);
+            state.active_session = Some(0);
             state.mode = Mode::Terminal;
         }
         state
@@ -1934,7 +1934,7 @@ mod tests {
         assert!(state.accept_navigator_selection());
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 1);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(target));
         assert_eq!(state.mode, Mode::Terminal);
@@ -2068,24 +2068,24 @@ mod tests {
         let mut state = AppState::test_new();
         state.sessions = vec![first, second];
         state.ensure_test_terminals();
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         state.next_pane_panel_entry();
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.sessions[0].active_tab, 0);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second));
 
         state.next_pane_panel_entry();
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 1);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(second_root));
 
         state.previous_pane_panel_entry();
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 0);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second));
     }
@@ -2102,15 +2102,15 @@ mod tests {
         let mut state = AppState::test_new();
         state.sessions = vec![first, second];
         state.ensure_test_terminals();
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         assert!(state.focus_pane_panel_entry(2));
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 1);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(second_root));
     }
@@ -2122,7 +2122,7 @@ mod tests {
         state.pane_panel_scope = crate::app::state::PanePanelScope::All;
 
         assert!(state.focus_pane_panel_entry(0));
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].focused_pane_id(), Some(root));
     }
 
@@ -2137,14 +2137,14 @@ mod tests {
         let mut state = AppState::test_new();
         state.sessions = vec![first, second];
         state.ensure_test_terminals();
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::Current;
 
         state.next_pane_panel_entry();
 
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
     }
 
@@ -2159,8 +2159,8 @@ mod tests {
         let mut state = AppState::test_new();
         state.sessions = vec![workspace];
         state.ensure_test_terminals();
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Terminal;
         state.pane_panel_scope = crate::app::state::PanePanelScope::Current;
         state.sessions[0].tabs[0].layout.focus_pane(root);
@@ -2178,8 +2178,8 @@ mod tests {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
         state.focus_session(2);
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, Some(0));
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.sessions[0].active_tab, 2);
     }
 
@@ -2187,13 +2187,13 @@ mod tests {
     fn session_tab_switch_works_without_active_index() {
         let mut state = app_with_workspaces(&["one"]);
         let second_tab = state.sessions[0].test_add_tab(Some("logs"));
-        state.active = None;
-        state.selected = 0;
+        state.active_session = None;
+        state.selected_session = 0;
 
         state.switch_tab(second_tab);
 
         assert_eq!(state.sessions[0].active_tab, second_tab);
-        assert_eq!(state.active, None);
+        assert_eq!(state.active_session, None);
     }
 
     #[test]
@@ -2203,14 +2203,14 @@ mod tests {
         let second_tab = state.sessions[1].test_add_tab(Some("logs"));
         let second_tab_root = state.sessions[1].tabs[second_tab].root_pane;
         state.sessions[1].switch_tab(second_tab);
-        state.active = Some(1);
-        state.selected = 1;
+        state.active_session = Some(1);
+        state.selected_session = 1;
 
         assert!(state.collapse_to_single_session());
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, Some(0));
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.sessions[0].active_tab, 2);
         let tab_labels: Vec<_> = state.sessions[0]
             .tabs
@@ -2276,14 +2276,14 @@ mod tests {
         state.focus_pane_in_session_at(1, second_tab_root);
         state.last_pane();
 
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 0);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
 
         state.last_pane();
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 2);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(second_tab_root));
     }
@@ -2299,13 +2299,13 @@ mod tests {
         state.switch_tab(first_second_tab);
         state.last_pane();
 
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 0);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
 
         state.last_pane();
 
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, first_second_tab);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second_root));
 
@@ -2314,14 +2314,14 @@ mod tests {
         state.focus_session_tab(0, 2);
         state.last_pane();
 
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, first_second_tab);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_second_root));
 
         state.last_pane();
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 2);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(second_root));
     }
@@ -2337,13 +2337,13 @@ mod tests {
         state.focus_session_tab(1, second_tab);
         state.last_pane();
 
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].focused_pane_id(), Some(first_root));
 
         state.last_pane();
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 2);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(second_tab_root));
         assert_ne!(second_first_root, second_tab_root);
@@ -2358,8 +2358,8 @@ mod tests {
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, Some(0));
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.sessions[0].active_tab, 7);
     }
 
@@ -2378,44 +2378,44 @@ mod tests {
     fn focus_session_out_of_bounds_is_noop() {
         let mut state = app_with_workspaces(&["a"]);
         state.focus_session(5);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
     }
 
     #[test]
     fn close_session_closes_canonical_session() {
         let mut state = app_with_workspaces(&["a", "b", "c"]);
-        state.selected = 1;
-        state.active = Some(1);
+        state.selected_session = 1;
+        state.active_session = Some(1);
 
         state.close_session();
 
         assert!(state.sessions.is_empty());
-        assert_eq!(state.selected, 0);
-        assert_eq!(state.active, None);
+        assert_eq!(state.selected_session, 0);
+        assert_eq!(state.active_session, None);
     }
 
     #[test]
     fn close_last_session_clears_active() {
         let mut state = app_with_workspaces(&["only"]);
-        state.selected = 0;
+        state.selected_session = 0;
         state.close_session();
 
         assert!(state.sessions.is_empty());
-        assert_eq!(state.active, None);
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, None);
+        assert_eq!(state.selected_session, 0);
     }
 
     #[test]
     fn close_session_ignores_stale_selected_workspace() {
         let mut state = app_with_workspaces(&["a", "b"]);
-        state.selected = 99;
-        state.active = Some(0);
+        state.selected_session = 99;
+        state.active_session = Some(0);
 
         state.close_session();
 
         assert!(state.sessions.is_empty());
-        assert_eq!(state.selected, 0);
-        assert_eq!(state.active, None);
+        assert_eq!(state.selected_session, 0);
+        assert_eq!(state.active_session, None);
     }
 
     #[test]
@@ -2646,8 +2646,8 @@ mod tests {
         let active_terminal_id = state
             .terminal_id_for_pane(1, state.sessions[1].tabs[0].root_pane)
             .unwrap();
-        state.active = Some(1);
-        state.selected = 0;
+        state.active_session = Some(1);
+        state.selected_session = 0;
 
         state.close_tab();
 
@@ -2662,8 +2662,8 @@ mod tests {
         let active_terminal_id = state
             .terminal_id_for_pane(1, state.sessions[1].tabs[0].root_pane)
             .unwrap();
-        state.active = Some(1);
-        state.selected = 0;
+        state.active_session = Some(1);
+        state.selected_session = 0;
 
         state.close_pane();
 

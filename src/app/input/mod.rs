@@ -427,8 +427,8 @@ fn state_with_workspaces(names: &[&str]) -> AppState {
         .map(|name| crate::workspace::Workspace::test_new(name))
         .collect();
     if !state.sessions.is_empty() {
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Navigate;
     }
     state

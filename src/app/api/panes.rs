@@ -432,7 +432,7 @@ mod tests {
 
         let success: SuccessResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(success.id, "req");
-        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.active_session, Some(0));
         assert_eq!(app.state.mode, Mode::Terminal);
         let ResponseResult::PaneInfo { pane } = success.result else {
             panic!("expected pane info response");
@@ -449,8 +449,8 @@ mod tests {
         let pane_id = second.tabs[0].root_pane;
         app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         let public_pane_id = app.public_pane_id(1, pane_id).unwrap();
 
         let response = app.handle_pane_focus(
@@ -464,8 +464,8 @@ mod tests {
         let success: SuccessResponse = serde_json::from_str(&response).unwrap();
         assert_eq!(success.id, "req");
         assert_eq!(app.state.sessions.len(), 1);
-        assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.active_session, Some(0));
+        assert_eq!(app.state.selected_session, 0);
         assert_eq!(app.state.sessions[0].active_tab, 1);
         let ResponseResult::PaneInfo { pane } = success.result else {
             panic!("expected pane info response");

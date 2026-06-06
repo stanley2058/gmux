@@ -219,8 +219,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
         (app, info)
@@ -279,8 +279,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -345,8 +345,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -553,8 +553,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -633,8 +633,8 @@ mod tests {
         ws.tabs[0].layout.focus_pane(first_pane);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -688,8 +688,8 @@ mod tests {
         ws.tabs[0].layout.focus_pane(first_pane);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -715,8 +715,8 @@ mod tests {
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.sessions[0].test_split(ratatui::layout::Direction::Horizontal);
         app.state.view.pane_infos = app.state.sessions[0]
@@ -756,8 +756,8 @@ mod tests {
             ),
         );
         app.state.sessions = vec![workspace];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let output_path = unique_temp_path("direct-edit-scrollback");
@@ -798,8 +798,8 @@ mod tests {
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let output_path = unique_temp_path("direct-custom-command");
@@ -849,8 +849,8 @@ mod tests {
         app.state.sessions = vec![workspace];
         app.terminal_runtimes.insert(terminal.id.clone(), runtime);
         app.state.terminals.insert(terminal.id.clone(), terminal);
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         app.state.keybinds.custom_commands = vec![crate::config::CustomCommandKeybind {
@@ -891,8 +891,8 @@ mod tests {
         ws.tabs[0].runtimes.insert(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -922,8 +922,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -965,8 +965,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -1008,8 +1008,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -1058,8 +1058,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -1093,8 +1093,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 

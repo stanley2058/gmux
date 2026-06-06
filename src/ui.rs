@@ -457,8 +457,8 @@ mod tests {
         ws.tabs[0].layout.focus_pane(first_pane);
 
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -482,8 +482,8 @@ mod tests {
     fn mobile_width_uses_header_and_full_width_terminal() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 44, 20));
@@ -504,8 +504,8 @@ mod tests {
     fn configured_mobile_width_threshold_controls_layout_switch() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -522,8 +522,8 @@ mod tests {
     fn product_announcement_renders_above_config_diagnostic() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::ProductAnnouncement;
         app.product_announcement = Some(crate::app::state::ProductAnnouncementState {
             version: "0.6.0".into(),
@@ -563,8 +563,8 @@ mod tests {
     fn compute_view_clamps_sidebar_width_to_configured_max() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
         app.sidebar_max_width = 30;
         app.sidebar_width = 999;
@@ -578,8 +578,8 @@ mod tests {
     fn compute_view_clamps_sidebar_width_to_configured_min() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
         app.sidebar_min_width = 22;
         app.sidebar_width = 5;
@@ -594,8 +594,8 @@ mod tests {
         let mut app = crate::app::state::AppState::test_new();
         app.sidebar_collapsed = true;
         app.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];
-        app.active = Some(1);
-        app.selected = 0;
+        app.active_session = Some(1);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -631,7 +631,7 @@ mod tests {
             .attached_terminal_id
             .clone();
         app.terminals.get_mut(&root_terminal_id).unwrap().cwd = dir.clone();
-        app.selected = 0;
+        app.selected_session = 0;
         app.mode = Mode::Navigate;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -658,8 +658,8 @@ mod tests {
         ws.switch_tab(custom_tab);
 
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -689,8 +689,8 @@ mod tests {
 
         app.palette.panel_bg = Color::Reset;
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -715,8 +715,8 @@ mod tests {
         ws.test_add_tab(Some("logs"));
 
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
 
         compute_view(&mut app, Rect::new(0, 0, 80, 20));
@@ -745,8 +745,8 @@ mod tests {
         }
 
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
         app.tab_scroll_follow_active = false;
         app.tab_scroll = 2;
@@ -790,8 +790,8 @@ mod tests {
         }
 
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.mode = Mode::Terminal;
         app.tab_scroll_follow_active = false;
         app.tab_scroll = usize::MAX;
@@ -837,8 +837,8 @@ mod tests {
         );
 
         app.sessions = vec![ws];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
 
         compute_view(&mut app, Rect::new(0, 0, 40, 12));
 

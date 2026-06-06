@@ -183,7 +183,7 @@ mod autoscroll_tests {
         let ws = Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
         state.sessions.push(ws);
-        state.active = Some(0);
+        state.active_session = Some(0);
         state.view.pane_infos.push(PaneInfo {
             id: pane_id,
             rect: Rect::new(0, 0, 80, 24),
@@ -201,7 +201,7 @@ mod autoscroll_tests {
         let ws = Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
         state.sessions.push(ws);
-        state.active = Some(0);
+        state.active_session = Some(0);
         state.view.pane_infos.push(PaneInfo {
             id: pane_id,
             rect: Rect::new(0, 5, 80, 24),

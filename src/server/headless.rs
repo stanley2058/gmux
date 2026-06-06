@@ -3016,8 +3016,8 @@ mod tests {
             crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, initial_screen),
         );
         server.app.state.sessions = vec![workspace];
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
 
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();
@@ -3669,8 +3669,8 @@ next_tab = ""
         );
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Terminal;
 
         let area = Rect::new(0, 0, 80, 24);
@@ -3705,8 +3705,8 @@ next_tab = ""
         );
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Terminal;
 
         let area = Rect::new(0, 0, 80, 24);
@@ -3742,8 +3742,8 @@ next_tab = ""
         );
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Terminal;
 
         let area = Rect::new(0, 0, 80, 24);
@@ -3783,8 +3783,8 @@ next_tab = ""
         ws.insert_test_runtime(pane_id, runtime);
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Terminal;
 
         let area = Rect::new(0, 0, 80, 24);
@@ -3819,8 +3819,8 @@ next_tab = ""
         );
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Terminal;
 
         let area = Rect::new(0, 0, 80, 24);
@@ -3856,8 +3856,8 @@ next_tab = ""
         );
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Navigate;
 
         let area = Rect::new(0, 0, 44, 24);
@@ -3881,8 +3881,8 @@ next_tab = ""
         ws.insert_test_runtime(pane_id, runtime);
 
         state.sessions = vec![ws];
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = crate::app::Mode::Terminal;
 
         let area = Rect::new(0, 0, 80, 24);
@@ -4096,8 +4096,8 @@ next_tab = ""
     fn app_client_lone_escape_closes_navigate_mode() {
         let mut server = test_headless_server();
         server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Navigate;
         server.clients.insert(
             1,
@@ -4131,8 +4131,8 @@ next_tab = ""
             crate::terminal::TerminalRuntime::test_with_channel_capacity(80, 24, 1);
         workspace.tabs[0].runtimes.insert(focused, runtime);
         server.app.state.sessions = vec![workspace];
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
         server.clients.insert(
             1,
@@ -4183,8 +4183,8 @@ next_tab = ""
     fn render_and_stream_uses_each_client_terminal_size() {
         let mut server = test_headless_server();
         server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
 
         let (desktop_tx, _desktop_control_rx, desktop_rx) = test_client_writer();
@@ -4243,8 +4243,8 @@ next_tab = ""
             crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, b""),
         );
         server.app.state.sessions = vec![workspace];
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
 
         server.clients.insert(
@@ -4299,8 +4299,8 @@ next_tab = ""
         let terminal_id_string = terminal_id.to_string();
         server.app.state.sessions = vec![workspace];
         server.app.state.ensure_test_terminals();
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
         server.app.terminal_runtimes.insert(
             terminal_id.clone(),
@@ -4669,8 +4669,8 @@ next_tab = ""
     fn render_and_stream_skips_identical_frame_sends() {
         let mut server = test_headless_server();
         server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
-        server.app.state.active = Some(0);
-        server.app.state.selected = 0;
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
 
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();

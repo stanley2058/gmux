@@ -245,8 +245,8 @@ mod tests {
 
         let mut app = AppState::test_new();
         app.sessions = vec![workspace];
-        app.active = Some(0);
-        app.selected = 99;
+        app.active_session = Some(0);
+        app.selected_session = 99;
 
         let (title, detail) = confirm_close_overlay_text(&app);
 

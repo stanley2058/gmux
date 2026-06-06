@@ -840,7 +840,7 @@ impl AppState {
         }
         if self.on_tab_scroll_right_button(col, row) {
             return self
-                .active
+                .active_session
                 .and_then(|idx| self.sessions().get(idx))
                 .map(|ws| ws.tabs.len());
         }
@@ -851,7 +851,7 @@ impl AppState {
             self.view.tab_scroll_left_hit_area.x + self.view.tab_scroll_left_hit_area.width
         };
         let right_edge = if self
-            .active
+            .active_session
             .and_then(|idx| self.sessions().get(idx))
             .is_some_and(|ws| last_idx + 1 >= ws.tabs.len())
         {
@@ -1377,8 +1377,8 @@ mod tests {
         );
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
         app.state.mouse_scroll_lines = 7;
@@ -1415,8 +1415,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
         app.state.right_click_passthrough_modifiers = Some(KeyModifiers::CONTROL);
@@ -1472,8 +1472,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
 
@@ -1509,8 +1509,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let info = app.state.view.pane_infos[0].clone();
@@ -1549,8 +1549,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let info = app.state.view.pane_infos[0].clone();
@@ -1586,8 +1586,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Navigate;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let info = app.state.view.pane_infos[0].clone();
@@ -1619,8 +1619,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
         app.state.right_click_passthrough_modifiers = None;
@@ -1658,8 +1658,8 @@ mod tests {
         ws.insert_test_runtime(pane_id, runtime);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
         app.state.right_click_passthrough_modifiers = Some(KeyModifiers::CONTROL);
@@ -1684,8 +1684,8 @@ mod tests {
         let pane_id = ws.tabs[0].root_pane;
         let other_pane = ws.test_split(Direction::Vertical);
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.right_click_passthrough_modifiers = Some(KeyModifiers::CONTROL);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -1763,8 +1763,8 @@ mod tests {
 
         app.state.sessions = vec![active, background];
         app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
@@ -1776,7 +1776,7 @@ mod tests {
             hit.y + 1,
         ));
 
-        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.active_session, Some(0));
         assert_eq!(app.state.sessions[1].focused_pane_id(), Some(first_pane));
         assert_eq!(app.state.mode, Mode::Terminal);
     }
@@ -1790,8 +1790,8 @@ mod tests {
         let session_id = background.id.clone();
 
         app.state.sessions = vec![active, background];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.toast = Some(crate::app::state::ToastNotification {
             kind: crate::app::state::ToastKind::Finished,
             title: "pi finished".into(),
@@ -1811,7 +1811,7 @@ mod tests {
             hit.y + 1,
         ));
 
-        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.active_session, Some(0));
         assert!(app.state.toast.is_some());
     }
 
@@ -1819,8 +1819,8 @@ mod tests {
     fn clicking_confirm_close_accepts_workspace_close() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("a"), Workspace::test_new("b")];
-        app.state.active = Some(0);
-        app.state.selected = 1;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 1;
         app.state.mode = Mode::ConfirmClose;
 
         let popup = app.state.confirm_close_rect();
@@ -1861,8 +1861,8 @@ mod tests {
         app.state.sessions = vec![workspace];
         app.terminal_runtimes.insert(terminal.id.clone(), runtime);
         app.state.terminals.insert(terminal.id.clone(), terminal);
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         let pane_id = app.state.sessions[0].tabs[0].root_pane;
         let runtime_count = app.terminal_runtimes.len();
         app.state.context_menu = Some(ContextMenuState {
@@ -1896,8 +1896,8 @@ mod tests {
     fn dragging_pane_split_updates_captured_layout_ratio() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.sessions[0].test_split(Direction::Horizontal);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let border = app.state.view.split_borders[0].clone();
@@ -1923,8 +1923,8 @@ mod tests {
     fn pane_split_hitbox_does_not_overlap_right_pane_content() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.sessions[0].test_split(Direction::Horizontal);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let border = app.state.view.split_borders[0].clone();
@@ -1945,8 +1945,8 @@ mod tests {
     fn pane_split_hitbox_does_not_overlap_bottom_pane_content() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.sessions[0].test_split(Direction::Vertical);
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let border = app.state.view.split_borders[0].clone();
@@ -1969,8 +1969,8 @@ mod tests {
         let mut ws = Workspace::test_new("test");
         let second_pane = ws.test_split(Direction::Horizontal);
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         let second_info = app
@@ -2003,8 +2003,8 @@ mod tests {
         let mut ws = Workspace::test_new("test");
         let second_pane = ws.test_split(Direction::Vertical);
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         let second_info = app
@@ -2039,8 +2039,8 @@ mod tests {
         let second_pane = ws.test_split(Direction::Vertical);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
@@ -2108,8 +2108,8 @@ mod tests {
         let second_pane = ws.test_split(Direction::Horizontal);
 
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
@@ -2192,8 +2192,8 @@ mod tests {
         ws.test_add_tab(Some("two"));
         ws.test_add_tab(Some("three"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -2224,8 +2224,8 @@ mod tests {
         ws.test_add_tab(Some("very-long-two"));
         ws.test_add_tab(Some("very-long-three"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 65, 20));
@@ -2253,8 +2253,8 @@ mod tests {
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("two"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
@@ -2275,8 +2275,8 @@ mod tests {
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("two"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));
@@ -2298,7 +2298,7 @@ mod tests {
             viewport.y + 3,
         ));
 
-        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.active_session, Some(0));
         assert_eq!(app.state.sessions[0].active_tab, 1);
         assert_eq!(app.state.mode, Mode::Terminal);
     }
@@ -2307,8 +2307,8 @@ mod tests {
     fn mobile_switcher_flattens_legacy_workspaces_into_session_tabs() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));
@@ -2327,8 +2327,8 @@ mod tests {
             viewport.y + 3,
         ));
 
-        assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.active_session, Some(0));
+        assert_eq!(app.state.selected_session, 0);
         assert_eq!(app.state.sessions.len(), 1);
         assert_eq!(app.state.sessions[0].active_tab, 1);
         assert_eq!(
@@ -2346,8 +2346,8 @@ mod tests {
         ws.test_add_tab(Some("three"));
         ws.test_add_tab(Some("four"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 12));
@@ -2385,8 +2385,8 @@ mod tests {
         let mut ws = Workspace::test_new("one");
         ws.test_add_tab(Some("logs"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));
@@ -2411,8 +2411,8 @@ mod tests {
     fn mobile_switcher_swallows_non_left_mouse_events() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("one")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));
@@ -2439,8 +2439,8 @@ mod tests {
     fn mobile_switch_button_does_not_bypass_rename_modal() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("one")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::RenameTab;
         app.state.creating_new_tab = true;
         app.state.name_input = "new tab".into();
@@ -2462,8 +2462,8 @@ mod tests {
     fn mobile_switcher_close_returns_to_terminal() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("one")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 44, 20));

@@ -460,7 +460,7 @@ mod tests {
         let ws = Workspace::test_new("test");
         let pane_id = ws.tabs[0].root_pane;
         app.state.sessions.push(ws);
-        app.state.active = Some(0);
+        app.state.active_session = Some(0);
         app.state.view.pane_infos.push(crate::layout::PaneInfo {
             id: pane_id,
             rect: ratatui::layout::Rect::new(0, 0, 80, 24),
@@ -571,7 +571,7 @@ mod tests {
             crate::terminal::TerminalRuntime::test_with_scrollback_bytes(cols, rows, 0, bytes);
         ws.tabs[0].runtimes.insert(pane_id, runtime);
         app.state.sessions.push(ws);
-        app.state.active = Some(0);
+        app.state.active_session = Some(0);
         app.state.view.pane_infos.push(crate::layout::PaneInfo {
             id: pane_id,
             rect: ratatui::layout::Rect::new(0, 0, cols, rows),

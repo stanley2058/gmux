@@ -657,8 +657,8 @@ mod tests {
 
         app.sessions = vec![first, second];
         app.ensure_test_terminals();
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.pane_panel_scope = PanePanelScope::All;
 
         let entries = pane_panel_entries(&app);
@@ -702,8 +702,8 @@ mod tests {
             .clone();
         let terminal = app.terminals.get_mut(&terminal_id).unwrap();
         terminal.cwd = stale_cwd;
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.pane_panel_scope = PanePanelScope::All;
 
         let (events, _) = tokio::sync::mpsc::channel(4);

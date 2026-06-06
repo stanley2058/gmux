@@ -232,7 +232,7 @@ impl App {
     fn open_focused_scrollback_in_editor(&mut self) -> std::io::Result<()> {
         let ws_idx = self
             .state
-            .active
+            .active_session
             .ok_or_else(|| std::io::Error::other("no active session"))?;
         let ws = self
             .state
@@ -859,32 +859,32 @@ mod tests {
     fn navigate_down_no_longer_selects_workspace_rows() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
         state.mode = Mode::Navigate;
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 0);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.selected_session, 0);
+        assert_eq!(state.active_session, Some(0));
     }
 
     #[test]
     fn navigate_number_keys_no_longer_switch_workspaces() {
         let mut state = state_with_workspaces(&["main", "normal", "issue"]);
         state.mode = Mode::Navigate;
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Char('2'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.active, Some(0));
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, Some(0));
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.mode, Mode::Navigate);
     }
 
@@ -892,16 +892,16 @@ mod tests {
     async fn split_pane_collapses_legacy_active_workspace_to_session_tab() {
         let mut state = state_with_workspaces(&["one", "two"]);
         state.default_shell = "/usr/bin/true".into();
-        state.active = Some(1);
-        state.selected = 1;
+        state.active_session = Some(1);
+        state.selected_session = 1;
         state.mode = Mode::Navigate;
         let mut terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
 
         state.split_pane(&mut terminal_runtimes, Direction::Horizontal);
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, Some(0));
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.sessions[0].active_tab, 1);
         assert_eq!(state.sessions[0].tabs[1].layout.pane_count(), 2);
         assert_eq!(state.mode, Mode::Terminal);
@@ -952,8 +952,8 @@ mod tests {
     #[test]
     fn custom_open_notification_key_focuses_current_toast_target() {
         let mut state = state_with_workspaces(&["one", "two"]);
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Navigate;
         state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
         let target_session_id = state.sessions[1].id.clone();
@@ -974,8 +974,8 @@ mod tests {
         );
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.active_session, Some(0));
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.sessions[0].active_tab, 1);
         assert_eq!(state.sessions[0].focused_pane_id(), Some(target_pane));
         assert!(state.toast.is_none());
@@ -985,8 +985,8 @@ mod tests {
     #[test]
     fn custom_open_notification_key_falls_back_to_collapsed_pane_target() {
         let mut state = state_with_workspaces(&["one", "two"]);
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Navigate;
         state.keybinds.open_notification_target = crate::config::ActionKeybinds::prefix("g");
         let target_session_id = state.sessions[1].id.clone();
@@ -1018,14 +1018,14 @@ mod tests {
     #[test]
     fn removed_arrow_workspace_navigation_stays_in_navigate_mode() {
         let mut state = state_with_workspaces(&["a", "b"]);
-        state.selected = 0;
+        state.selected_session = 0;
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.mode, Mode::Navigate);
     }
 
@@ -1041,14 +1041,14 @@ navigate_pane_down = "ctrl+j"
         )
         .unwrap();
         state.keybinds = config.keybinds();
-        state.selected = 0;
+        state.selected_session = 0;
 
         handle_navigate_key(
             &mut state,
             KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.mode, Mode::Navigate);
     }
 
@@ -1184,8 +1184,8 @@ navigate_pane_right = "ctrl+l"
     #[test]
     fn mobile_workspace_keyboard_navigation_does_not_scroll_session_rows() {
         let mut state = state_with_workspaces(&["a", "b", "c", "d"]);
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::Navigate;
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 44, 8));
         assert_eq!(state.mobile_switcher_scroll, 0);
@@ -1195,7 +1195,7 @@ navigate_pane_right = "ctrl+l"
             KeyEvent::new(KeyCode::Down, KeyModifiers::empty()),
         );
 
-        assert_eq!(state.selected, 0);
+        assert_eq!(state.selected_session, 0);
         assert_eq!(state.mobile_switcher_scroll, 0);
     }
 
@@ -1284,8 +1284,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Navigate;
         app.state.keybinds.toggle_sidebar = crate::config::ActionKeybinds::prefix("shift+n");
 
@@ -1306,8 +1306,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Navigate;
         app.state.keybinds.toggle_sidebar = crate::config::ActionKeybinds::prefix("shift+n");
 
@@ -1328,8 +1328,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Navigate;
 
         app.handle_navigate_key(TerminalKey::new(KeyCode::Char('R'), KeyModifiers::empty()));
@@ -1349,8 +1349,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Navigate;
 
         app.handle_navigate_key(TerminalKey::new(KeyCode::Char('P'), KeyModifiers::empty()));
@@ -1369,8 +1369,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         let root = app.state.sessions[0].tabs[0].root_pane;
         let right = app.state.sessions[0].test_split(Direction::Horizontal);
@@ -1404,8 +1404,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         app.handle_key(TerminalKey::new(
@@ -1430,8 +1430,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         app.handle_key(TerminalKey::new(
@@ -1456,8 +1456,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         app.handle_key(TerminalKey::new(
@@ -1535,8 +1535,8 @@ last_pane = "prefix+tab"
             crate::api::EventHub::default(),
         );
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let output_path = unique_temp_path("custom-command-keybind");
@@ -1598,8 +1598,8 @@ last_pane = "prefix+tab"
         app.state.sessions = vec![workspace];
         app.terminal_runtimes.insert(terminal.id.clone(), runtime);
         app.state.terminals.insert(terminal.id.clone(), terminal);
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let output_path = unique_temp_path("custom-pane-command");
@@ -1677,8 +1677,8 @@ last_pane = "prefix+tab"
             ),
         );
         app.state.sessions = vec![workspace];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let output_path = unique_temp_path("edit-scrollback");

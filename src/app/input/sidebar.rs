@@ -456,8 +456,8 @@ mod tests {
         let second_pane = ws.tabs[first_tab].root_pane;
         app.state.sessions = vec![ws];
         app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let detail_area = app.state.pane_panel_rect();
@@ -480,8 +480,8 @@ mod tests {
     fn clicking_pane_panel_toggle_switches_scope() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("test")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.pane_panel_scroll = 3;
 
@@ -507,8 +507,8 @@ mod tests {
 
         app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.pane_panel_scope = PanePanelScope::All;
 
@@ -520,8 +520,8 @@ mod tests {
         ));
 
         assert_eq!(app.state.sessions.len(), 1);
-        assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.active_session, Some(0));
+        assert_eq!(app.state.selected_session, 0);
         assert_eq!(app.state.sessions[0].active_tab, 1);
         assert_eq!(app.state.sessions[0].tabs[1].layout.focused(), second_pane);
     }
@@ -546,8 +546,8 @@ mod tests {
                 .clone();
             assert!(app.state.terminals.contains_key(&terminal_id));
         }
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
 
         let detail_area = app.state.pane_panel_rect();
@@ -562,7 +562,7 @@ mod tests {
         ));
 
         assert_eq!(app.state.pane_panel_scroll, 1);
-        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.selected_session, 0);
     }
 
     #[test]
@@ -586,8 +586,8 @@ mod tests {
                 .clone();
             assert!(app.state.terminals.contains_key(&terminal_id));
         }
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.pane_panel_scroll = 1;
 
@@ -615,8 +615,8 @@ mod tests {
         let second_pane = ws.tabs[second_tab].root_pane;
         app.state.sessions = vec![ws];
         app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.sidebar_collapsed = true;
         app.state.view.sidebar_rect = Rect::new(0, 0, 4, 20);
@@ -644,8 +644,8 @@ mod tests {
         let second = Workspace::test_new("two");
         app.state.sessions = vec![first, second];
         app.state.ensure_test_terminals();
-        app.state.active = Some(0);
-        app.state.selected = 1;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 1;
         app.state.mode = Mode::Navigate;
         app.state.sidebar_collapsed = true;
         app.state.view.sidebar_rect = Rect::new(0, 0, 4, 20);
@@ -660,8 +660,8 @@ mod tests {
         ));
 
         assert_eq!(app.state.sessions.len(), 1);
-        assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.active_session, Some(0));
+        assert_eq!(app.state.selected_session, 0);
         assert_eq!(app.state.sessions[0].active_tab, 1);
         assert_eq!(app.state.sessions[0].tabs[1].layout.focused(), target_pane);
         assert_eq!(app.state.mode, Mode::Terminal);
@@ -706,8 +706,8 @@ mod tests {
     fn expanded_sidebar_has_no_workspace_rows() {
         let mut app = app_for_mouse_test();
         app.state.sessions = vec![Workspace::test_new("a"), Workspace::test_new("b")];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         let sidebar = app.state.view.sidebar_rect;
@@ -722,15 +722,15 @@ mod tests {
             Workspace::test_new("normal"),
             Workspace::test_new("issue"),
         ];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Navigate;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 30));
         let footer = app.state.sidebar_footer_rect();
 
         app.handle_mouse(mouse(MouseEventKind::ScrollDown, footer.x + 1, footer.y));
 
-        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.selected_session, 0);
     }
 
     #[test]
@@ -741,8 +741,8 @@ mod tests {
             Workspace::test_new("b"),
             Workspace::test_new("c"),
         ];
-        app.state.active = Some(1);
-        app.state.selected = 2;
+        app.state.active_session = Some(1);
+        app.state.selected_session = 2;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let detail_area = app.state.pane_panel_rect();
         let source_row = detail_area.y + 1;
@@ -768,8 +768,8 @@ mod tests {
             .map(|ws| ws.display_name())
             .collect();
         assert_eq!(names, vec!["a", "b", "c"]);
-        assert_eq!(app.state.active, Some(1));
-        assert_eq!(app.state.selected, 2);
+        assert_eq!(app.state.active_session, Some(1));
+        assert_eq!(app.state.selected_session, 2);
     }
 
     #[test]
@@ -781,8 +781,8 @@ mod tests {
         ws.test_add_tab(Some("ops"));
         ws.test_add_tab(Some("notes"));
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 65, 20));
 
         let right = app.state.view.tab_scroll_right_hit_area;
@@ -815,8 +815,8 @@ mod tests {
             ws.test_add_tab(Some(name));
         }
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.tab_scroll = usize::MAX;
         app.state.tab_scroll_follow_active = false;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 65, 20));
@@ -850,8 +850,8 @@ mod tests {
         ws.test_add_tab(None);
         let moved_root = ws.tabs[0].root_pane;
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
 
         let source = app.state.view.tab_hit_areas[0];

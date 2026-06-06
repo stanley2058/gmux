@@ -880,8 +880,8 @@ mod tests {
     #[test]
     fn tab_rename_collapses_legacy_active_workspace_to_session_tab() {
         let mut state = state_with_workspaces(&["one", "two"]);
-        state.active = Some(1);
-        state.selected = 1;
+        state.active_session = Some(1);
+        state.selected_session = 1;
         state.mode = Mode::RenameTab;
         state.name_input = "deploy".into();
 
@@ -891,7 +891,7 @@ mod tests {
         );
 
         assert_eq!(state.sessions.len(), 1);
-        assert_eq!(state.active, Some(0));
+        assert_eq!(state.active_session, Some(0));
         assert_eq!(state.sessions[0].active_tab, 1);
         assert_eq!(state.sessions[0].tabs[1].display_name(), "deploy");
         let snapshot = capture_snapshot(&state);
@@ -908,8 +908,8 @@ mod tests {
             .attached_terminal_id
             .clone();
         state.ensure_test_terminals();
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::RenamePane;
         state.rename_pane_target = Some(target_pane);
         state.name_input = "database".into();
@@ -947,8 +947,8 @@ mod tests {
             .get_mut(&terminal_id)
             .unwrap()
             .set_manual_label("database".into());
-        state.active = Some(0);
-        state.selected = 0;
+        state.active_session = Some(0);
+        state.selected_session = 0;
         state.mode = Mode::ContextMenu;
         state.context_menu = Some(ContextMenuState {
             kind: ContextMenuKind::Pane {
@@ -1192,7 +1192,7 @@ mod tests {
     fn confirm_close_keyboard_actions_are_direct_not_focused() {
         let mut state = state_with_workspaces(&["a", "b"]);
         state.mode = Mode::ConfirmClose;
-        state.selected = 1;
+        state.selected_session = 1;
 
         handle_confirm_close_key(
             &mut state,

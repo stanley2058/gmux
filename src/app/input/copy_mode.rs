@@ -684,8 +684,8 @@ mod tests {
             runtime(info.inner_rect.width, info.inner_rect.height),
         );
         app.state.sessions = vec![ws];
-        app.state.active = Some(0);
-        app.state.selected = 0;
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
         app.state.mode = Mode::Terminal;
         app.state.view.pane_infos = pane_infos;
         (app, pane_id)

@@ -384,7 +384,7 @@ fn mobile_switcher_tabs(app: &AppState) -> Vec<MobileSwitcherTabEntry> {
                 entry.tab_idx,
                 entry.tab,
             ),
-            active: app.active == Some(entry.session_idx)
+            active: app.active_session == Some(entry.session_idx)
                 && entry.session.active_tab == entry.tab_idx,
         });
     }
@@ -779,8 +779,8 @@ mod tests {
             .attached_terminal_id
             .clone();
         app.terminals.get_mut(&terminal_id).unwrap().cwd = stale_cwd;
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
         app.view.mobile_menu_hit_area = Rect::new(30, 0, 10, 2);
 
         let (events, _) = tokio::sync::mpsc::channel(4);

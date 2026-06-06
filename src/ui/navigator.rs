@@ -378,8 +378,8 @@ mod tests {
 
         let mut app = AppState::test_new();
         app.sessions = vec![first, second];
-        app.active = Some(0);
-        app.selected = 0;
+        app.active_session = Some(0);
+        app.selected_session = 0;
 
         let terminal_runtimes = TerminalRuntimeRegistry::new();
 
