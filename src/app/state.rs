@@ -805,7 +805,7 @@ pub struct SettingsState {
 
 pub(crate) enum DragTarget {
     TabReorder {
-        ws_idx: usize,
+        session_container_idx: usize,
         source_tab_idx: usize,
         insert_idx: Option<usize>,
     },

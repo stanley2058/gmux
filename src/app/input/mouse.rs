@@ -401,7 +401,7 @@ impl AppState {
                         if delta_col.max(delta_row) >= TAB_DRAG_THRESHOLD {
                             self.drag = Some(DragState {
                                 target: DragTarget::TabReorder {
-                                    ws_idx: press.ws_idx,
+                                    session_container_idx: press.ws_idx,
                                     source_tab_idx: press.tab_idx,
                                     insert_idx: tab_drop_index,
                                 },
@@ -414,11 +414,13 @@ impl AppState {
                 if let Some(DragState {
                     target:
                         DragTarget::TabReorder {
-                            ws_idx, insert_idx, ..
+                            session_container_idx,
+                            insert_idx,
+                            ..
                         },
                 }) = &mut self.drag
                 {
-                    if current_ws_idx == Some(*ws_idx) {
+                    if current_ws_idx == Some(*session_container_idx) {
                         *insert_idx = tab_drop_index;
                     }
                 } else if let Some(drag) = &self.drag {
@@ -515,12 +517,12 @@ impl AppState {
                     Some(DragState {
                         target:
                             DragTarget::TabReorder {
-                                ws_idx,
+                                session_container_idx,
                                 source_tab_idx,
                                 insert_idx: Some(insert_idx),
                             },
                     }) => {
-                        if self.session_container_index() == Some(ws_idx) {
+                        if self.session_container_index() == Some(session_container_idx) {
                             self.move_tab(source_tab_idx, insert_idx);
                             self.mode = Mode::Terminal;
                         }

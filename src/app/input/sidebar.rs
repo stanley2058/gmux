@@ -889,7 +889,7 @@ mod tests {
         assert!(matches!(
             app.state.drag.as_ref().map(|drag| &drag.target),
             Some(DragTarget::TabReorder {
-                ws_idx: 0,
+                session_container_idx: 0,
                 source_tab_idx: 0,
                 insert_idx: Some(3),
             })
