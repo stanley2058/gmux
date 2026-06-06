@@ -124,13 +124,7 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
     } else {
         Style::default().fg(p.subtext0).bg(p.panel_bg)
     };
-    let prefix = if row.is_workspace {
-        if row.expanded {
-            "▾"
-        } else {
-            "▸"
-        }
-    } else if row.depth > 0 {
+    let prefix = if row.depth > 0 {
         "├─"
     } else {
         "  "
@@ -247,7 +241,6 @@ fn selected_detail(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) 
         return String::new();
     };
     match row.target {
-        NavigatorTarget::Workspace { ws_idx } => workspace_detail(app, terminal_runtimes, ws_idx),
         NavigatorTarget::Tab { ws_idx, tab_idx } => {
             tab_detail(app, terminal_runtimes, ws_idx, tab_idx)
         }
@@ -257,23 +250,6 @@ fn selected_detail(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) 
             pane_id,
         } => pane_detail(app, terminal_runtimes, ws_idx, tab_idx, pane_id),
     }
-}
-
-fn workspace_detail(
-    app: &AppState,
-    terminal_runtimes: &TerminalRuntimeRegistry,
-    ws_idx: usize,
-) -> String {
-    let Some(ws) = app.workspaces.get(ws_idx) else {
-        return String::new();
-    };
-    let label = ws.display_name_from(&app.terminals, terminal_runtimes);
-    let pane_count = ws.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>();
-    let mut parts = vec![label, format!("{pane_count} panes")];
-    if !rowless_workspace_activity(app, terminal_runtimes, ws_idx).is_empty() {
-        parts.push(rowless_workspace_activity(app, terminal_runtimes, ws_idx));
-    }
-    parts.join(" · ")
 }
 
 fn tab_detail(
@@ -335,18 +311,6 @@ fn pane_detail(
         }
     }
     parts.join(" · ")
-}
-
-fn rowless_workspace_activity(
-    app: &AppState,
-    terminal_runtimes: &TerminalRuntimeRegistry,
-    ws_idx: usize,
-) -> String {
-    app.navigator_rows_from(terminal_runtimes)
-        .into_iter()
-        .find(|row| matches!(row.target, NavigatorTarget::Workspace { ws_idx: row_ws_idx } if row_ws_idx == ws_idx))
-        .map(|row| row.meta)
-        .unwrap_or_default()
 }
 
 fn middle_elide(text: &str, max_width: usize) -> String {

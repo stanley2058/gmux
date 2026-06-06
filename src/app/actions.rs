@@ -104,11 +104,6 @@ impl AppState {
         self.navigator.query.clear();
         self.navigator.search_focused = false;
         self.navigator.scroll = 0;
-        self.navigator.expanded_workspaces.clear();
-
-        for ws in &self.workspaces {
-            self.navigator.expanded_workspaces.insert(ws.id.clone());
-        }
 
         self.mode = Mode::Navigator;
         self.navigator.selected = self
@@ -138,29 +133,17 @@ impl AppState {
                 NavigatorQueryKind::Text => navigator_matches(&query, &workspace_search_text),
             };
 
-            let child_rows = self.navigator_child_rows(ws_idx, query_kind, &query);
+            let child_query_kind = if workspace_matches {
+                NavigatorQueryKind::Empty
+            } else {
+                query_kind
+            };
+            let child_rows = self.navigator_child_rows(ws_idx, child_query_kind, &query);
             if !workspace_matches && child_rows.is_empty() {
                 continue;
             }
 
-            let expanded = !matches!(query_kind, NavigatorQueryKind::Empty)
-                || self.navigator.expanded_workspaces.contains(&ws.id);
-            let pane_count = ws.tabs.iter().map(|tab| tab.panes.len()).sum::<usize>();
-            rows.push(NavigatorRow {
-                target: NavigatorTarget::Workspace { ws_idx },
-                depth: 0,
-                label: format!("{workspace_label} ({pane_count})"),
-                meta: String::new(),
-                seen: true,
-                is_current: self.active == Some(ws_idx),
-                is_workspace: true,
-                is_tab: false,
-                expanded,
-                search_text: workspace_search_text,
-            });
-            if expanded {
-                rows.extend(child_rows);
-            }
+            rows.extend(child_rows);
         }
         rows
     }
@@ -211,14 +194,12 @@ impl AppState {
         let search_text = format!("{label} {meta}").to_lowercase();
         NavigatorRow {
             target: NavigatorTarget::Tab { ws_idx, tab_idx },
-            depth: 1,
+            depth: 0,
             label,
             meta,
             seen: true,
             is_current: false,
-            is_workspace: false,
             is_tab: true,
-            expanded: true,
             search_text,
         }
     }
@@ -261,14 +242,12 @@ impl AppState {
                     tab_idx,
                     pane_id,
                 },
-                depth: if multi_tab { 2 } else { 1 },
+                depth: if multi_tab { 1 } else { 0 },
                 label,
                 meta,
                 seen: pane.seen,
                 is_current,
-                is_workspace: false,
                 is_tab: false,
-                expanded: false,
                 search_text,
             });
         }
@@ -346,31 +325,6 @@ impl AppState {
         self.ensure_navigator_selection_visible_from(terminal_runtimes);
     }
 
-    pub(crate) fn toggle_selected_navigator_workspace_from(
-        &mut self,
-        terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,
-    ) {
-        let Some(row) = self
-            .navigator_rows_from(terminal_runtimes)
-            .get(self.navigator.selected)
-            .cloned()
-        else {
-            return;
-        };
-        let NavigatorTarget::Workspace { ws_idx } = row.target else {
-            return;
-        };
-        let Some(workspace_id) = self.workspaces.get(ws_idx).map(|ws| ws.id.clone()) else {
-            return;
-        };
-        if self.navigator.expanded_workspaces.contains(&workspace_id) {
-            self.navigator.expanded_workspaces.remove(&workspace_id);
-        } else {
-            self.navigator.expanded_workspaces.insert(workspace_id);
-        }
-        self.clamp_navigator_selection_from(terminal_runtimes);
-    }
-
     #[cfg(test)]
     pub(crate) fn accept_navigator_selection(&mut self) -> bool {
         let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
@@ -393,14 +347,6 @@ impl AppState {
 
     pub(crate) fn focus_navigator_target(&mut self, target: NavigatorTarget) -> bool {
         match target {
-            NavigatorTarget::Workspace { ws_idx } => {
-                if ws_idx >= self.workspaces.len() {
-                    return false;
-                }
-                self.switch_workspace(ws_idx);
-                self.mode = Mode::Terminal;
-                true
-            }
             NavigatorTarget::Tab { ws_idx, tab_idx } => {
                 if ws_idx >= self.workspaces.len() {
                     return false;
@@ -1825,7 +1771,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
 
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].label, "gmux (1)");
+        assert!(matches!(
+            rows[0].target,
+            crate::app::state::NavigatorTarget::Pane { .. }
+        ));
     }
 
     #[test]
@@ -1855,21 +1804,17 @@ mod tests {
     }
 
     #[test]
-    fn opening_navigator_selects_current_pane_and_expands_workspaces() {
+    fn opening_navigator_selects_current_pane_without_workspace_rows() {
         let mut state = app_with_workspaces(&["one", "two"]);
 
         state.open_navigator();
         let selected = state.navigator_rows()[state.navigator.selected].clone();
 
         assert!(selected.is_current);
-        assert!(state
-            .navigator
-            .expanded_workspaces
-            .contains(&state.workspaces[0].id));
-        assert!(state
-            .navigator
-            .expanded_workspaces
-            .contains(&state.workspaces[1].id));
+        assert!(matches!(
+            selected.target,
+            crate::app::state::NavigatorTarget::Pane { .. }
+        ));
     }
 
     #[test]
@@ -1877,10 +1822,6 @@ mod tests {
         let mut state = app_with_workspaces(&["one", "two"]);
         let target = state.workspaces[1].tabs[0].root_pane;
         state.open_navigator();
-        state
-            .navigator
-            .expanded_workspaces
-            .insert(state.workspaces[1].id.clone());
         state.navigator.selected = state
             .navigator_rows()
             .iter()
@@ -1900,14 +1841,17 @@ mod tests {
     }
 
     #[test]
-    fn navigator_search_only_matches_visible_row_text() {
-        let mut state = app_with_workspaces(&["one"]);
-        state.workspaces[0].identity_cwd = "/tmp/gmux-projects/issue-work".into();
+    fn navigator_search_by_session_label_shows_child_rows() {
+        let mut state = app_with_workspaces(&["issue-work"]);
+        let root = state.workspaces[0].tabs[0].root_pane;
 
         state.open_navigator();
         state.navigator.query = "work".into();
 
-        assert!(state.navigator_rows().is_empty());
+        assert!(state.navigator_rows().iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
+        )));
     }
 
     #[test]
@@ -1947,7 +1891,7 @@ mod tests {
     }
 
     #[test]
-    fn navigator_search_filters_panes_but_keeps_workspace_context() {
+    fn navigator_search_filters_panes_without_workspace_context_rows() {
         let mut state = app_with_workspaces(&["one"]);
         let root = state.workspaces[0].tabs[0].root_pane;
         let terminal_id = state.workspaces[0].terminal_id(root).cloned().unwrap();
@@ -1961,10 +1905,11 @@ mod tests {
 
         let rows = state.navigator_rows();
 
-        assert!(rows.iter().any(|row| row.is_workspace));
-        assert!(rows
-            .iter()
-            .any(|row| !row.is_workspace && row.label.contains("weekly")));
+        assert!(rows.iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
+        )));
+        assert!(rows.iter().any(|row| row.label.contains("weekly")));
     }
 
     #[test]

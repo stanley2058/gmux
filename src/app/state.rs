@@ -613,9 +613,6 @@ pub enum Mode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NavigatorTarget {
-    Workspace {
-        ws_idx: usize,
-    },
     Tab {
         ws_idx: usize,
         tab_idx: usize,
@@ -635,9 +632,7 @@ pub(crate) struct NavigatorRow {
     pub meta: String,
     pub seen: bool,
     pub is_current: bool,
-    pub is_workspace: bool,
     pub is_tab: bool,
-    pub expanded: bool,
     pub search_text: String,
 }
 
@@ -647,7 +642,6 @@ pub(crate) struct NavigatorState {
     pub selected: usize,
     pub scroll: usize,
     pub search_focused: bool,
-    pub expanded_workspaces: std::collections::HashSet<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

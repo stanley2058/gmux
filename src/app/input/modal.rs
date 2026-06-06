@@ -230,7 +230,6 @@ pub(crate) fn handle_navigator_key(
                 terminal_runtimes,
                 -((state.navigator_body_rect().height / 2).max(1) as isize),
             ),
-        KeyCode::Char(' ') => state.toggle_selected_navigator_workspace_from(terminal_runtimes),
         KeyCode::Home => {
             state.navigator.selected = 0;
             state.ensure_navigator_selection_visible_from(terminal_runtimes);

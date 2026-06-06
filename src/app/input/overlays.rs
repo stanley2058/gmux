@@ -5,7 +5,7 @@ use ratatui::{
 };
 
 use crate::app::{
-    state::{AppState, DragState, DragTarget, Mode, NavigatorTarget},
+    state::{AppState, DragState, DragTarget, Mode},
     App,
 };
 
@@ -148,24 +148,8 @@ impl App {
                         mouse.row,
                     ) {
                         self.state.navigator.selected = idx;
-                        let target = self
-                            .state
-                            .navigator_rows_from(&self.terminal_runtimes)
-                            .get(idx)
-                            .map(|row| (row.target.clone(), row.is_workspace));
-                        if let Some((NavigatorTarget::Workspace { .. }, true)) = target {
-                            if self.state.navigator_row_caret_at(mouse.column) {
-                                self.state.toggle_selected_navigator_workspace_from(
-                                    &self.terminal_runtimes,
-                                );
-                            } else {
-                                self.state
-                                    .accept_navigator_selection_from(&self.terminal_runtimes);
-                            }
-                        } else {
-                            self.state
-                                .accept_navigator_selection_from(&self.terminal_runtimes);
-                        }
+                        self.state
+                            .accept_navigator_selection_from(&self.terminal_runtimes);
                     } else if !self.state.navigator_popup_contains(mouse.column, mouse.row) {
                         leave_modal(&mut self.state);
                     }
@@ -342,11 +326,6 @@ impl AppState {
             .scroll
             .saturating_add(row.saturating_sub(body.y) as usize);
         (idx < self.navigator_rows_from(terminal_runtimes).len()).then_some(idx)
-    }
-
-    pub(crate) fn navigator_row_caret_at(&self, col: u16) -> bool {
-        let body = self.navigator_body_rect();
-        col <= body.x.saturating_add(3)
     }
 
     pub(super) fn onboarding_modal_inner(&self, popup_w: u16, popup_h: u16) -> Option<Rect> {
