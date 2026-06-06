@@ -17,26 +17,22 @@ impl App {
         let Some((ws_idx, target_pane_id)) = self.parse_pane_id(&params.target_pane_id) else {
             return pane_not_found(id, &params.target_pane_id);
         };
-        let Some(target_tab_idx) = self
-            .state
-            .sessions()
-            .get(ws_idx)
-            .and_then(|ws| ws.find_tab_index_for_pane(target_pane_id))
-        else {
+        let Some(target_entry) = self.state.session_tab_entries().find(|entry| {
+            entry.session_idx == ws_idx && entry.tab.panes.contains_key(&target_pane_id)
+        }) else {
             return pane_not_found(id, &params.target_pane_id);
         };
+        let target_tab_idx = target_entry.tab_idx;
         let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, target_tab_idx) else {
             return pane_not_found(id, &params.target_pane_id);
         };
         let (rows, cols) = self.state.estimate_pane_size();
         let split_cwd = params.cwd.map(std::path::PathBuf::from).or_else(|| {
-            let follow_cwd = self.state.sessions().get(ws_idx).and_then(|session| {
-                session.tabs.get(target_tab_idx)?.cwd_for_pane(
-                    target_pane_id,
-                    &self.state.terminals,
-                    &self.terminal_runtimes,
-                )
-            });
+            let follow_cwd = target_entry.tab.cwd_for_pane(
+                target_pane_id,
+                &self.state.terminals,
+                &self.terminal_runtimes,
+            );
             Some(self.resolve_new_terminal_cwd(follow_cwd))
         });
         let default_shell = self.state.default_shell.clone();
