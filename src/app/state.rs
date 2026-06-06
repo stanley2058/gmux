@@ -559,13 +559,6 @@ impl Palette {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WorkspaceCardArea {
-    pub ws_idx: usize,
-    pub rect: Rect,
-    pub indented: bool,
-}
-
 pub(crate) fn text_matches_query(query: &str, text: &str) -> bool {
     let haystack = text.to_lowercase();
     query
@@ -585,7 +578,6 @@ pub enum ViewLayout {
 pub struct ViewState {
     pub layout: ViewLayout,
     pub sidebar_rect: Rect,
-    pub workspace_card_areas: Vec<WorkspaceCardArea>,
     pub tab_bar_rect: Rect,
     pub tab_hit_areas: Vec<Rect>,
     pub tab_scroll_left_hit_area: Rect,
@@ -823,9 +815,6 @@ pub(crate) enum DragTarget {
         source_tab_idx: usize,
         insert_idx: Option<usize>,
     },
-    WorkspaceListScrollbar {
-        grab_row_offset: u16,
-    },
     PanePanelScrollbar {
         grab_row_offset: u16,
     },
@@ -848,7 +837,6 @@ pub(crate) enum DragTarget {
         grab_row_offset: u16,
     },
     SidebarDivider,
-    SidebarSectionDivider,
 }
 
 /// Active mouse drag on a split border or sidebar divider.
@@ -1044,8 +1032,6 @@ pub struct AppState {
     pub sidebar_width_source: SidebarWidthSource,
     pub sidebar_width_auto: bool,
     pub sidebar_collapsed: bool,
-    /// Ratio of sidebar height allocated to the workspaces section.
-    pub sidebar_section_split: f32,
     pub pane_panel_scope: PanePanelScope,
     /// Capture mouse input for Gmux's own mouse UI. When false, Gmux only
     /// captures mouse while the focused pane app requests mouse reporting.
@@ -1295,7 +1281,6 @@ impl AppState {
             view: ViewState {
                 layout: ViewLayout::Desktop,
                 sidebar_rect: Rect::default(),
-                workspace_card_areas: Vec::new(),
                 tab_bar_rect: Rect::default(),
                 tab_hit_areas: Vec::new(),
                 tab_scroll_left_hit_area: Rect::default(),
@@ -1331,7 +1316,6 @@ impl AppState {
             sidebar_width_source: SidebarWidthSource::ConfigDefault,
             sidebar_width_auto: false,
             sidebar_collapsed: false,
-            sidebar_section_split: 0.5,
             pane_panel_scope: PanePanelScope::AllWorkspaces,
             mouse_capture: true,
             right_click_passthrough_modifiers: None,

@@ -560,51 +560,6 @@ impl AppState {
         if self.sidebar_collapsed {
             return;
         }
-
-        let entries = crate::ui::workspace_list_entries(self);
-        let Some(target_entry_idx) = entries.iter().position(|entry| {
-            matches!(
-                entry,
-                crate::ui::WorkspaceListEntry::Workspace { ws_idx, .. } if *ws_idx == idx
-            )
-        }) else {
-            return;
-        };
-
-        self.workspace_scroll = crate::ui::normalized_workspace_scroll(
-            self,
-            self.view.sidebar_rect,
-            self.workspace_scroll,
-        );
-        let mut cards = crate::ui::compute_workspace_card_areas(self, self.view.sidebar_rect);
-        if cards.iter().any(|card| card.ws_idx == idx) {
-            return;
-        }
-
-        if target_entry_idx < self.workspace_scroll {
-            self.workspace_scroll = target_entry_idx;
-            return;
-        }
-
-        while !cards.iter().any(|card| card.ws_idx == idx) {
-            let previous_scroll = self.workspace_scroll;
-            self.workspace_scroll = self.workspace_scroll.saturating_add(1);
-            if self.workspace_scroll == previous_scroll {
-                break;
-            }
-            self.workspace_scroll = crate::ui::normalized_workspace_scroll(
-                self,
-                self.view.sidebar_rect,
-                self.workspace_scroll,
-            );
-            if self.workspace_scroll == previous_scroll {
-                break;
-            }
-            cards = crate::ui::compute_workspace_card_areas(self, self.view.sidebar_rect);
-            if cards.is_empty() {
-                break;
-            }
-        }
     }
 
     pub fn switch_tab(&mut self, idx: usize) {
@@ -749,10 +704,7 @@ impl AppState {
             return;
         }
 
-        let (_, detail_area) = crate::ui::expanded_sidebar_sections(
-            self.view.sidebar_rect,
-            self.sidebar_section_split,
-        );
+        let detail_area = crate::ui::expanded_pane_panel_rect(self.view.sidebar_rect);
         let metrics = crate::ui::pane_panel_scroll_metrics(self, detail_area);
         let visible = metrics.viewport_rows;
         if visible == 0 {
@@ -2271,18 +2223,15 @@ mod tests {
     }
 
     #[test]
-    fn switch_workspace_keeps_selected_visible_in_scrolled_sidebar() {
+    fn switch_workspace_updates_active_after_sidebar_trim() {
         let mut state = app_with_workspaces(&["a", "b", "c", "d", "e", "f", "g", "h"]);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
         state.switch_workspace(7);
         crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 80, 14));
 
-        assert!(state
-            .view
-            .workspace_card_areas
-            .iter()
-            .any(|card| card.ws_idx == 7));
+        assert_eq!(state.active, Some(7));
+        assert_eq!(state.selected, 7);
     }
 
     #[test]

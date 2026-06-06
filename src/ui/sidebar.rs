@@ -1,9 +1,9 @@
 use ratatui::{
+    Frame,
     layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
 
 use super::scrollbar::{render_scrollbar, should_show_scrollbar};
@@ -11,7 +11,6 @@ use crate::app::state::{Palette, PanePanelScope};
 use crate::app::{AppState, Mode};
 use crate::terminal::TerminalRuntimeRegistry;
 
-const WORKSPACE_SECTION_HEADER_ROWS: u16 = 2;
 const PANE_PANEL_HEADER_ROWS: u16 = 3;
 
 pub(crate) struct PanePanelEntry {
@@ -22,43 +21,41 @@ pub(crate) struct PanePanelEntry {
     pub primary_tab_label: Option<String>,
 }
 
-fn sidebar_section_heights(total_h: u16, split_ratio: f32) -> (u16, u16) {
-    if total_h == 0 {
-        return (0, 0);
-    }
-
-    if total_h < 6 {
-        let ws_h = total_h.div_ceil(2);
-        return (ws_h, total_h.saturating_sub(ws_h));
-    }
-
-    let ratio = split_ratio.clamp(0.1, 0.9);
-    let ws_h = ((total_h as f32) * ratio).round() as u16;
-    let ws_h = ws_h.clamp(3, total_h.saturating_sub(3));
-    let detail_h = total_h.saturating_sub(ws_h);
-    (ws_h, detail_h)
-}
-
-pub(crate) fn expanded_sidebar_sections(area: Rect, split_ratio: f32) -> (Rect, Rect) {
+pub(crate) fn expanded_sidebar_content_rect(area: Rect) -> Rect {
     let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
     if content.width == 0 || content.height == 0 {
-        return (Rect::default(), Rect::default());
-    }
-
-    let (ws_h, detail_h) = sidebar_section_heights(content.height, split_ratio);
-    let ws_area = Rect::new(content.x, content.y, content.width, ws_h);
-    let detail_area = Rect::new(content.x, content.y + ws_h, content.width, detail_h);
-    (ws_area, detail_area)
-}
-
-pub(crate) fn sidebar_section_divider_rect(area: Rect, split_ratio: f32) -> Rect {
-    let content = Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height);
-    if content.width == 0 || content.height < 6 {
         return Rect::default();
     }
 
-    let (ws_h, _) = sidebar_section_heights(content.height, split_ratio);
-    Rect::new(content.x, content.y + ws_h, content.width, 1)
+    content
+}
+
+pub(crate) fn expanded_sidebar_footer_rect(area: Rect) -> Rect {
+    let content = expanded_sidebar_content_rect(area);
+    if content == Rect::default() {
+        return Rect::default();
+    }
+
+    Rect::new(
+        content.x,
+        content.y + content.height.saturating_sub(1),
+        content.width,
+        1,
+    )
+}
+
+pub(crate) fn expanded_pane_panel_rect(area: Rect) -> Rect {
+    let content = expanded_sidebar_content_rect(area);
+    if content == Rect::default() {
+        return Rect::default();
+    }
+
+    Rect::new(
+        content.x,
+        content.y,
+        content.width,
+        content.height.saturating_sub(1),
+    )
 }
 
 fn pane_panel_current_workspace_idx(app: &AppState) -> Option<usize> {
@@ -225,115 +222,6 @@ fn format_pane_panel_primary_label(entry: &PanePanelEntry, max_width: usize) -> 
     )
 }
 
-fn workspace_row_height(_ws: &crate::workspace::Workspace) -> u16 {
-    1
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum WorkspaceListEntry {
-    Workspace { ws_idx: usize },
-}
-
-pub(crate) fn normalized_workspace_scroll(app: &AppState, area: Rect, requested: usize) -> usize {
-    let ws_area = workspace_list_rect(area, app.sidebar_section_split);
-    let body = workspace_list_body_rect(ws_area, false);
-    if body.height == 0 {
-        return requested;
-    }
-
-    let entry_count = workspace_list_entries(app).len();
-    if entry_count == 0 {
-        0
-    } else {
-        requested.min(entry_count.saturating_sub(1))
-    }
-}
-
-pub(crate) fn workspace_list_entries(app: &AppState) -> Vec<WorkspaceListEntry> {
-    app.workspaces
-        .iter()
-        .enumerate()
-        .map(|(ws_idx, _)| WorkspaceListEntry::Workspace { ws_idx })
-        .collect()
-}
-
-pub(crate) fn workspace_list_rect(area: Rect, split_ratio: f32) -> Rect {
-    let (ws_area, _) = expanded_sidebar_sections(area, split_ratio);
-    ws_area
-}
-
-pub(crate) fn workspace_list_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
-    if area.width == 0 || area.height <= WORKSPACE_SECTION_HEADER_ROWS {
-        return Rect::default();
-    }
-
-    let body_y = area.y.saturating_add(WORKSPACE_SECTION_HEADER_ROWS);
-    let footer_y = area.y + area.height.saturating_sub(1);
-    let body_height = footer_y.saturating_sub(body_y);
-    let body_width = area.width.saturating_sub(u16::from(has_scrollbar));
-    Rect::new(area.x, body_y, body_width, body_height)
-}
-
-fn workspace_list_visible_count(app: &AppState, area: Rect, scroll: usize) -> usize {
-    let body = workspace_list_body_rect(area, false);
-    if body.width == 0 || body.height == 0 {
-        return 0;
-    }
-
-    let mut used_rows = 0u16;
-    let mut visible = 0usize;
-    let entries = workspace_list_entries(app);
-    for entry in entries.iter().skip(scroll) {
-        let needed = match entry {
-            WorkspaceListEntry::Workspace { ws_idx } => {
-                let Some(ws) = app.workspaces.get(*ws_idx) else {
-                    continue;
-                };
-                let row_height = workspace_row_height(ws);
-                let gap = 1;
-                row_height.saturating_add(gap)
-            }
-        };
-        if used_rows.saturating_add(needed) > body.height {
-            break;
-        }
-        used_rows = used_rows.saturating_add(needed);
-        visible += 1;
-    }
-    visible
-}
-
-pub(crate) fn workspace_list_scroll_metrics(
-    app: &AppState,
-    area: Rect,
-) -> crate::pane::ScrollMetrics {
-    let entries = workspace_list_entries(app);
-    let total_rows = entries.len();
-    let scroll = app.workspace_scroll.min(total_rows.saturating_sub(1));
-    let viewport_rows = workspace_list_visible_count(app, area, scroll);
-    let max_offset_from_bottom = total_rows.saturating_sub(viewport_rows);
-    let offset_from_bottom = total_rows
-        .saturating_sub(scroll)
-        .saturating_sub(viewport_rows);
-
-    crate::pane::ScrollMetrics {
-        offset_from_bottom,
-        max_offset_from_bottom,
-        viewport_rows,
-    }
-}
-
-pub(crate) fn workspace_list_scrollbar_rect(app: &AppState, area: Rect) -> Option<Rect> {
-    let metrics = workspace_list_scroll_metrics(app, area);
-    let body = workspace_list_body_rect(area, true);
-    (should_show_scrollbar(metrics) && body.width > 0 && body.height > 0).then_some(Rect::new(
-        area.x + area.width.saturating_sub(1),
-        body.y,
-        1,
-        body.height,
-    ))
-}
-
 pub(crate) fn pane_panel_body_rect(area: Rect, has_scrollbar: bool) -> Rect {
     if area.width == 0 || area.height <= PANE_PANEL_HEADER_ROWS {
         return Rect::default();
@@ -387,59 +275,6 @@ pub(crate) fn pane_panel_scrollbar_rect(app: &AppState, area: Rect) -> Option<Re
         1,
         body.height,
     ))
-}
-
-pub(crate) fn compute_workspace_list_areas(
-    app: &AppState,
-    area: Rect,
-) -> (Vec<crate::app::state::WorkspaceCardArea>, Vec<()>) {
-    let ws_area = workspace_list_rect(area, app.sidebar_section_split);
-    if ws_area == Rect::default() {
-        return (Vec::new(), Vec::new());
-    }
-
-    let metrics = workspace_list_scroll_metrics(app, ws_area);
-    let body = workspace_list_body_rect(ws_area, should_show_scrollbar(metrics));
-    if body.width == 0 || body.height == 0 {
-        return (Vec::new(), Vec::new());
-    }
-
-    let scroll = app.workspace_scroll;
-    let mut row_y = body.y;
-    let body_bottom = body.y + body.height;
-    let mut cards = Vec::new();
-    let headers = Vec::new();
-
-    let entries = workspace_list_entries(app);
-    for entry in entries.iter().skip(scroll) {
-        match entry {
-            WorkspaceListEntry::Workspace { ws_idx } => {
-                let Some(ws) = app.workspaces.get(*ws_idx) else {
-                    continue;
-                };
-                let row_height = workspace_row_height(ws);
-                let gap = 1;
-                if row_y.saturating_add(row_height).saturating_add(gap) > body_bottom {
-                    break;
-                }
-                cards.push(crate::app::state::WorkspaceCardArea {
-                    ws_idx: *ws_idx,
-                    rect: Rect::new(body.x, row_y, body.width, row_height),
-                    indented: false,
-                });
-                row_y = row_y.saturating_add(row_height + gap);
-            }
-        }
-    }
-
-    (cards, headers)
-}
-
-pub(crate) fn compute_workspace_card_areas(
-    app: &AppState,
-    area: Rect,
-) -> Vec<crate::app::state::WorkspaceCardArea> {
-    compute_workspace_list_areas(app, area).0
 }
 
 /// Auto-scale sidebar width based on session identity and pane detail.
@@ -610,109 +445,41 @@ pub(super) fn render_sidebar(
         buf[(sep_x, y)].set_style(sep_style);
     }
 
-    let (ws_area, detail_area) = expanded_sidebar_sections(area, app.sidebar_section_split);
-
-    render_workspace_list(app, terminal_runtimes, frame, ws_area, is_navigating);
+    let detail_area = expanded_pane_panel_rect(area);
     render_pane_detail(app, terminal_runtimes, frame, detail_area);
+    render_sidebar_footer(app, frame, area);
     render_sidebar_toggle(app, frame, area, false, p);
 }
 
-fn render_workspace_list(
-    app: &AppState,
-    terminal_runtimes: &TerminalRuntimeRegistry,
-    frame: &mut Frame,
-    area: Rect,
-    is_navigating: bool,
-) {
+fn render_sidebar_footer(app: &AppState, frame: &mut Frame, area: Rect) {
     let p = &app.palette;
-    let list_bottom = area.y + area.height.saturating_sub(1);
-    if area.height > 0 {
-        frame.render_widget(
-            Paragraph::new(Line::from(vec![Span::styled(
-                " spaces",
-                Style::default().fg(p.overlay0).add_modifier(Modifier::BOLD),
-            )])),
-            Rect::new(area.x, area.y, area.width, 1),
-        );
+    let footer = expanded_sidebar_footer_rect(area);
+    if !app.mouse_capture || footer == Rect::default() {
+        return;
     }
 
-    let metrics = workspace_list_scroll_metrics(app, area);
-    let scrollbar_rect = workspace_list_scrollbar_rect(app, area);
-    let cards = &app.view.workspace_card_areas;
+    let new_rect = app.sidebar_new_button_rect();
+    frame.render_widget(
+        Paragraph::new(Span::styled(" tab", Style::default().fg(p.overlay0))),
+        new_rect,
+    );
 
-    for card in cards {
-        let i = card.ws_idx;
-        let ws = &app.workspaces[i];
-        let row_y = card.rect.y;
-        let row_height = card.rect.height;
-        let selected = i == app.selected && is_navigating;
-        let is_active = Some(i) == app.active;
-        let highlighted = selected || is_active;
-        if highlighted {
-            let bg = if selected {
-                p.surface0
-            } else {
-                p.surface_dim
-            };
-            let buf = frame.buffer_mut();
-            for y in row_y..row_y + row_height {
-                if y >= list_bottom {
-                    break;
-                }
-                for x in card.rect.x..card.rect.x + card.rect.width {
-                    buf[(x, y)].set_style(Style::default().bg(bg));
-                }
-            }
-        }
-
-        let name_style = if selected || is_active {
-            Style::default().fg(p.text).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(p.subtext0)
-        };
-
-        let (icon, icon_style) = session_dot(is_active, selected, p);
-        let label = ws.display_name_from(&app.terminals, terminal_runtimes);
-        let mut line1 = Vec::new();
-        line1.push(Span::styled(" ", Style::default()));
-        line1.push(Span::styled(icon, icon_style));
-        line1.push(Span::styled(" ", Style::default()));
-        line1.push(Span::styled(label, name_style));
-
-        frame.render_widget(
-            Paragraph::new(Line::from(line1)),
-            Rect::new(card.rect.x, row_y, card.rect.width, 1),
-        );
-    }
-
-    if let Some(track) = scrollbar_rect {
-        render_scrollbar(frame, metrics, track, p.surface_dim, p.overlay0, "▕");
-    }
-
-    if app.mouse_capture && list_bottom > area.y {
-        let new_rect = app.sidebar_new_button_rect();
-        frame.render_widget(
-            Paragraph::new(Span::styled(" tab", Style::default().fg(p.overlay0))),
-            new_rect,
-        );
-
-        let menu_rect = app.global_launcher_rect();
-        let menu_line = if app.global_menu_attention_badge_visible() {
-            Line::from(vec![
-                Span::styled(
-                    "● ",
-                    Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("menu", Style::default().fg(p.overlay0)),
-            ])
-        } else {
-            Line::from(vec![Span::styled("menu", Style::default().fg(p.overlay0))])
-        };
-        frame.render_widget(
-            Paragraph::new(menu_line).alignment(Alignment::Right),
-            menu_rect,
-        );
-    }
+    let menu_rect = app.global_launcher_rect();
+    let menu_line = if app.global_menu_attention_badge_visible() {
+        Line::from(vec![
+            Span::styled(
+                "● ",
+                Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("menu", Style::default().fg(p.overlay0)),
+        ])
+    } else {
+        Line::from(vec![Span::styled("menu", Style::default().fg(p.overlay0))])
+    };
+    frame.render_widget(
+        Paragraph::new(menu_line).alignment(Alignment::Right),
+        menu_rect,
+    );
 }
 
 fn render_pane_detail(
@@ -864,7 +631,7 @@ fn render_sidebar_toggle(
 mod tests {
     use super::*;
     use crate::workspace::Workspace;
-    use ratatui::{backend::TestBackend, Terminal};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn render_sidebar_toggle_draws_expanded_collapse_icon() {
@@ -996,51 +763,11 @@ mod tests {
     }
 
     #[test]
-    fn expanded_sidebar_sections_handle_tiny_heights() {
-        let (ws_area, detail_area) = expanded_sidebar_sections(Rect::new(0, 0, 20, 5), 0.9);
+    fn expanded_sidebar_uses_single_pane_panel_with_footer() {
+        let area = Rect::new(0, 0, 20, 5);
 
-        assert_eq!(ws_area, Rect::new(0, 0, 19, 3));
-        assert_eq!(detail_area, Rect::new(0, 3, 19, 2));
-    }
-
-    #[test]
-    fn sidebar_section_divider_is_hidden_for_tiny_heights() {
-        let divider = sidebar_section_divider_rect(Rect::new(0, 0, 20, 5), 0.5);
-
-        assert_eq!(divider, Rect::default());
-    }
-
-    #[test]
-    fn workspace_list_entries_keep_workspace_order_flat() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![
-            Workspace::test_new("main"),
-            Workspace::test_new("issue"),
-            Workspace::test_new("notes"),
-        ];
-
-        assert_eq!(
-            workspace_list_entries(&app),
-            vec![
-                WorkspaceListEntry::Workspace { ws_idx: 0 },
-                WorkspaceListEntry::Workspace { ws_idx: 1 },
-                WorkspaceListEntry::Workspace { ws_idx: 2 },
-            ]
-        );
-    }
-
-    #[test]
-    fn workspace_rows_stay_clickable_in_flat_order() {
-        let mut app = AppState::test_new();
-        app.workspaces = vec![Workspace::test_new("main"), Workspace::test_new("issue")];
-
-        let (cards, headers) = compute_workspace_list_areas(&app, Rect::new(0, 0, 30, 20));
-
-        assert!(headers.is_empty());
-        assert_eq!(cards[0].ws_idx, 0);
-        assert!(!cards[0].indented);
-        assert_eq!(cards[1].ws_idx, 1);
-        assert!(!cards[1].indented);
-        assert_eq!(cards[1].rect.y, cards[0].rect.y + cards[0].rect.height + 1);
+        assert_eq!(expanded_sidebar_content_rect(area), Rect::new(0, 0, 19, 5));
+        assert_eq!(expanded_pane_panel_rect(area), Rect::new(0, 0, 19, 4));
+        assert_eq!(expanded_sidebar_footer_rect(area), Rect::new(0, 4, 19, 1));
     }
 }

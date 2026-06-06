@@ -5,101 +5,12 @@ use crate::app::state::{AppState, Mode, ViewLayout};
 use super::ScrollbarClickTarget;
 
 impl AppState {
-    pub(super) fn workspace_list_rect(&self) -> Rect {
-        let sidebar = self.view.sidebar_rect;
-        if self.sidebar_collapsed || sidebar.width <= 1 || sidebar.height == 0 {
-            return Rect::default();
-        }
-        crate::ui::workspace_list_rect(sidebar, self.sidebar_section_split)
-    }
-
     pub(super) fn pane_panel_rect(&self) -> Rect {
         let sidebar = self.view.sidebar_rect;
         if self.sidebar_collapsed || sidebar.width <= 1 || sidebar.height == 0 {
             return Rect::default();
         }
-        let (_, detail_area) =
-            crate::ui::expanded_sidebar_sections(sidebar, self.sidebar_section_split);
-        detail_area
-    }
-
-    pub(super) fn workspace_list_scrollbar_target_at(
-        &self,
-        col: u16,
-        row: u16,
-    ) -> Option<ScrollbarClickTarget> {
-        let area = self.workspace_list_rect();
-        let metrics = crate::ui::workspace_list_scroll_metrics(self, area);
-        let track = crate::ui::workspace_list_scrollbar_rect(self, area)?;
-        if col < track.x
-            || col >= track.x + track.width
-            || row < track.y
-            || row >= track.y + track.height
-        {
-            return None;
-        }
-        if let Some(grab_row_offset) = crate::ui::scrollbar_thumb_grab_offset(metrics, track, row) {
-            Some(ScrollbarClickTarget::Thumb { grab_row_offset })
-        } else {
-            Some(ScrollbarClickTarget::Track {
-                offset_from_bottom: crate::ui::scrollbar_offset_from_row(metrics, track, row),
-            })
-        }
-    }
-
-    pub(super) fn workspace_list_offset_for_drag_row(
-        &self,
-        row: u16,
-        grab_row_offset: u16,
-    ) -> Option<usize> {
-        let area = self.workspace_list_rect();
-        let metrics = crate::ui::workspace_list_scroll_metrics(self, area);
-        let track = crate::ui::workspace_list_scrollbar_rect(self, area)?;
-        Some(crate::ui::scrollbar_offset_from_drag_row(
-            metrics,
-            track,
-            row,
-            grab_row_offset,
-        ))
-    }
-
-    pub(super) fn set_workspace_list_offset_from_bottom(&mut self, offset_from_bottom: usize) {
-        let area = self.workspace_list_rect();
-        let metrics = crate::ui::workspace_list_scroll_metrics(self, area);
-        self.workspace_scroll = metrics
-            .max_offset_from_bottom
-            .saturating_sub(offset_from_bottom);
-        self.workspace_scroll = crate::ui::normalized_workspace_scroll(
-            self,
-            self.view.sidebar_rect,
-            self.workspace_scroll,
-        );
-    }
-
-    pub(super) fn scroll_workspace_list(&mut self, delta: i16) {
-        if delta.is_negative() {
-            self.workspace_scroll = self
-                .workspace_scroll
-                .saturating_sub(delta.unsigned_abs() as usize);
-            self.workspace_scroll = crate::ui::normalized_workspace_scroll(
-                self,
-                self.view.sidebar_rect,
-                self.workspace_scroll,
-            );
-            return;
-        }
-
-        let area = self.workspace_list_rect();
-        let metrics = crate::ui::workspace_list_scroll_metrics(self, area);
-        self.workspace_scroll = self
-            .workspace_scroll
-            .saturating_add(delta as usize)
-            .min(metrics.max_offset_from_bottom);
-        self.workspace_scroll = crate::ui::normalized_workspace_scroll(
-            self,
-            self.view.sidebar_rect,
-            self.workspace_scroll,
-        );
+        crate::ui::expanded_pane_panel_rect(sidebar)
     }
 
     pub(super) fn pane_panel_scrollbar_target_at(
@@ -166,12 +77,11 @@ impl AppState {
     }
 
     pub(crate) fn sidebar_footer_rect(&self) -> Rect {
-        let ws_area = self.workspace_list_rect();
-        if ws_area == Rect::default() {
+        let footer = crate::ui::expanded_sidebar_footer_rect(self.view.sidebar_rect);
+        if self.sidebar_collapsed || footer == Rect::default() {
             return Rect::default();
         }
-        let y = ws_area.y + ws_area.height.saturating_sub(1);
-        Rect::new(ws_area.x, y, ws_area.width, 1)
+        footer
     }
 
     pub(crate) fn sidebar_new_button_rect(&self) -> Rect {
@@ -190,9 +100,16 @@ impl AppState {
             8
         } else {
             6
-        }
-        .min(footer.width.max(1));
-        let x = footer.x + footer.width.saturating_sub(width);
+        };
+        let toggle = crate::ui::expanded_sidebar_toggle_rect(self.view.sidebar_rect);
+        let max_x_exclusive = if toggle == Rect::default() {
+            footer.x + footer.width
+        } else {
+            toggle.x
+        };
+        let available_width = max_x_exclusive.saturating_sub(footer.x).max(1);
+        let width = width.min(available_width);
+        let x = max_x_exclusive.saturating_sub(width).max(footer.x);
         Rect::new(x, footer.y, width, footer.height)
     }
 
@@ -272,33 +189,6 @@ impl AppState {
         self.mark_session_dirty();
     }
 
-    pub(super) fn on_sidebar_section_divider(&self, col: u16, row: u16) -> bool {
-        if self.sidebar_collapsed {
-            return false;
-        }
-        let rect = crate::ui::sidebar_section_divider_rect(
-            self.view.sidebar_rect,
-            self.sidebar_section_split,
-        );
-        rect.width > 0
-            && col >= rect.x
-            && col < rect.x + rect.width
-            && row >= rect.y
-            && row < rect.y + rect.height
-    }
-
-    pub(super) fn set_sidebar_section_split(&mut self, row: u16) {
-        let sidebar = self.view.sidebar_rect;
-        let content_height = sidebar.height;
-        if content_height < 6 {
-            return;
-        }
-        let relative_y = row.saturating_sub(sidebar.y);
-        let ratio = (relative_y as f32) / (content_height as f32);
-        self.sidebar_section_split = ratio.clamp(0.1, 0.9);
-        self.mark_session_dirty();
-    }
-
     fn collapsed_detail_workspace_idx(&self) -> Option<usize> {
         if matches!(
             self.mode,
@@ -351,10 +241,7 @@ impl AppState {
             return false;
         }
 
-        let (_, detail_area) = crate::ui::expanded_sidebar_sections(
-            self.view.sidebar_rect,
-            self.sidebar_section_split,
-        );
+        let detail_area = self.pane_panel_rect();
         let rect = crate::ui::pane_panel_toggle_rect(detail_area, self.pane_panel_scope);
         rect.width > 0
             && col >= rect.x
@@ -586,7 +473,13 @@ mod tests {
         app.state.selected = 0;
         app.state.mode = Mode::Terminal;
 
-        app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), 2, 16));
+        let detail_area = app.state.pane_panel_rect();
+        let body = crate::ui::pane_panel_body_rect(detail_area, false);
+        app.handle_mouse(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            body.x + 1,
+            body.y + 3,
+        ));
 
         assert_eq!(app.state.workspaces[0].active_tab, 1);
         assert_eq!(
@@ -608,10 +501,7 @@ mod tests {
         app.state.mode = Mode::Terminal;
         app.state.pane_panel_scroll = 3;
 
-        let (_, detail_area) = crate::ui::expanded_sidebar_sections(
-            app.state.view.sidebar_rect,
-            app.state.sidebar_section_split,
-        );
+        let detail_area = app.state.pane_panel_rect();
         let toggle = crate::ui::pane_panel_toggle_rect(detail_area, app.state.pane_panel_scope);
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
@@ -638,10 +528,7 @@ mod tests {
         app.state.mode = Mode::Terminal;
         app.state.pane_panel_scope = PanePanelScope::AllWorkspaces;
 
-        let (_, detail_area) = crate::ui::expanded_sidebar_sections(
-            app.state.view.sidebar_rect,
-            app.state.sidebar_section_split,
-        );
+        let detail_area = app.state.pane_panel_rect();
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             detail_area.x + 2,
@@ -663,7 +550,7 @@ mod tests {
         let mut ws = Workspace::test_new("test");
 
         let mut tabs = Vec::new();
-        for tab_name in ["logs", "review", "ops"] {
+        for tab_name in ["logs", "review", "ops", "db", "ci", "deploy"] {
             let tab_idx = ws.test_add_tab(Some(tab_name));
             let pane_id = ws.tabs[tab_idx].root_pane;
             tabs.push((tab_idx, pane_id));
@@ -805,28 +692,19 @@ mod tests {
     }
 
     #[test]
-    fn clicking_workspace_row_does_not_switch_sessions() {
+    fn expanded_sidebar_has_no_workspace_rows() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![Workspace::test_new("a"), Workspace::test_new("b")];
         app.state.active = Some(0);
         app.state.selected = 0;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-        let target_row = app.state.view.workspace_card_areas[1].rect.y;
 
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            2,
-            target_row,
-        ));
-        assert_eq!(app.state.active, Some(0));
-
-        app.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left), 2, target_row));
-        assert_eq!(app.state.active, Some(0));
-        assert_eq!(app.state.selected, 0);
+        let sidebar = app.state.view.sidebar_rect;
+        assert!(app.state.pane_panel_rect().height >= sidebar.height.saturating_sub(2));
     }
 
     #[test]
-    fn wheel_over_workspace_rows_does_not_select_sessions() {
+    fn wheel_over_sidebar_outside_pane_panel_does_not_select_sessions() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![
             Workspace::test_new("main"),
@@ -837,18 +715,15 @@ mod tests {
         app.state.selected = 0;
         app.state.mode = Mode::Navigate;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 30));
-        let list = app.state.workspace_list_rect();
-        assert!(!crate::ui::should_show_scrollbar(
-            crate::ui::workspace_list_scroll_metrics(&app.state, list)
-        ));
+        let footer = app.state.sidebar_footer_rect();
 
-        app.handle_mouse(mouse(MouseEventKind::ScrollDown, list.x + 1, list.y + 1));
+        app.handle_mouse(mouse(MouseEventKind::ScrollDown, footer.x + 1, footer.y));
 
         assert_eq!(app.state.selected, 0);
     }
 
     #[test]
-    fn dragging_workspace_rows_does_not_reorder_sessions() {
+    fn dragging_expanded_sidebar_body_does_not_reorder_sessions() {
         let mut app = app_for_mouse_test();
         app.state.workspaces = vec![
             Workspace::test_new("a"),
@@ -858,7 +733,8 @@ mod tests {
         app.state.active = Some(1);
         app.state.selected = 2;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-        let source_row = app.state.view.workspace_card_areas[1].rect.y;
+        let detail_area = app.state.pane_panel_rect();
+        let source_row = detail_area.y + 1;
         let target_row = source_row.saturating_sub(1);
 
         app.handle_mouse(mouse(
@@ -1064,25 +940,22 @@ mod tests {
     }
 
     #[test]
-    fn dragging_sidebar_section_divider_sets_split_ratio() {
+    fn dragging_inside_expanded_sidebar_does_not_change_section_split() {
         let mut app = app_for_mouse_test();
-        let divider = crate::ui::sidebar_section_divider_rect(
-            app.state.view.sidebar_rect,
-            app.state.sidebar_section_split,
-        );
+        let detail_area = app.state.pane_panel_rect();
 
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
-            divider.x + 1,
-            divider.y,
+            detail_area.x + 1,
+            detail_area.y + 1,
         ));
         app.handle_mouse(mouse(
             MouseEventKind::Drag(MouseButton::Left),
-            divider.x + 1,
-            divider.y + 4,
+            detail_area.x + 1,
+            detail_area.y + 4,
         ));
 
-        assert!(app.state.sidebar_section_split > 0.5);
+        assert!(app.state.drag.is_none());
     }
 
     #[test]

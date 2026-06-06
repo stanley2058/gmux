@@ -357,7 +357,6 @@ impl App {
             view: state::ViewState {
                 layout: state::ViewLayout::Desktop,
                 sidebar_rect: Rect::default(),
-                workspace_card_areas: Vec::new(),
                 tab_bar_rect: Rect::default(),
                 tab_hit_areas: Vec::new(),
                 tab_scroll_left_hit_area: Rect::default(),
@@ -393,7 +392,6 @@ impl App {
             sidebar_width_source: state::SidebarWidthSource::ConfigDefault,
             sidebar_width_auto: false,
             sidebar_collapsed: false,
-            sidebar_section_split: 0.5,
             pane_panel_scope,
             mouse_capture: config.ui.mouse_capture,
             right_click_passthrough_modifiers: config.ui.right_click_passthrough_modifiers(),

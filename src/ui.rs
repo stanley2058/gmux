@@ -1,8 +1,8 @@
 use ratatui::{
+    Frame,
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Span,
-    Frame,
 };
 
 mod dialogs;
@@ -36,9 +36,8 @@ pub(crate) use self::onboarding::onboarding_welcome_continue_rect;
 use self::onboarding::render_onboarding_overlay;
 use self::panes::{compute_pane_infos, render_panes, resize_tab_panes};
 pub(crate) use self::release_notes::{
-    product_announcement_display_lines, release_notes_close_button_rect,
-    release_notes_display_lines, release_notes_wrapped_line_count, PRODUCT_ANNOUNCEMENT_MODAL_SIZE,
-    RELEASE_NOTES_MODAL_SIZE,
+    PRODUCT_ANNOUNCEMENT_MODAL_SIZE, RELEASE_NOTES_MODAL_SIZE, product_announcement_display_lines,
+    release_notes_close_button_rect, release_notes_display_lines, release_notes_wrapped_line_count,
 };
 use self::release_notes::{render_product_announcement_overlay, render_release_notes_overlay};
 pub(crate) use self::scrollbar::{
@@ -56,19 +55,17 @@ pub(crate) use self::{
     dialogs::{confirm_close_button_rects, confirm_close_popup_rect, rename_button_rects},
     settings::{settings_button_rects, settings_show_primary_action},
     sidebar::{
-        collapsed_sidebar_sections, collapsed_sidebar_toggle_rect, compute_workspace_card_areas,
-        expanded_sidebar_sections, expanded_sidebar_toggle_rect, normalized_workspace_scroll,
-        pane_panel_body_rect, pane_panel_entries, pane_panel_scroll_metrics,
-        pane_panel_scrollbar_rect, pane_panel_toggle_rect, sidebar_section_divider_rect,
-        workspace_list_entries, workspace_list_rect, workspace_list_scroll_metrics,
-        workspace_list_scrollbar_rect, WorkspaceListEntry,
+        collapsed_sidebar_sections, collapsed_sidebar_toggle_rect, expanded_pane_panel_rect,
+        expanded_sidebar_footer_rect, expanded_sidebar_toggle_rect, pane_panel_body_rect,
+        pane_panel_entries, pane_panel_scroll_metrics, pane_panel_scrollbar_rect,
+        pane_panel_toggle_rect,
     },
 };
 pub(crate) use self::{
     keybind_help::keybind_help_lines,
     mobile::{
-        mobile_switcher_areas, mobile_switcher_max_scroll, mobile_switcher_target_at,
-        MobileSwitcherTarget,
+        MobileSwitcherTarget, mobile_switcher_areas, mobile_switcher_max_scroll,
+        mobile_switcher_target_at,
     },
     panes::pane_is_scrolled_back,
     tabs::compute_tab_bar_view,
@@ -178,8 +175,7 @@ fn compute_view_internal(
     };
 
     if !app.sidebar_collapsed {
-        app.workspace_scroll = normalized_workspace_scroll(app, sidebar_area, app.workspace_scroll);
-        let (_, detail_area) = expanded_sidebar_sections(sidebar_area, app.sidebar_section_split);
+        let detail_area = expanded_pane_panel_rect(sidebar_area);
         let max_pane_panel_scroll =
             pane_panel_scroll_metrics(app, detail_area).max_offset_from_bottom;
         app.pane_panel_scroll = app.pane_panel_scroll.min(max_pane_panel_scroll);
@@ -189,12 +185,6 @@ fn compute_view_internal(
             .min(app.workspaces.len().saturating_sub(1));
         app.pane_panel_scroll = 0;
     }
-
-    let workspace_card_areas = if app.sidebar_collapsed {
-        Vec::new()
-    } else {
-        compute_workspace_card_areas(app, sidebar_area)
-    };
 
     let tab_bar_view = app
         .active
@@ -242,7 +232,6 @@ fn compute_view_internal(
     app.view = crate::app::ViewState {
         layout: ViewLayout::Desktop,
         sidebar_rect: sidebar_area,
-        workspace_card_areas,
         tab_bar_rect,
         tab_hit_areas: tab_bar_view.tab_hit_areas,
         tab_scroll_left_hit_area: tab_bar_view.scroll_left_hit_area,
@@ -311,7 +300,6 @@ fn compute_mobile_view(
     app.view = crate::app::ViewState {
         layout: ViewLayout::Mobile,
         sidebar_rect: Rect::default(),
-        workspace_card_areas: Vec::new(),
         tab_bar_rect: Rect::default(),
         tab_hit_areas: Vec::new(),
         tab_scroll_left_hit_area: Rect::default(),
@@ -373,9 +361,7 @@ pub fn render_with_runtime_registry(
             render_context_menu(app, frame);
         }
         Mode::Settings => render_settings_overlay(app, frame, frame.area()),
-        Mode::RenameTab | Mode::RenamePane => {
-            render_rename_overlay(app, frame, frame.area())
-        }
+        Mode::RenameTab | Mode::RenamePane => render_rename_overlay(app, frame, frame.area()),
         Mode::GlobalMenu => render_global_launcher_menu(app, frame),
         Mode::KeybindHelp => render_keybind_help_overlay(app, frame),
         Mode::Navigator => render_navigator_overlay(app, terminal_runtimes, frame),
@@ -455,7 +441,7 @@ mod tests {
     use super::*;
     use crate::{app::state::ViewLayout, layout::PaneInfo, workspace::Workspace};
     use ratatui::style::Color;
-    use ratatui::{backend::TestBackend, Terminal};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[tokio::test]
     async fn focused_pane_cursor_wins_during_terminal_render() {
@@ -631,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn expanded_sidebar_workspace_rows_show_session_marker_before_name_without_numbers() {
+    fn expanded_sidebar_omits_workspace_rows() {
         let mut app = crate::app::state::AppState::test_new();
         let mut ws = Workspace::test_new("one");
         let dir = temp_workspace_dir();
@@ -654,12 +640,11 @@ mod tests {
         terminal.draw(|frame| render(&app, frame)).unwrap();
         let buffer = terminal.backend().buffer();
 
-        let card = app.view.workspace_card_areas[0].rect;
-        let line1 = buffer_row_text(buffer, card, card.y);
+        let pane_area = expanded_pane_panel_rect(app.view.sidebar_rect);
+        let line1 = buffer_row_text(buffer, pane_area, pane_area.y + 1);
 
-        assert!(line1.starts_with(" ● one"));
-        assert!(!line1.contains("1 one"));
-        assert_eq!(card.height, 1);
+        assert!(line1.contains(" panes"));
+        assert!(!line1.contains("one"));
 
         std::fs::remove_dir_all(dir).ok();
     }
@@ -1019,41 +1004,52 @@ mod tests {
             .1
             .clone();
 
-        assert!(tabs
-            .iter()
-            .any(|(key, label)| key == "prefix+g" && label.as_ref() == "session navigator"));
+        assert!(
+            tabs.iter()
+                .any(|(key, label)| key == "prefix+g" && label.as_ref() == "session navigator")
+        );
         let navigation = groups
             .iter()
             .find(|(name, _)| *name == "navigation")
             .expect("navigation group")
             .1
             .clone();
-        assert!(!navigation
-            .iter()
-            .any(|(key, label)| key.contains("unset") || label.as_ref() == "list"));
-        assert!(!groups
-            .iter()
-            .flat_map(|(_, entries)| entries)
-            .any(|(_, label)| label.as_ref().contains("workspace")
-                || label.as_ref().contains("agent")));
-        assert!(panes
-            .iter()
-            .any(|(key, label)| key == "prefix+h / prefix+left"
-                && label.as_ref() == "focus pane left"));
-        assert!(panes
-            .iter()
-            .any(|(key, label)| key == "prefix+j / prefix+down"
-                && label.as_ref() == "focus pane down"));
+        assert!(
+            !navigation
+                .iter()
+                .any(|(key, label)| key.contains("unset") || label.as_ref() == "list")
+        );
+        assert!(
+            !groups
+                .iter()
+                .flat_map(|(_, entries)| entries)
+                .any(|(_, label)| label.as_ref().contains("workspace")
+                    || label.as_ref().contains("agent"))
+        );
+        assert!(
+            panes
+                .iter()
+                .any(|(key, label)| key == "prefix+h / prefix+left"
+                    && label.as_ref() == "focus pane left")
+        );
+        assert!(
+            panes
+                .iter()
+                .any(|(key, label)| key == "prefix+j / prefix+down"
+                    && label.as_ref() == "focus pane down")
+        );
         assert!(
             panes
                 .iter()
                 .any(|(key, label)| key == "prefix+k / prefix+up"
                     && label.as_ref() == "focus pane up")
         );
-        assert!(panes
-            .iter()
-            .any(|(key, label)| key == "prefix+l / prefix+right"
-                && label.as_ref() == "focus pane right"));
+        assert!(
+            panes
+                .iter()
+                .any(|(key, label)| key == "prefix+l / prefix+right"
+                    && label.as_ref() == "focus pane right")
+        );
     }
 
     #[test]
@@ -1083,12 +1079,16 @@ mod tests {
             .expect("custom group")
             .1
             .clone();
-        assert!(custom
-            .iter()
-            .any(|(key, label)| key == "prefix+alt+g" && label.as_ref() == "open lazygit"));
-        assert!(custom
-            .iter()
-            .any(|(key, label)| key == "prefix+alt+h" && label.as_ref() == "custom command"));
+        assert!(
+            custom
+                .iter()
+                .any(|(key, label)| key == "prefix+alt+g" && label.as_ref() == "open lazygit")
+        );
+        assert!(
+            custom
+                .iter()
+                .any(|(key, label)| key == "prefix+alt+h" && label.as_ref() == "custom command")
+        );
 
         let rendered_help = keybind_help_lines(&app)
             .into_iter()

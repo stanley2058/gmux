@@ -100,6 +100,13 @@ impl AppState {
             && mouse.row >= launcher.y
             && mouse.row < launcher.y + launcher.height;
 
+        if matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
+            && self.on_sidebar_toggle(mouse.column, mouse.row)
+        {
+            self.sidebar_collapsed = !self.sidebar_collapsed;
+            return None;
+        }
+
         if matches!(mouse.kind, MouseEventKind::Moved) && self.mode == Mode::GlobalMenu {
             let actions = global_menu_actions(self);
             let hovered = self
@@ -216,14 +223,6 @@ impl AppState {
                     return None;
                 }
 
-                if self.on_sidebar_section_divider(mouse.column, mouse.row) {
-                    self.drag = Some(DragState {
-                        target: DragTarget::SidebarSectionDivider,
-                    });
-                    self.set_sidebar_section_split(mouse.row);
-                    return None;
-                }
-
                 if !in_sidebar {
                     if let Some(border) = self.find_border_at(mouse.column, mouse.row) {
                         self.drag = Some(DragState {
@@ -289,11 +288,6 @@ impl AppState {
                 }
 
                 if in_sidebar {
-                    if self.on_sidebar_toggle(mouse.column, mouse.row) {
-                        self.sidebar_collapsed = !self.sidebar_collapsed;
-                        return None;
-                    }
-
                     if self.sidebar_collapsed {
                         if let Some((ws_idx, _tab_idx, pane_id)) =
                             self.collapsed_pane_detail_target_at(mouse.row)
@@ -311,22 +305,6 @@ impl AppState {
                         && mouse.column < new_button.x + new_button.width;
                     if on_new_button {
                         open_new_tab_dialog(self);
-                        return None;
-                    }
-
-                    if let Some(target) =
-                        self.workspace_list_scrollbar_target_at(mouse.column, mouse.row)
-                    {
-                        match target {
-                            ScrollbarClickTarget::Thumb { grab_row_offset } => {
-                                self.drag = Some(DragState {
-                                    target: DragTarget::WorkspaceListScrollbar { grab_row_offset },
-                                });
-                            }
-                            ScrollbarClickTarget::Track { offset_from_bottom } => {
-                                self.set_workspace_list_offset_from_bottom(offset_from_bottom);
-                            }
-                        }
                         return None;
                     }
 
@@ -444,13 +422,6 @@ impl AppState {
                 } else if let Some(drag) = &self.drag {
                     match &drag.target {
                         DragTarget::TabReorder { .. } => {}
-                        DragTarget::WorkspaceListScrollbar { grab_row_offset } => {
-                            if let Some(offset_from_bottom) =
-                                self.workspace_list_offset_for_drag_row(mouse.row, *grab_row_offset)
-                            {
-                                self.set_workspace_list_offset_from_bottom(offset_from_bottom);
-                            }
-                        }
                         DragTarget::PanePanelScrollbar { grab_row_offset } => {
                             if let Some(offset_from_bottom) =
                                 self.pane_panel_offset_for_drag_row(mouse.row, *grab_row_offset)
@@ -499,9 +470,6 @@ impl AppState {
                         }
                         DragTarget::SidebarDivider => {
                             self.set_manual_sidebar_width(mouse.column);
-                        }
-                        DragTarget::SidebarSectionDivider => {
-                            self.set_sidebar_section_split(mouse.row);
                         }
                         DragTarget::ReleaseNotesScrollbar { .. }
                         | DragTarget::ProductAnnouncementScrollbar { .. }
@@ -597,38 +565,28 @@ impl AppState {
 
             MouseEventKind::ScrollUp if in_sidebar => {
                 let pane_panel_area = self.pane_panel_rect();
-                let over_pane_panel = pane_panel_area != Rect::default()
+                if pane_panel_area != Rect::default()
                     && mouse.row >= pane_panel_area.y
-                    && mouse.row < pane_panel_area.y + pane_panel_area.height;
-                if over_pane_panel {
-                    if crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
+                    && mouse.row < pane_panel_area.y + pane_panel_area.height
+                    && crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
                         self,
                         pane_panel_area,
-                    )) {
-                        self.scroll_pane_panel(-1);
-                    }
-                } else if crate::ui::should_show_scrollbar(
-                    crate::ui::workspace_list_scroll_metrics(self, self.workspace_list_rect()),
-                ) {
-                    self.scroll_workspace_list(-1);
+                    ))
+                {
+                    self.scroll_pane_panel(-1);
                 }
             }
             MouseEventKind::ScrollDown if in_sidebar => {
                 let pane_panel_area = self.pane_panel_rect();
-                let over_pane_panel = pane_panel_area != Rect::default()
+                if pane_panel_area != Rect::default()
                     && mouse.row >= pane_panel_area.y
-                    && mouse.row < pane_panel_area.y + pane_panel_area.height;
-                if over_pane_panel {
-                    if crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
+                    && mouse.row < pane_panel_area.y + pane_panel_area.height
+                    && crate::ui::should_show_scrollbar(crate::ui::pane_panel_scroll_metrics(
                         self,
                         pane_panel_area,
-                    )) {
-                        self.scroll_pane_panel(1);
-                    }
-                } else if crate::ui::should_show_scrollbar(
-                    crate::ui::workspace_list_scroll_metrics(self, self.workspace_list_rect()),
-                ) {
-                    self.scroll_workspace_list(1);
+                    ))
+                {
+                    self.scroll_pane_panel(1);
                 }
             }
 
@@ -647,12 +605,6 @@ impl AppState {
 
             MouseEventKind::Down(MouseButton::Right) if in_sidebar && !self.sidebar_collapsed => {
                 self.tab_press = None;
-                if self
-                    .workspace_list_scrollbar_target_at(mouse.column, mouse.row)
-                    .is_some()
-                {
-                    return None;
-                }
             }
 
             MouseEventKind::Down(MouseButton::Right)
@@ -1763,10 +1715,11 @@ mod tests {
         );
 
         assert!(app.state.pane_at(info.rect.x, info.rect.y).is_none());
-        assert!(app
-            .state
-            .pane_mouse_target(info.rect.x, info.rect.y)
-            .is_some());
+        assert!(
+            app.state
+                .pane_mouse_target(info.rect.x, info.rect.y)
+                .is_some()
+        );
         app.handle_mouse(MouseEvent {
             modifiers: KeyModifiers::CONTROL,
             ..mouse(
@@ -1980,15 +1933,17 @@ mod tests {
         let border = app.state.view.split_borders[0].clone();
         let row = border.area.y.saturating_add(1);
 
-        assert!(app
-            .state
-            .find_border_at(border.pos.saturating_sub(1), row)
-            .is_some());
+        assert!(
+            app.state
+                .find_border_at(border.pos.saturating_sub(1), row)
+                .is_some()
+        );
         assert!(app.state.find_border_at(border.pos, row).is_some());
-        assert!(app
-            .state
-            .find_border_at(border.pos.saturating_add(1), row)
-            .is_none());
+        assert!(
+            app.state
+                .find_border_at(border.pos.saturating_add(1), row)
+                .is_none()
+        );
     }
 
     #[test]
@@ -2002,15 +1957,17 @@ mod tests {
         let border = app.state.view.split_borders[0].clone();
         let col = border.area.x.saturating_add(1);
 
-        assert!(app
-            .state
-            .find_border_at(col, border.pos.saturating_sub(1))
-            .is_some());
+        assert!(
+            app.state
+                .find_border_at(col, border.pos.saturating_sub(1))
+                .is_some()
+        );
         assert!(app.state.find_border_at(col, border.pos).is_some());
-        assert!(app
-            .state
-            .find_border_at(col, border.pos.saturating_add(1))
-            .is_none());
+        assert!(
+            app.state
+                .find_border_at(col, border.pos.saturating_add(1))
+                .is_none()
+        );
     }
 
     #[test]
