@@ -7,7 +7,7 @@ use crate::api::schema::{
     ResponseResult,
 };
 use crate::app::{App, Mode};
-use crate::layout::NavDirection;
+use crate::layout::{NavDirection, PaneId};
 
 use super::super::api_helpers::{encode_api_keys, encode_api_text};
 use super::responses::{encode_error, encode_success};
@@ -102,7 +102,7 @@ impl App {
     }
 
     pub(super) fn handle_pane_get(&mut self, id: String, target: PaneTarget) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&target.pane_id) else {
+        let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&target.pane_id) else {
             return pane_not_found(id, &target.pane_id);
         };
         let Some(pane) = self.pane_info(ws_idx, pane_id) else {
@@ -115,17 +115,9 @@ impl App {
     pub(super) fn handle_pane_focus(&mut self, id: String, params: PaneFocusParams) -> String {
         match (params.pane_id, params.direction) {
             (Some(pane_id), None) => {
-                let Some((ws_idx, raw_pane_id)) = self.parse_pane_id(&pane_id) else {
+                let Some((ws_idx, _, raw_pane_id)) = self.canonicalize_pane_target(&pane_id) else {
                     return pane_not_found(id, &pane_id);
                 };
-                let pane_exists = self
-                    .state
-                    .workspaces
-                    .get(ws_idx)
-                    .is_some_and(|ws| ws.find_tab_index_for_pane(raw_pane_id).is_some());
-                if !pane_exists {
-                    return pane_not_found(id, &pane_id);
-                }
                 self.state
                     .focus_pane_in_session_container(ws_idx, raw_pane_id);
                 self.state.mode = Mode::Terminal;
@@ -184,7 +176,7 @@ impl App {
     }
 
     pub(super) fn handle_pane_rename(&mut self, id: String, params: PaneRenameParams) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
+        let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
         let Some(terminal_id) = self
@@ -196,7 +188,6 @@ impl App {
         else {
             return pane_not_found(id, &params.pane_id);
         };
-        self.state.collapse_to_single_session_workspace();
         let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
             return pane_not_found(id, &params.pane_id);
         };
@@ -213,18 +204,11 @@ impl App {
     }
 
     pub(super) fn handle_pane_read(&mut self, id: String, params: PaneReadParams) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
+        let Some((ws_idx, tab_idx, pane_id)) = self.canonicalize_pane_target(&params.pane_id)
+        else {
             return pane_not_found(id, &params.pane_id);
         };
         let Some(pane) = self.lookup_runtime(ws_idx, pane_id) else {
-            return pane_not_found(id, &params.pane_id);
-        };
-        let Some(tab_idx) = self
-            .state
-            .workspaces
-            .get(ws_idx)
-            .and_then(|ws| ws.find_tab_index_for_pane(pane_id))
-        else {
             return pane_not_found(id, &params.pane_id);
         };
         let requested_lines = params.lines.unwrap_or(80).min(1000) as usize;
@@ -262,7 +246,7 @@ impl App {
         id: String,
         params: PaneSendTextParams,
     ) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
+        let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
         let Some(runtime) = self.lookup_runtime_sender(ws_idx, pane_id) else {
@@ -280,7 +264,7 @@ impl App {
         id: String,
         params: PaneSendInputParams,
     ) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
+        let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
         let Some(runtime) = self.lookup_runtime_sender(ws_idx, pane_id) else {
@@ -306,17 +290,9 @@ impl App {
     }
 
     pub(super) fn handle_pane_close(&mut self, id: String, target: PaneTarget) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&target.pane_id) else {
+        let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&target.pane_id) else {
             return pane_not_found(id, &target.pane_id);
         };
-        let pane_exists = self
-            .state
-            .workspaces
-            .get(ws_idx)
-            .is_some_and(|ws| ws.find_tab_index_for_pane(pane_id).is_some());
-        if !pane_exists {
-            return pane_not_found(id, &target.pane_id);
-        }
 
         self.state.focus_pane_in_session_container(ws_idx, pane_id);
         self.state.close_pane();
@@ -337,7 +313,7 @@ impl App {
         id: String,
         params: PaneSendKeysParams,
     ) -> String {
-        let Some((ws_idx, pane_id)) = self.parse_pane_id(&params.pane_id) else {
+        let Some((ws_idx, _, pane_id)) = self.canonicalize_pane_target(&params.pane_id) else {
             return pane_not_found(id, &params.pane_id);
         };
         let Some(runtime) = self.lookup_runtime_sender(ws_idx, pane_id) else {
@@ -371,6 +347,19 @@ fn nav_direction_from_api(direction: PaneDirection) -> NavDirection {
 }
 
 impl App {
+    fn canonicalize_pane_target(&mut self, public_pane_id: &str) -> Option<(usize, usize, PaneId)> {
+        let (_, pane_id) = self.parse_pane_id(public_pane_id)?;
+        self.state.collapse_to_single_session_workspace();
+        self.state
+            .workspaces
+            .iter()
+            .enumerate()
+            .find_map(|(ws_idx, ws)| {
+                ws.find_tab_index_for_pane(pane_id)
+                    .map(|tab_idx| (ws_idx, tab_idx, pane_id))
+            })
+    }
+
     fn focused_pane_info(&self) -> Option<PaneInfo> {
         let ws_idx = self.state.session_container_index()?;
         let pane_id = self.state.session_container()?.focused_pane_id()?;

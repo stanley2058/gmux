@@ -32,19 +32,15 @@ impl AppState {
             .iter()
             .position(|ws| ws.id == target.workspace_id)
         {
-            if let Some(tab_idx) = self.workspaces[ws_idx].find_tab_index_for_pane(target.pane_id)
-            {
+            if let Some(tab_idx) = self.workspaces[ws_idx].find_tab_index_for_pane(target.pane_id) {
                 return Some((ws_idx, tab_idx));
             }
         }
 
-        self.workspaces
-            .iter()
-            .enumerate()
-            .find_map(|(ws_idx, ws)| {
-                ws.find_tab_index_for_pane(target.pane_id)
-                    .map(|tab_idx| (ws_idx, tab_idx))
-            })
+        self.workspaces.iter().enumerate().find_map(|(ws_idx, ws)| {
+            ws.find_tab_index_for_pane(target.pane_id)
+                .map(|tab_idx| (ws_idx, tab_idx))
+        })
     }
 
     pub(crate) fn flattened_tab_index(&self, ws_idx: usize, tab_idx: usize) -> Option<usize> {

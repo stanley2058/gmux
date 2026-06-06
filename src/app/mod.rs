@@ -2487,6 +2487,72 @@ mod tests {
         assert_eq!(app.state.workspaces[0].active_tab, 0);
     }
 
+    #[test]
+    fn pane_get_request_collapses_legacy_workspace_target() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        let target_pane = second.tabs[0].root_pane;
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+
+        let target_pane_id = app.pane_info(1, target_pane).unwrap().pane_id;
+        let target_tab_id = app.public_tab_id(1, 0).unwrap();
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_pane_get_legacy".into(),
+            method: crate::api::schema::Method::PaneGet(crate::api::schema::PaneTarget {
+                pane_id: target_pane_id.clone(),
+            }),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "pane_info");
+        assert_eq!(response["result"]["pane"]["pane_id"], target_pane_id);
+        assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 0);
+    }
+
+    #[tokio::test]
+    async fn pane_send_text_request_collapses_legacy_workspace_target() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let mut second = Workspace::test_new("two");
+        let target_pane = second.tabs[0].root_pane;
+        let (runtime, mut rx) = TerminalRuntime::test_with_channel(80, 24);
+        second.tabs[0].runtimes.insert(target_pane, runtime);
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+
+        let target_pane_id = app.pane_info(1, target_pane).unwrap().pane_id;
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_pane_send_text_legacy".into(),
+            method: crate::api::schema::Method::PaneSendText(
+                crate::api::schema::PaneSendTextParams {
+                    pane_id: target_pane_id,
+                    text: "echo via collapsed session".into(),
+                },
+            ),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "ok");
+        assert_eq!(
+            rx.recv().await.unwrap(),
+            bytes::Bytes::from("echo via collapsed session")
+        );
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 0);
+    }
+
     #[tokio::test]
     async fn pane_split_request_targets_pane_in_background_tab() {
         let _guard = config_env_lock().lock().unwrap();
