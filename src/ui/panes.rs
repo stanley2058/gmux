@@ -153,10 +153,10 @@ pub(super) fn compute_pane_infos(
     resize_panes: bool,
     cell_size: crate::kitty_graphics::HostCellSize,
 ) -> Vec<PaneInfo> {
-    let Some(ws_idx) = app.active else {
+    let Some(ws_idx) = app.session_container_index() else {
         return Vec::new();
     };
-    let Some(ws) = app.workspaces.get(ws_idx) else {
+    let Some(ws) = app.session_container() else {
         return Vec::new();
     };
 
@@ -240,11 +240,11 @@ pub(super) fn render_panes(
     frame: &mut Frame,
     area: Rect,
 ) {
-    let Some(ws_idx) = app.active else {
+    let Some(ws_idx) = app.session_container_index() else {
         render_empty(app, frame, area);
         return;
     };
-    let Some(ws) = app.workspaces.get(ws_idx) else {
+    let Some(ws) = app.session_container() else {
         render_empty(app, frame, area);
         return;
     };

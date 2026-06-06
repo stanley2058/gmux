@@ -134,9 +134,10 @@ fn resize_background_tab_panes_to_terminal_area(
     terminal_area: Rect,
     cell_size: crate::kitty_graphics::HostCellSize,
 ) {
+    let active_session_idx = app.session_container_index();
     for (ws_idx, ws) in app.workspaces.iter().enumerate() {
         for (tab_idx, tab) in ws.tabs.iter().enumerate() {
-            if app.active == Some(ws_idx) && tab_idx == ws.active_tab_index() {
+            if active_session_idx == Some(ws_idx) && tab_idx == ws.active_tab_index() {
                 continue;
             }
             resize_tab_panes(app, terminal_runtimes, tab, terminal_area, cell_size);
@@ -166,7 +167,7 @@ fn compute_view_internal(
     let [sidebar_area, main_area] =
         Layout::horizontal([Constraint::Length(sidebar_w), Constraint::Min(1)]).areas(area);
 
-    let has_tabs = app.active.and_then(|i| app.workspaces.get(i)).is_some();
+    let has_tabs = app.session_container().is_some();
     let (tab_bar_rect, terminal_area) = if has_tabs && main_area.height > 1 {
         let [tab_bar_rect, terminal_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(main_area);
@@ -185,8 +186,7 @@ fn compute_view_internal(
     }
 
     let tab_bar_view = app
-        .active
-        .and_then(|i| app.workspaces.get(i))
+        .session_container()
         .map(|ws| {
             compute_tab_bar_view(
                 ws,
@@ -200,8 +200,7 @@ fn compute_view_internal(
     app.tab_scroll = tab_bar_view.scroll;
 
     let split_borders = app
-        .active
-        .and_then(|i| app.workspaces.get(i))
+        .session_container()
         .map(|ws| ws.layout.splits(terminal_area))
         .unwrap_or_default();
 
