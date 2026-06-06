@@ -86,8 +86,8 @@ impl App {
             return None;
         }
 
-        let ws_idx = self.state.active?;
-        let ws = self.state.workspaces.get(ws_idx)?;
+        let ws_idx = self.state.session_container_index()?;
+        let ws = self.state.session_container()?;
         let pane_id = ws.focused_pane_id()?;
         let rt =
             self.state

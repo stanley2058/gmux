@@ -166,7 +166,7 @@ impl App {
         }
 
         let mut cwd = None;
-        if let Some(ws_idx) = self.state.active {
+        if let Some(ws_idx) = self.state.session_container_index() {
             if let Some(workspace) = self.state.workspaces.get(ws_idx) {
                 let tab_idx = workspace.active_tab_index();
                 if let Some(tab_id) = self.public_tab_id(ws_idx, tab_idx) {
@@ -275,7 +275,7 @@ impl App {
         command: &str,
         temp_files: Vec<std::path::PathBuf>,
     ) -> std::io::Result<()> {
-        let Some(ws_idx) = self.state.active else {
+        let Some(ws_idx) = self.state.session_container_index() else {
             return Err(std::io::Error::other("no active session"));
         };
         let previous_focus_target = self.state.current_pane_focus_target();
@@ -605,8 +605,7 @@ pub(super) fn execute_navigate_action_in_context(
     match action {
         NavigateAction::SwitchTab(idx) => {
             let tab_exists = state
-                .active
-                .and_then(|ws_idx| state.workspaces.get(ws_idx))
+                .session_container()
                 .is_some_and(|ws| idx < ws.tabs.len());
             if tab_exists {
                 state.switch_tab(idx);
@@ -627,7 +626,7 @@ pub(super) fn execute_navigate_action_in_context(
             leave_navigate_mode(state);
         }
         NavigateAction::NewTab => {
-            if state.active.is_some() {
+            if state.session_container().is_some() {
                 if state.prompt_new_tab_name {
                     super::modal::open_new_tab_dialog(state);
                 } else {
@@ -652,8 +651,7 @@ pub(super) fn execute_navigate_action_in_context(
         }
         NavigateAction::RenamePane => {
             if let Some(pane_id) = state
-                .active
-                .and_then(|ws_idx| state.workspaces.get(ws_idx))
+                .session_container()
                 .and_then(|ws| ws.focused_pane_id())
             {
                 super::modal::open_rename_pane(state, pane_id);
@@ -730,7 +728,7 @@ pub(super) fn execute_navigate_action_in_context(
 }
 
 fn leave_navigate_mode(state: &mut AppState) {
-    if state.active.is_some() {
+    if state.session_container().is_some() {
         state.mode = Mode::Terminal;
     }
 }
@@ -756,7 +754,7 @@ fn finish_custom_command_context(
 }
 
 fn leave_command_mode(state: &mut AppState) {
-    state.mode = if state.active.is_some() {
+    state.mode = if state.session_container().is_some() {
         Mode::Terminal
     } else {
         Mode::Navigate
