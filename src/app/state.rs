@@ -1162,12 +1162,15 @@ impl AppState {
             &crate::workspace::Tab,
         ),
     > {
-        self.workspaces.iter().enumerate().flat_map(|(ws_idx, ws)| {
-            ws.tabs
-                .iter()
-                .enumerate()
-                .map(move |(tab_idx, tab)| (ws_idx, tab_idx, ws, tab))
-        })
+        self.session_containers()
+            .iter()
+            .enumerate()
+            .flat_map(|(ws_idx, ws)| {
+                ws.tabs
+                    .iter()
+                    .enumerate()
+                    .map(move |(tab_idx, tab)| (ws_idx, tab_idx, ws, tab))
+            })
     }
 
     pub(crate) fn session_tab_count(&self) -> usize {
@@ -1182,12 +1185,17 @@ impl AppState {
         pane_id: crate::layout::PaneId,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
         #[cfg(test)]
-        if let Some(runtime) = self.workspaces.get(ws_idx)?.test_runtimes.get(&pane_id) {
+        if let Some(runtime) = self
+            .session_containers()
+            .get(ws_idx)?
+            .test_runtimes
+            .get(&pane_id)
+        {
             return Some(runtime);
         }
         #[cfg(test)]
         if let Some(runtime) = self
-            .workspaces
+            .session_containers()
             .get(ws_idx)?
             .tabs
             .iter()
@@ -1195,7 +1203,10 @@ impl AppState {
         {
             return Some(runtime);
         }
-        let terminal_id = self.workspaces.get(ws_idx)?.terminal_id(pane_id)?;
+        let terminal_id = self
+            .session_containers()
+            .get(ws_idx)?
+            .terminal_id(pane_id)?;
         terminal_runtimes.get(terminal_id)
     }
 
@@ -1205,7 +1216,7 @@ impl AppState {
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         pane_id: crate::layout::PaneId,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
-        self.workspaces.iter().find_map(|ws| {
+        self.session_containers().iter().find_map(|ws| {
             #[cfg(test)]
             if let Some(runtime) = ws.test_runtimes.get(&pane_id) {
                 return Some(runtime);
@@ -1224,7 +1235,7 @@ impl AppState {
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         ws_idx: usize,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
-        let ws = self.workspaces.get(ws_idx)?;
+        let ws = self.session_containers().get(ws_idx)?;
         let pane_id = ws.focused_pane_id()?;
         self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
     }
@@ -1249,7 +1260,7 @@ impl AppState {
         if ws_idx != active_ws_idx {
             return false;
         }
-        let Some(ws) = self.workspaces.get(ws_idx) else {
+        let Some(ws) = self.session_containers().get(ws_idx) else {
             return false;
         };
         if tab_idx != ws.active_tab_index() {
@@ -1388,18 +1399,22 @@ impl AppState {
     /// read or write terminal metadata don't need to manually create them.
     pub fn ensure_test_terminals(&mut self) {
         use crate::terminal::TerminalState;
-        for ws in &self.workspaces {
-            for tab in &ws.tabs {
-                for pane in tab.panes.values() {
-                    if !self.terminals.contains_key(&pane.attached_terminal_id) {
-                        let cwd = ws.identity_cwd.clone();
-                        self.terminals.insert(
-                            pane.attached_terminal_id.clone(),
-                            TerminalState::new(pane.attached_terminal_id.clone(), cwd),
-                        );
-                    }
-                }
-            }
+        let missing = self
+            .session_containers()
+            .iter()
+            .flat_map(|ws| {
+                ws.tabs.iter().flat_map(|tab| {
+                    tab.panes
+                        .values()
+                        .map(|pane| (pane.attached_terminal_id.clone(), ws.identity_cwd.clone()))
+                })
+            })
+            .filter(|(terminal_id, _)| !self.terminals.contains_key(terminal_id))
+            .collect::<Vec<_>>();
+
+        for (terminal_id, cwd) in missing {
+            self.terminals
+                .insert(terminal_id.clone(), TerminalState::new(terminal_id, cwd));
         }
     }
 
@@ -1409,7 +1424,7 @@ impl AppState {
         runtime: crate::terminal::TerminalRuntime,
     ) {
         if let Some(ws) = self
-            .workspaces
+            .session_containers_mut()
             .iter_mut()
             .find(|ws| ws.terminal_id(pane_id).is_some())
         {
