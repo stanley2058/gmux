@@ -183,15 +183,19 @@ impl App {
         let Some((ws_idx, tab_idx)) = self.parse_tab_id(&params.tab_id) else {
             return tab_not_found(id, &params.tab_id);
         };
-        let workspace_id = self.state.workspaces[ws_idx].id.clone();
+        let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, tab_idx) else {
+            return tab_not_found(id, &params.tab_id);
+        };
+        self.state.collapse_to_single_session_workspace();
+        let workspace_id = self.state.workspaces[0].id.clone();
         let tab_id = self
-            .public_tab_id(ws_idx, tab_idx)
-            .unwrap_or_else(|| format!("{}:{}", workspace_id, tab_idx + 1));
+            .public_tab_id(0, flat_tab_idx)
+            .unwrap_or_else(|| format!("{}:{}", workspace_id, flat_tab_idx + 1));
         let Some(tab) = self
             .state
             .workspaces
-            .get_mut(ws_idx)
-            .and_then(|ws| ws.tabs.get_mut(tab_idx))
+            .get_mut(0)
+            .and_then(|ws| ws.tabs.get_mut(flat_tab_idx))
         else {
             return tab_not_found(id, &params.tab_id);
         };
@@ -201,11 +205,11 @@ impl App {
         self.emit_event(EventEnvelope {
             event: EventKind::TabRenamed,
             data: EventData::TabRenamed {
-                tab_id: self.public_tab_id(ws_idx, tab_idx).unwrap(),
+                tab_id: self.public_tab_id(0, flat_tab_idx).unwrap(),
                 label: params.label,
             },
         });
-        let tab = self.tab_info(ws_idx, tab_idx).unwrap();
+        let tab = self.tab_info(0, flat_tab_idx).unwrap();
 
         encode_success(id, ResponseResult::TabInfo { tab })
     }

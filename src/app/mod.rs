@@ -2321,6 +2321,36 @@ mod tests {
     }
 
     #[test]
+    fn tab_rename_request_collapses_legacy_workspace_target() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+
+        let target_tab_id = app.public_tab_id(1, 0).unwrap();
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_tab_rename_legacy".into(),
+            method: crate::api::schema::Method::TabRename(crate::api::schema::TabRenameParams {
+                tab_id: target_tab_id.clone(),
+                label: "worker".into(),
+            }),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "tab_info");
+        assert_eq!(response["result"]["tab"]["tab_id"], target_tab_id);
+        assert_eq!(response["result"]["tab"]["label"], "worker");
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 0);
+        assert_eq!(app.state.workspaces[0].tabs[1].display_name(), "worker");
+    }
+
+    #[test]
     fn new_terminal_cwd_follow_uses_source_cwd() {
         let cwd = creation::resolve_new_terminal_cwd(
             &crate::config::NewTerminalCwdConfig::Follow,
@@ -2423,6 +2453,38 @@ mod tests {
             .unwrap()
             .manual_label
             .is_none());
+    }
+
+    #[test]
+    fn pane_rename_request_collapses_legacy_workspace_target() {
+        let mut app = test_app();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        let target_pane = second.tabs[0].root_pane;
+        app.state.workspaces = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active = Some(0);
+        app.state.selected = 0;
+
+        let target_pane_id = app.pane_info(1, target_pane).unwrap().pane_id;
+        let target_tab_id = app.public_tab_id(1, 0).unwrap();
+        let response = app.handle_api_request(crate::api::schema::Request {
+            id: "req_pane_rename_legacy".into(),
+            method: crate::api::schema::Method::PaneRename(crate::api::schema::PaneRenameParams {
+                pane_id: target_pane_id.clone(),
+                label: Some("reviewer".into()),
+            }),
+        });
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+
+        assert_eq!(response["result"]["type"], "pane_info");
+        assert_eq!(response["result"]["pane"]["pane_id"], target_pane_id);
+        assert_eq!(response["result"]["pane"]["tab_id"], target_tab_id);
+        assert_eq!(response["result"]["pane"]["label"], "reviewer");
+        assert_eq!(app.state.workspaces.len(), 1);
+        assert_eq!(app.state.active, Some(0));
+        assert_eq!(app.state.selected, 0);
+        assert_eq!(app.state.workspaces[0].active_tab, 0);
     }
 
     #[tokio::test]

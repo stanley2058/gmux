@@ -196,6 +196,7 @@ impl App {
         else {
             return pane_not_found(id, &params.pane_id);
         };
+        self.state.collapse_to_single_session_workspace();
         let Some(terminal) = self.state.terminals.get_mut(&terminal_id) else {
             return pane_not_found(id, &params.pane_id);
         };
@@ -204,7 +205,9 @@ impl App {
             _ => terminal.clear_manual_label(),
         }
         self.state.mark_session_dirty();
-        let pane = self.pane_info(ws_idx, pane_id).unwrap();
+        let Some(pane) = self.pane_info_by_raw_id(pane_id) else {
+            return pane_not_found(id, &params.pane_id);
+        };
 
         encode_success(id, ResponseResult::PaneInfo { pane })
     }
