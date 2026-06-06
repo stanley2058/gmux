@@ -878,10 +878,7 @@ mod tests {
         assert_eq!(state.mode, Mode::Terminal);
         assert_eq!(state.workspaces[0].display_name(), "renamed");
         let snapshot = capture_snapshot(&state);
-        assert_eq!(
-            snapshot.workspaces[0].custom_name.as_deref(),
-            Some("renamed")
-        );
+        assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("renamed"));
 
         state.view.sidebar_rect = Rect::new(0, 0, 26, 20);
         state.view.terminal_area = Rect::new(26, 0, 80, 20);
@@ -905,10 +902,7 @@ mod tests {
         );
 
         let snapshot = capture_snapshot(&state);
-        assert_eq!(
-            snapshot.workspaces[0].tabs[0].custom_name.as_deref(),
-            Some("logs")
-        );
+        assert_eq!(snapshot.tabs[0].custom_name.as_deref(), Some("logs"));
     }
 
     #[test]

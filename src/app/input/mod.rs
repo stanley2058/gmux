@@ -493,7 +493,7 @@ fn capture_snapshot(state: &AppState) -> crate::persist::SessionSnapshot {
 
 #[cfg(test)]
 fn root_layout_ratio(snapshot: &crate::persist::SessionSnapshot) -> Option<f32> {
-    match &snapshot.workspaces.first()?.tabs.first()?.layout {
+    match &snapshot.tabs.first()?.layout {
         crate::persist::LayoutSnapshot::Split { ratio, .. } => Some(*ratio),
         crate::persist::LayoutSnapshot::Pane(_) => None,
     }

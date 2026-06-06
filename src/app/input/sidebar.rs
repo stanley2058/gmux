@@ -666,11 +666,8 @@ mod tests {
         );
         assert_eq!(app.state.mode, Mode::Terminal);
         let snapshot = capture_snapshot(&app.state);
-        assert_eq!(snapshot.workspaces[0].active_tab, first_tab);
-        assert_eq!(
-            snapshot.workspaces[0].tabs[first_tab].focused,
-            Some(second_pane.raw())
-        );
+        assert_eq!(snapshot.active_tab, first_tab);
+        assert_eq!(snapshot.tabs[first_tab].focused, Some(second_pane.raw()));
     }
 
     #[test]
