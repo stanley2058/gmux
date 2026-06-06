@@ -351,7 +351,7 @@ pub(crate) fn focused_terminal_cursor(
         .pane_infos
         .iter()
         .find(|info| info.is_focused)?;
-    let rt = app_state.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)?;
+    let rt = app_state.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)?;
     let scrolled_back = crate::ui::pane_is_scrolled_back(rt);
 
     let reveal = app_state.reveal_hidden_cursor_for_cjk_ime;

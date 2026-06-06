@@ -244,7 +244,7 @@ impl App {
             .ok_or_else(|| std::io::Error::other("no focused pane"))?;
         let scrollback = self
             .state
-            .runtime_for_pane_in_workspace(&self.terminal_runtimes, ws_idx, pane_id)
+            .runtime_for_pane_in_session_container(&self.terminal_runtimes, ws_idx, pane_id)
             .ok_or_else(|| std::io::Error::other("focused pane has no scrollback runtime"))?
             .recent_text(usize::MAX);
 

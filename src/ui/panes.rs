@@ -168,7 +168,7 @@ pub(super) fn compute_pane_infos(
         let pane_inner = pane_inner_rect(area, multi_pane);
         let mut inner_rect = pane_inner;
         let mut scrollbar_rect = None;
-        if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, focused_id) {
+        if let Some(rt) = app.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, focused_id) {
             (inner_rect, scrollbar_rect) = stable_scrollbar_gutter(rt, pane_inner);
             if resize_panes
                 && ws.terminal_id(focused_id).is_some_and(|terminal_id| {
@@ -211,7 +211,7 @@ pub(super) fn compute_pane_infos(
 
         let mut inner_rect = pane_inner;
         let mut scrollbar_rect = None;
-        if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id) {
+        if let Some(rt) = app.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id) {
             (inner_rect, scrollbar_rect) = stable_scrollbar_gutter(rt, pane_inner);
             if resize_panes
                 && ws.terminal_id(info.id).is_some_and(|terminal_id| {
@@ -253,7 +253,7 @@ pub(super) fn render_panes(
     let terminal_active = app.mode == Mode::Terminal;
 
     for info in &app.view.pane_infos {
-        if let Some(rt) = app.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id) {
+        if let Some(rt) = app.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id) {
             if multi_pane {
                 let (border_style, border_set) = if info.is_focused && terminal_active {
                     (

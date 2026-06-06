@@ -956,7 +956,7 @@ impl AppState {
         lines: usize,
     ) {
         if let Some(ws_idx) = self.session_container_index() {
-            if let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)
+            if let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
                 rt.scroll_up(lines);
             }
@@ -970,7 +970,7 @@ impl AppState {
         lines: usize,
     ) {
         if let Some(ws_idx) = self.session_container_index() {
-            if let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)
+            if let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
                 rt.scroll_down(lines);
             }
@@ -983,7 +983,7 @@ impl AppState {
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::pane::ScrollMetrics> {
         self.session_container_index()
-            .and_then(|i| self.runtime_for_pane_in_workspace(terminal_runtimes, i, pane_id))
+            .and_then(|i| self.runtime_for_pane_in_session_container(terminal_runtimes, i, pane_id))
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
     }
 
@@ -1118,7 +1118,7 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1143,7 +1143,7 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1167,7 +1167,7 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1199,7 +1199,7 @@ impl AppState {
         let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)
+        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)
         else {
             return false;
         };
@@ -1239,7 +1239,7 @@ impl AppState {
         offset_from_bottom: usize,
     ) {
         if let Some(ws_idx) = self.session_container_index() {
-            if let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)
+            if let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
             {
                 rt.set_scroll_offset_from_bottom(offset_from_bottom);
             }
@@ -1261,7 +1261,7 @@ impl AppState {
                     && row < track.y + track.height
             })
         })?;
-        let rt = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, info.id)?;
+        let rt = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, info.id)?;
         let metrics = rt.scroll_metrics()?;
         if metrics.max_offset_from_bottom == 0 {
             return None;
@@ -1293,7 +1293,7 @@ impl AppState {
             .iter()
             .find(|info| info.id == pane_id)?;
         let track = crate::ui::pane_scrollbar_rect(info)?;
-        let rt = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)?;
+        let rt = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)?;
         let metrics = rt.scroll_metrics()?;
         if metrics.max_offset_from_bottom == 0 {
             return None;
@@ -1382,7 +1382,7 @@ mod tests {
 
         let metrics = app
             .state
-            .runtime_for_pane_in_workspace(&app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&app.terminal_runtimes, 0, pane_id)
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
             .expect("scroll metrics after wheel");
         assert_eq!(metrics.offset_from_bottom, 7);

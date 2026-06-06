@@ -2027,7 +2027,7 @@ impl HeadlessServer {
             if !rect_fits_frame(info.inner_rect, &frame) {
                 retained_fallback!("pane_rect_outside_frame");
             }
-            let Some(runtime) = self.app.state.runtime_for_pane_in_workspace(
+            let Some(runtime) = self.app.state.runtime_for_pane_in_session_container(
                 &self.app.terminal_runtimes,
                 ws_idx,
                 info.id,
@@ -4718,7 +4718,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
@@ -4762,7 +4762,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(format!("\x1b[{pane_row};1Hzzzz").as_bytes());
 
@@ -4792,7 +4792,7 @@ next_tab = ""
         retained_server
             .app
             .state
-            .runtime_for_pane_in_workspace(
+            .runtime_for_pane_in_session_container(
                 &retained_server.app.terminal_runtimes,
                 0,
                 retained_pane_id,
@@ -4802,7 +4802,7 @@ next_tab = ""
         full_server
             .app
             .state
-            .runtime_for_pane_in_workspace(&full_server.app.terminal_runtimes, 0, full_pane_id)
+            .runtime_for_pane_in_session_container(&full_server.app.terminal_runtimes, 0, full_pane_id)
             .expect("full runtime")
             .test_process_pty_bytes(update);
 
@@ -4841,7 +4841,7 @@ next_tab = ""
         retained_server
             .app
             .state
-            .runtime_for_pane_in_workspace(
+            .runtime_for_pane_in_session_container(
                 &retained_server.app.terminal_runtimes,
                 0,
                 retained_pane_id,
@@ -4851,7 +4851,7 @@ next_tab = ""
         full_server
             .app
             .state
-            .runtime_for_pane_in_workspace(&full_server.app.terminal_runtimes, 0, full_pane_id)
+            .runtime_for_pane_in_session_container(&full_server.app.terminal_runtimes, 0, full_pane_id)
             .expect("full runtime")
             .test_process_pty_bytes(update);
 
@@ -4882,7 +4882,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
@@ -4914,7 +4914,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
@@ -4944,7 +4944,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rplain");
 
@@ -4980,7 +4980,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
@@ -5017,7 +5017,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
@@ -5054,7 +5054,7 @@ next_tab = ""
         let runtime = server
             .app
             .state
-            .runtime_for_pane_in_workspace(&server.app.terminal_runtimes, 0, pane_id)
+            .runtime_for_pane_in_session_container(&server.app.terminal_runtimes, 0, pane_id)
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 

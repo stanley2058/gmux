@@ -1119,7 +1119,7 @@ impl AppState {
         }
 
         // Leave mouse input to terminal apps that requested it.
-        let Some(rt) = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)
+        let Some(rt) = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
         else {
             return false;
         };
@@ -1179,7 +1179,7 @@ impl AppState {
             return None;
         }
 
-        let rt = self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)?;
+        let rt = self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)?;
         let screen_col = info.inner_rect.x.saturating_add(col);
         let screen_row = info.inner_rect.y.saturating_add(viewport_row);
         if let Some((_, _, uri)) = rt
@@ -1216,7 +1216,7 @@ impl AppState {
         };
 
         let text = self
-            .runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, sel.pane_id)
+            .runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, sel.pane_id)
             .and_then(|rt| rt.extract_selection(&sel));
         if let Some(text) = text {
             if !text.is_empty() {

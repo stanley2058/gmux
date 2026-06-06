@@ -1166,9 +1166,8 @@ impl AppState {
         self.session_tab_entries().count()
     }
 
-    /// Returns true when the given (workspace, tab, pane) refers to the
-    /// currently focused pane in the active workspace's active tab.
-    pub(crate) fn runtime_for_pane_in_workspace<'a>(
+    /// Returns the runtime for a pane in the indexed session container.
+    pub(crate) fn runtime_for_pane_in_session_container<'a>(
         &'a self,
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         ws_idx: usize,
@@ -1212,14 +1211,14 @@ impl AppState {
         })
     }
 
-    pub(crate) fn focused_runtime_in_workspace<'a>(
+    pub(crate) fn focused_runtime_in_session_container_at<'a>(
         &'a self,
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
         ws_idx: usize,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
         let ws = self.workspaces.get(ws_idx)?;
         let pane_id = ws.focused_pane_id()?;
-        self.runtime_for_pane_in_workspace(terminal_runtimes, ws_idx, pane_id)
+        self.runtime_for_pane_in_session_container(terminal_runtimes, ws_idx, pane_id)
     }
 
     pub(crate) fn focused_runtime_in_session_container<'a>(
@@ -1227,7 +1226,7 @@ impl AppState {
         terminal_runtimes: &'a crate::terminal::TerminalRuntimeRegistry,
     ) -> Option<&'a crate::terminal::TerminalRuntime> {
         let ws_idx = self.session_container_index()?;
-        self.focused_runtime_in_workspace(terminal_runtimes, ws_idx)
+        self.focused_runtime_in_session_container_at(terminal_runtimes, ws_idx)
     }
 
     pub fn is_active_pane(
