@@ -18,8 +18,7 @@ use super::state::{
 
 impl AppState {
     pub(crate) fn current_pane_focus_target(&self) -> Option<PaneFocusTarget> {
-        let ws_idx = self.active?;
-        let ws = self.workspaces.get(ws_idx)?;
+        let ws = self.session_container()?;
         let pane_id = ws.focused_pane_id()?;
         Some(PaneFocusTarget {
             workspace_id: ws.id.clone(),
@@ -709,7 +708,12 @@ impl AppState {
         let ws_idx = target.ws_idx;
         let pane_id = target.pane_id;
 
-        if self.active == Some(ws_idx) && self.workspaces[ws_idx].focused_pane_id() == Some(pane_id)
+        if self.session_container_index() == Some(ws_idx)
+            && self
+                .workspaces
+                .get(ws_idx)
+                .and_then(crate::workspace::Workspace::focused_pane_id)
+                == Some(pane_id)
         {
             self.ensure_pane_panel_entry_visible(idx);
             return true;
@@ -729,8 +733,7 @@ impl AppState {
         }
 
         let focused = self
-            .active
-            .and_then(|idx| self.workspaces.get(idx))
+            .session_container()
             .and_then(crate::workspace::Workspace::focused_pane_id);
         let current_idx =
             focused.and_then(|pane_id| entries.iter().position(|entry| entry.pane_id == pane_id));
@@ -865,7 +868,7 @@ impl AppState {
 
     fn refresh_tab_bar_view(&mut self) {
         let area = self.view.tab_bar_rect;
-        let Some(ws) = self.active.and_then(|idx| self.workspaces.get(idx)) else {
+        let Some(ws) = self.session_container() else {
             self.tab_scroll = 0;
             self.view.tab_hit_areas.clear();
             self.view.tab_scroll_left_hit_area = ratatui::layout::Rect::default();
@@ -895,10 +898,10 @@ impl AppState {
 
 impl AppState {
     pub fn navigate_pane(&mut self, direction: NavDirection) -> bool {
-        let Some(ws_idx) = self.active else {
+        let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
-        let Some(tab) = self.workspaces.get(ws_idx).and_then(|ws| ws.active_tab()) else {
+        let Some(tab) = self.session_container().and_then(|ws| ws.active_tab()) else {
             return false;
         };
         let panes = if tab.zoomed {
@@ -923,8 +926,7 @@ impl AppState {
                 .iter()
                 .fold(first.rect, |acc, p| acc.union(p.rect));
             if let Some(tab) = self
-                .active
-                .and_then(|i| self.workspaces.get_mut(i))
+                .session_container_mut()
                 .and_then(|ws| ws.active_tab_mut())
             {
                 tab.layout.resize_focused(direction, 0.05, area);
@@ -936,10 +938,10 @@ impl AppState {
     }
 
     pub fn cycle_pane(&mut self, reverse: bool) {
-        let Some(ws_idx) = self.active else {
+        let Some(ws_idx) = self.session_container_index() else {
             return;
         };
-        let Some(tab) = self.workspaces.get(ws_idx).and_then(|ws| ws.active_tab()) else {
+        let Some(tab) = self.session_container().and_then(|ws| ws.active_tab()) else {
             return;
         };
         let ids = tab.layout.pane_ids();
@@ -981,8 +983,7 @@ impl AppState {
 
     pub fn toggle_zoom(&mut self) {
         if let Some(tab) = self
-            .active
-            .and_then(|i| self.workspaces.get_mut(i))
+            .session_container_mut()
             .and_then(|ws| ws.active_tab_mut())
         {
             if tab.layout.pane_count() > 1 {
@@ -994,7 +995,7 @@ impl AppState {
 
     /// Close the focused pane. Returns true when the close was deferred to confirmation.
     pub fn close_pane(&mut self) -> bool {
-        let active = self.active;
+        let active = self.session_container_index();
         self.selection = None;
         self.selection_autoscroll = None;
         self.mark_session_dirty();
@@ -1079,10 +1080,7 @@ impl AppState {
         col: u16,
     ) -> bool {
         // Resolve the active pane cell the double-click landed on.
-        let Some(ws_idx) = self
-            .active
-            .filter(|idx| self.workspaces.get(*idx).is_some())
-        else {
+        let Some(ws_idx) = self.session_container_index() else {
             return false;
         };
 
@@ -1148,9 +1146,7 @@ impl AppState {
         viewport_row: u16,
         col: u16,
     ) -> Option<String> {
-        let ws_idx = self
-            .active
-            .filter(|idx| self.workspaces.get(*idx).is_some())?;
+        let ws_idx = self.session_container_index()?;
         let info = self.pane_info_by_id(pane_id)?;
         if viewport_row >= info.inner_rect.height || col >= info.inner_rect.width {
             return None;
@@ -1188,9 +1184,8 @@ impl AppState {
             return;
         }
 
-        let ws_idx = match self.active {
-            Some(ws_idx) if self.workspaces.get(ws_idx).is_some() => ws_idx,
-            _ => return,
+        let Some(ws_idx) = self.session_container_index() else {
+            return;
         };
 
         let text = self
