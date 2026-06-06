@@ -271,9 +271,10 @@ impl AppState {
                     self.scroll_tabs_right();
                     return None;
                 }
-                if let (Some(ws_idx), Some(tab_idx)) =
-                    (self.active, self.tab_at(mouse.column, mouse.row))
-                {
+                if let (Some(ws_idx), Some(tab_idx)) = (
+                    self.session_container_index(),
+                    self.tab_at(mouse.column, mouse.row),
+                ) {
                     self.tab_press = Some(TabPressState {
                         ws_idx,
                         tab_idx,
@@ -409,6 +410,7 @@ impl AppState {
                     }
                 }
 
+                let current_ws_idx = self.session_container_index();
                 if let Some(DragState {
                     target:
                         DragTarget::TabReorder {
@@ -416,7 +418,7 @@ impl AppState {
                         },
                 }) = &mut self.drag
                 {
-                    if self.active == Some(*ws_idx) {
+                    if current_ws_idx == Some(*ws_idx) {
                         *insert_idx = tab_drop_index;
                     }
                 } else if let Some(drag) = &self.drag {
@@ -446,7 +448,7 @@ impl AppState {
                             };
                             let ratio = ratio.clamp(0.1, 0.9);
                             let path = path.clone();
-                            if let Some(ws) = self.active.and_then(|i| self.workspaces.get_mut(i)) {
+                            if let Some(ws) = self.session_container_mut() {
                                 ws.layout.set_ratio_at(&path, ratio);
                                 self.mark_session_dirty();
                             }
@@ -518,7 +520,7 @@ impl AppState {
                                 insert_idx: Some(insert_idx),
                             },
                     }) => {
-                        if self.active == Some(ws_idx) {
+                        if self.session_container_index() == Some(ws_idx) {
                             self.move_tab(source_tab_idx, insert_idx);
                             self.mode = Mode::Terminal;
                         }
@@ -526,7 +528,7 @@ impl AppState {
                     Some(_) => {}
                     None => {
                         if let Some(press) = tab_press {
-                            if self.active == Some(press.ws_idx) {
+                            if self.session_container_index() == Some(press.ws_idx) {
                                 self.switch_tab(press.tab_idx);
                                 self.mode = Mode::Terminal;
                                 return None;
@@ -610,9 +612,10 @@ impl AppState {
             MouseEventKind::Down(MouseButton::Right)
                 if self.tab_at(mouse.column, mouse.row).is_some() =>
             {
-                if let (Some(ws_idx), Some(tab_idx)) =
-                    (self.active, self.tab_at(mouse.column, mouse.row))
-                {
+                if let (Some(ws_idx), Some(tab_idx)) = (
+                    self.session_container_index(),
+                    self.tab_at(mouse.column, mouse.row),
+                ) {
                     self.switch_tab(tab_idx);
                     self.context_menu = Some(ContextMenuState {
                         kind: ContextMenuKind::Tab { ws_idx, tab_idx },
@@ -628,8 +631,7 @@ impl AppState {
                 if let Some(info) = self.pane_mouse_target(mouse.column, mouse.row).cloned() {
                     self.focus_pane(info.id);
                     let has_manual_label = self
-                        .active
-                        .and_then(|ws_idx| self.workspaces.get(ws_idx))
+                        .session_container()
                         .and_then(|ws| ws.pane_state(info.id))
                         .and_then(|pane| self.terminals.get(&pane.attached_terminal_id))
                         .and_then(|terminal| terminal.manual_label.as_ref())
