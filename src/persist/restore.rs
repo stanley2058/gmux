@@ -789,8 +789,6 @@ mod tests {
                 tabs,
                 active_tab: 0,
             }],
-            active: Some(0),
-            selected: 0,
             pane_panel_scope: crate::app::state::PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),

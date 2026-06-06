@@ -205,8 +205,6 @@ mod tests {
             tabs: vec![],
             active_tab: 0,
             workspaces: vec![],
-            active: None,
-            selected: 0,
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),

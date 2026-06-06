@@ -26,10 +26,6 @@ pub struct SessionSnapshot {
     #[serde(default, skip_serializing)]
     #[allow(dead_code)]
     pub workspaces: Vec<WorkspaceSnapshot>,
-    #[serde(default, skip_serializing)]
-    pub active: Option<usize>,
-    #[serde(default, skip_serializing)]
-    pub selected: usize,
     #[serde(default)]
     pub pane_panel_scope: crate::app::state::PanePanelScope,
     #[serde(default)]
@@ -200,14 +196,11 @@ fn migrate_snapshot(raw: RawSessionSnapshot) -> Result<SessionSnapshot, String> 
         let tabs = flatten_workspace_tabs(&workspaces);
         (tabs, workspaces, active_tab)
     };
-    let active = (!tabs.is_empty()).then_some(0);
     Ok(SessionSnapshot {
         version: raw.version,
         tabs,
         active_tab,
         workspaces,
-        active,
-        selected: 0,
         pane_panel_scope: raw.pane_panel_scope,
         sidebar_width: raw.sidebar_width,
         sidebar_section_split: raw.sidebar_section_split,
@@ -349,14 +342,11 @@ pub fn capture(
         .collect();
     let tabs = flatten_workspace_tabs(&workspaces);
     let active_tab = active_tab_from_workspaces(&workspaces, active);
-    let has_workspaces = !workspaces.is_empty();
     SessionSnapshot {
         version: SNAPSHOT_VERSION,
         tabs,
         active_tab,
         workspaces,
-        active: has_workspaces.then_some(0),
-        selected: 0,
         pane_panel_scope,
         sidebar_width: Some(sidebar_width),
         sidebar_section_split: Some(sidebar_section_split),
@@ -641,8 +631,6 @@ mod tests {
             tabs: vec![],
             active_tab: 0,
             workspaces: vec![],
-            active: None,
-            selected: 0,
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
@@ -651,7 +639,7 @@ mod tests {
         let json = serde_json::to_string(&snap).unwrap();
         let restored = parse_snapshot(&json).unwrap();
         assert!(restored.workspaces.is_empty());
-        assert_eq!(restored.active, None);
+        assert_eq!(restored.active_tab, 0);
         assert_eq!(restored.sidebar_width, Some(26));
         assert_eq!(restored.sidebar_section_split, Some(0.5));
     }
@@ -721,8 +709,6 @@ mod tests {
                 tabs,
                 active_tab: 0,
             }],
-            active: Some(0),
-            selected: 0,
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),
@@ -760,8 +746,7 @@ mod tests {
 
         assert_eq!(snap.version, 3);
         assert_eq!(snap.workspaces.len(), 2);
-        assert_eq!(snap.active, Some(0));
-        assert_eq!(snap.selected, 0);
+        assert_eq!(snap.active_tab, 0);
         assert_eq!(snap.pane_panel_scope, PanePanelScope::AllWorkspaces);
         assert_eq!(snap.sidebar_width, None);
         assert_eq!(snap.sidebar_section_split, None);
@@ -870,8 +855,6 @@ mod tests {
             .map(|ws| ws.id.clone().unwrap())
             .collect();
         assert_eq!(captured_ids, ids);
-        assert_eq!(snapshot.active, Some(0));
-        assert_eq!(snapshot.selected, 0);
         assert_eq!(snapshot.active_tab, 0);
     }
 
@@ -902,8 +885,7 @@ mod tests {
         let snapshot = capture_from_state(&state);
         assert_eq!(snapshot.workspaces.len(), 1);
         assert_eq!(snapshot.workspaces[0].custom_name.as_deref(), Some("one"));
-        assert_eq!(snapshot.active, Some(0));
-        assert_eq!(snapshot.selected, 0);
+        assert_eq!(snapshot.active_tab, 0);
     }
 
     #[test]
@@ -1173,8 +1155,6 @@ mod tests {
                 }],
                 active_tab: 0,
             }],
-            active: Some(0),
-            selected: 0,
             pane_panel_scope: PanePanelScope::CurrentWorkspace,
             sidebar_width: Some(26),
             sidebar_section_split: Some(0.5),

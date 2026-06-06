@@ -574,12 +574,8 @@ impl App {
         app.state.workspaces = workspaces;
         app.state.terminals = terminals;
         app.terminal_runtimes = runtimes.into();
-        app.state.active = snapshot
-            .active
-            .filter(|&idx| idx < app.state.workspaces.len());
-        app.state.selected = snapshot
-            .selected
-            .min(app.state.workspaces.len().saturating_sub(1));
+        app.state.active = (!app.state.workspaces.is_empty()).then_some(0);
+        app.state.selected = 0;
         app.state.pane_panel_scope = snapshot.pane_panel_scope;
         if let Some(width) = snapshot.sidebar_width {
             app.state.sidebar_width = width;
