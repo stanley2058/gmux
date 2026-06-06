@@ -1,5 +1,5 @@
 {
-  description = "gmux — terminal workspace manager for AI coding agents";
+  description = "gmux - terminal multiplexer with persistent sessions, tabs, and panes";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

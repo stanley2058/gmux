@@ -119,23 +119,23 @@ jobs:
         include:
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-            name: herdr-linux-x86_64
+            name: gmux-linux-x86_64
           - target: aarch64-unknown-linux-musl
             os: ubuntu-latest
-            name: herdr-linux-aarch64
+            name: gmux-linux-aarch64
           - target: x86_64-apple-darwin
             os: macos-latest
-            name: herdr-macos-x86_64
+            name: gmux-macos-x86_64
           - target: aarch64-apple-darwin
             os: macos-latest
-            name: herdr-macos-aarch64
+            name: gmux-macos-aarch64
     runs-on: ${{ matrix.os }}
     env:
       LIBGHOSTTY_VT_OPTIMIZE: ReleaseFast
       LIBGHOSTTY_VT_SIMD: 'true'
-      HERDR_BUILD_CHANNEL: preview
-      HERDR_BUILD_ID: ${{ needs.preflight.outputs.build_id }}
-      HERDR_BUILD_COMMIT: ${{ needs.preflight.outputs.commit }}
+      GMUX_BUILD_CHANNEL: preview
+      GMUX_BUILD_ID: ${{ needs.preflight.outputs.build_id }}
+      GMUX_BUILD_COMMIT: ${{ needs.preflight.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -187,7 +187,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp target/${{ matrix.target }}/release/herdr ${{ matrix.name }}
+          cp target/${{ matrix.target }}/release/gmux ${{ matrix.name }}
           if [ "${{ runner.os }}" = "Linux" ]; then
             file ${{ matrix.name }} > BUILD_INFO.txt
             ldd ${{ matrix.name }} > LDD_INFO.txt 2>&1 || true
@@ -251,9 +251,9 @@ jobs:
           python3 - <<'PY'
           import json, pathlib
           result = {}
-          for path in pathlib.Path('artifacts').glob('herdr-*/*.sha256'):
+          for path in pathlib.Path('artifacts').glob('gmux-*/*.sha256'):
               digest, name = path.read_text().split()[:2]
-              target = name.removeprefix('herdr-')
+              target = name.removeprefix('gmux-')
               result[target] = digest
           pathlib.Path('preview-sha256.json').write_text(json.dumps(result, indent=2) + '\n')
           PY
@@ -269,10 +269,10 @@ jobs:
           overwrite_files: true
           target_commitish: ${{ needs.preflight.outputs.commit }}
           files: |
-            artifacts/herdr-linux-x86_64/herdr-linux-x86_64
-            artifacts/herdr-linux-aarch64/herdr-linux-aarch64
-            artifacts/herdr-macos-x86_64/herdr-macos-x86_64
-            artifacts/herdr-macos-aarch64/herdr-macos-aarch64
+            artifacts/gmux-linux-x86_64/gmux-linux-x86_64
+            artifacts/gmux-linux-aarch64/gmux-linux-aarch64
+            artifacts/gmux-macos-x86_64/gmux-macos-x86_64
+            artifacts/gmux-macos-aarch64/gmux-macos-aarch64
 
       - name: Update preview manifest
         run: |
