@@ -206,6 +206,15 @@ pub enum ClientError {
     Protocol(protocol::FramingError),
 }
 
+fn is_graceful_server_shutdown(err: &ClientError) -> bool {
+    matches!(
+        err,
+        ClientError::ServerShutdown {
+            reason: Some(reason)
+        } if matches!(reason.as_str(), "detached" | "server is shutting down")
+    )
+}
+
 impl std::fmt::Display for ClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -628,12 +637,7 @@ fn run_client_with_mode(
         rt.shutdown_timeout(Duration::from_millis(100));
         crate::logging::shutdown("client");
 
-        if matches!(
-            err,
-            ClientError::ServerShutdown {
-                reason: Some(reason)
-            } if reason == "detached"
-        ) {
+        if is_graceful_server_shutdown(&err) {
             return Ok(());
         }
 
@@ -1542,6 +1546,15 @@ mod tests {
             msg.contains("server shut down"),
             "should mention shutdown: {msg}"
         );
+    }
+
+    #[test]
+    fn server_shutdown_for_normal_server_exit_is_graceful() {
+        let err = ClientError::ServerShutdown {
+            reason: Some("server is shutting down".into()),
+        };
+
+        assert!(is_graceful_server_shutdown(&err));
     }
 
     #[test]
