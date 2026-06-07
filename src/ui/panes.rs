@@ -255,6 +255,8 @@ pub(super) fn render_panes(
         return;
     };
 
+    render_top_separator(app, frame);
+
     let multi_pane = ws.layout.pane_count() > 1;
     let terminal_active = app.mode == Mode::Terminal;
 
@@ -291,6 +293,30 @@ pub(super) fn render_panes(
 
     if multi_pane {
         render_split_borders(app, frame, terminal_active);
+    }
+}
+
+fn top_separator_rect(app: &AppState) -> Option<Rect> {
+    if app.view.layout != crate::app::state::ViewLayout::Desktop {
+        return None;
+    }
+
+    let terminal = app.view.terminal_area;
+    if terminal.width == 0 || terminal.y == 0 {
+        return None;
+    }
+
+    Some(Rect::new(terminal.x, terminal.y - 1, terminal.width, 1))
+}
+
+fn render_top_separator(app: &AppState, frame: &mut Frame) {
+    let Some(separator) = top_separator_rect(app) else {
+        return;
+    };
+    let style = Style::default().fg(app.palette.overlay0);
+    let y = separator.y;
+    for x in separator.x..separator.x + separator.width {
+        frame.buffer_mut()[(x, y)].set_symbol("─").set_style(style);
     }
 }
 

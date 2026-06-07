@@ -150,7 +150,15 @@ fn compute_view_internal(
     }
 
     let has_tabs = app.session().is_some();
-    let (tab_bar_rect, terminal_area) = if has_tabs && area.height > 1 {
+    let (tab_bar_rect, terminal_area) = if has_tabs && area.height > 2 {
+        let [tab_bar_rect, _, terminal_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+        ])
+        .areas(area);
+        (tab_bar_rect, terminal_area)
+    } else if has_tabs && area.height > 1 {
         let [tab_bar_rect, terminal_area] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         (tab_bar_rect, terminal_area)
@@ -498,7 +506,7 @@ mod tests {
 
         assert_eq!(app.view.sidebar_rect, Rect::default());
         assert_eq!(app.view.tab_bar_rect, Rect::new(0, 0, 100, 1));
-        assert_eq!(app.view.terminal_area, Rect::new(0, 1, 100, 19));
+        assert_eq!(app.view.terminal_area, Rect::new(0, 2, 100, 18));
     }
 
     #[test]
