@@ -9,6 +9,7 @@ use crate::api::schema::{
     SplitDirection,
 };
 
+mod completions;
 mod pane;
 mod server;
 mod status;
@@ -32,6 +33,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
             exit_code
         }
         "status" => status::run_status_command(&args[2..])?,
+        "completions" | "completion" => completions::run_completions_command(&args[2..])?,
         "config" => run_config_command(&args[2..])?,
         "ls" => session_list(&args[2..], "usage: gmux ls [--json]")?,
         "kill-session" => kill_session_alias(&args[2..])?,
