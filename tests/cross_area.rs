@@ -6,7 +6,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -31,6 +31,64 @@ fn unique_test_dir() -> PathBuf {
 struct SpawnedGmux {
     _master: Option<Box<dyn MasterPty + Send>>,
     child: Box<dyn Child + Send + Sync>,
+}
+
+struct AsyncPtyOutput {
+    output: Arc<Mutex<String>>,
+}
+
+impl AsyncPtyOutput {
+    fn spawn(mut reader: Box<dyn Read + Send>) -> Self {
+        let output = Arc::new(Mutex::new(String::new()));
+        let thread_output = output.clone();
+        thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let mut output = thread_output
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Self { output }
+    }
+
+    fn text(&self) -> String {
+        self.output
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn wait_contains_any(&self, needles: &[&str], timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            let text = self.text();
+            if needles.iter().any(|needle| text.contains(needle)) {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(30));
+        }
+        false
+    }
+
+    fn wait_len_at_least(&self, len: usize, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if self.text().len() >= len {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(30));
+        }
+        false
+    }
 }
 
 impl SpawnedGmux {
@@ -942,39 +1000,19 @@ fn cross_area_server_kill_then_restart_and_reconnect() {
     // Attach a real thin client process and prove it reached attached state
     // by observing an incoming frame on its PTY stream.
     let mut thin_client = spawn_client_process(&config_home, &runtime_dir, &api_socket);
-    let mut thin_reader = thin_client
+    let thin_reader = thin_client
         ._master
         .as_ref()
         .expect("thin client master")
         .try_clone_reader()
         .expect("clone thin client reader");
+    let thin_output = AsyncPtyOutput::spawn(thin_reader);
 
-    let attached_before_kill = {
-        let deadline = Instant::now() + Duration::from_secs(8);
-        let mut observed = false;
-        let mut buf = [0u8; 4096];
-        while Instant::now() < deadline {
-            match thin_reader.read(&mut buf) {
-                Ok(n) if n > 0 => {
-                    let out = String::from_utf8_lossy(&buf[..n]);
-                    if out.contains("\u{2500}")
-                        || out.contains("workspace")
-                        || out.contains("pane")
-                        || out.contains("terminal")
-                    {
-                        observed = true;
-                        break;
-                    }
-                }
-                Ok(_) => thread::sleep(Duration::from_millis(30)),
-                Err(_) => thread::sleep(Duration::from_millis(30)),
-            }
-        }
-        observed
-    };
+    let attached_before_kill = thin_output.wait_len_at_least(100, Duration::from_secs(8));
     assert!(
         attached_before_kill,
-        "thin client should complete attach before server SIGKILL"
+        "thin client should complete attach before server SIGKILL; output: {:?}",
+        thin_output.text()
     );
 
     // Kill server abruptly and verify thin client exits with lost-connection messaging.
@@ -989,26 +1027,11 @@ fn cross_area_server_kill_then_restart_and_reconnect() {
     );
     drop(server);
 
-    let mut crash_output = String::new();
-    let thin_exited = {
-        let deadline = Instant::now() + Duration::from_secs(12);
-        let mut exited = false;
-        let mut buf = [0u8; 1024];
-        while Instant::now() < deadline {
-            if thin_client.child.try_wait().ok().flatten().is_some() {
-                exited = true;
-                break;
-            }
-            if let Ok(n) = thin_reader.read(&mut buf) {
-                if n > 0 {
-                    crash_output.push_str(&String::from_utf8_lossy(&buf[..n]));
-                }
-            }
-            thread::sleep(Duration::from_millis(50));
-        }
-        exited
-    };
-    assert!(thin_exited, "thin client should exit after server SIGKILL");
+    assert!(
+        wait_for_child_exit(&mut thin_client.child, Duration::from_secs(12)),
+        "thin client should exit after server SIGKILL; output: {:?}",
+        thin_output.text()
+    );
 
     let thin_status = thin_client
         .child
@@ -1019,18 +1042,8 @@ fn cross_area_server_kill_then_restart_and_reconnect() {
         "thin client should exit non-zero after unexpected server crash"
     );
 
-    // Drain trailing output and require the explicit user-visible lost-connection message.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let mut buf = [0u8; 2048];
-    while Instant::now() < deadline {
-        match thin_reader.read(&mut buf) {
-            Ok(n) if n > 0 => crash_output.push_str(&String::from_utf8_lossy(&buf[..n])),
-            Ok(_) => break,
-            Err(_) => break,
-        }
-        thread::sleep(Duration::from_millis(30));
-    }
-
+    let _ = thin_output.wait_contains_any(&["lost connection to server"], Duration::from_secs(5));
+    let crash_output = thin_output.text();
     let crash_output_lc = crash_output.to_lowercase();
     assert!(
         crash_output_lc.contains("lost connection to server"),
