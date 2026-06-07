@@ -446,9 +446,14 @@ impl HeadlessServer {
             self.app.sync_headless_animation_timer(now);
 
             // 7. Render virtually and stream frames.
-            if needs_render && self.app.can_render_now(now) {
+            let input_bypass = self.app.input_render_bypass_pending
+                && self.app.render_dirty.load(Ordering::Acquire);
+            if needs_render && (self.app.can_render_now(now) || input_bypass) {
                 crate::render_prof::event("render.attempt");
                 let pty_dirty = self.app.render_dirty.swap(false, Ordering::AcqRel);
+                if pty_dirty {
+                    self.app.input_render_bypass_pending = false;
+                }
                 if pty_dirty {
                     crate::render_prof::event("render.attempt.pty_dirty");
                 }
@@ -1120,6 +1125,8 @@ impl HeadlessServer {
                 let payload = paste_payload_for_runtime(runtime, &path);
                 if let Err(err) = runtime.try_send_bytes(Bytes::from(payload)) {
                     warn!(client_id, terminal_id = %terminal_id, err = %err, "terminal attach clipboard image paste failed");
+                } else {
+                    self.app.input_render_bypass_pending = true;
                 }
             }
             return true;
@@ -1160,10 +1167,13 @@ impl HeadlessServer {
             return false;
         };
 
-        if let Err(err) =
-            apply_terminal_attach_scroll(runtime, source, direction, lines, column, row, modifiers)
-        {
-            warn!(client_id, terminal_id = %terminal_id, err = %err, "terminal attach scroll failed");
+        match apply_terminal_attach_scroll(
+            runtime, source, direction, lines, column, row, modifiers,
+        ) {
+            Ok(()) => self.app.input_render_bypass_pending = true,
+            Err(err) => {
+                warn!(client_id, terminal_id = %terminal_id, err = %err, "terminal attach scroll failed");
+            }
         }
         true
     }
@@ -1561,6 +1571,8 @@ impl HeadlessServer {
                     if let Some(runtime) = self.runtime_for_terminal_id_string(terminal_id) {
                         if let Err(err) = apply_terminal_attach_input(runtime, data) {
                             warn!(client_id, terminal_id = %terminal_id, err = %err);
+                        } else {
+                            self.app.input_render_bypass_pending = true;
                         }
                     }
                     return true;

@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const MIN_RENDER_INTERVAL: Duration = Duration::from_millis(16);
+const MIN_RENDER_INTERVAL: Duration = Duration::from_millis(8);
 pub(crate) const ANIMATION_INTERVAL: Duration = Duration::from_millis(16);
 pub(crate) const HEADLESS_ANIMATION_INTERVAL: Duration = Duration::from_millis(128);
 pub(crate) const HEADLESS_ANIMATION_TICK_STEP: u32 = 8;
@@ -104,6 +104,7 @@ pub struct App {
     pub render_notify: Arc<Notify>,
     pub render_dirty: Arc<AtomicBool>,
     pub(crate) full_redraw_pending: bool,
+    pub(crate) input_render_bypass_pending: bool,
     pub(crate) overlay_panes: HashMap<crate::layout::PaneId, OverlayPaneState>,
     pub(crate) local_terminal_notifications: bool,
     pub(crate) config_reloaded_from_disk: bool,
@@ -437,6 +438,7 @@ impl App {
             render_notify,
             render_dirty,
             full_redraw_pending: false,
+            input_render_bypass_pending: false,
             overlay_panes: HashMap::new(),
             local_terminal_notifications: true,
             config_reloaded_from_disk: false,
@@ -589,8 +591,13 @@ impl App {
             self.sync_animation_timer(now);
             self.sync_host_mouse_capture(&mut host_mouse_capture_active)?;
 
-            if needs_render && self.can_render_now(now) {
-                self.render_dirty.swap(false, Ordering::AcqRel);
+            let input_bypass =
+                self.input_render_bypass_pending && self.render_dirty.load(Ordering::Acquire);
+            if needs_render && (self.can_render_now(now) || input_bypass) {
+                let pty_dirty = self.render_dirty.swap(false, Ordering::AcqRel);
+                if pty_dirty {
+                    self.input_render_bypass_pending = false;
+                }
                 let _sync_output = SyncOutputGuard::begin()?;
                 let kitty_graphics_enabled = self.state.kitty_graphics_enabled;
                 if self.full_redraw_pending {
@@ -992,7 +999,7 @@ impl App {
                             .state
                             .focused_runtime_in_session(&self.terminal_runtimes)
                         {
-                            let _ = runtime.try_send_bytes(bytes::Bytes::from(
+                            let sent = runtime.try_send_bytes(bytes::Bytes::from(
                                 if runtime
                                     .input_state()
                                     .map(|s| s.bracketed_paste)
@@ -1003,6 +1010,9 @@ impl App {
                                     text
                                 },
                             ));
+                            if sent.is_ok() {
+                                self.input_render_bypass_pending = true;
+                            }
                         }
                     }
                 }

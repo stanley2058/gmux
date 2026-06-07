@@ -23,7 +23,9 @@ impl App {
             return;
         };
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
-            let _ = runtime.try_send_bytes(input.bytes);
+            if runtime.try_send_bytes(input.bytes).is_ok() {
+                self.input_render_bypass_pending = true;
+            }
         }
     }
 
@@ -186,7 +188,9 @@ impl App {
             return;
         };
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
-            let _ = runtime.send_bytes(input.bytes).await;
+            if runtime.send_bytes(input.bytes).await.is_ok() {
+                self.input_render_bypass_pending = true;
+            }
         }
     }
 }
@@ -896,11 +900,13 @@ mod tests {
         app.state.view.pane_infos = pane_infos;
 
         let key = crate::input::parse_terminal_key_sequence("\x1b\x7f").unwrap();
+        assert!(!app.input_render_bypass_pending);
         app.handle_terminal_key_headless(key);
 
         let bytes = rx.try_recv().unwrap();
         assert_eq!(bytes.as_ref(), b"\x1b\x7f");
         assert!(rx.try_recv().is_err());
+        assert!(app.input_render_bypass_pending);
     }
 
     #[tokio::test]
