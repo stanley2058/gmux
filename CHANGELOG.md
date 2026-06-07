@@ -10,6 +10,6 @@
 
 ### Removed
 
-- Removed `gmux update` and `gmux channel`.
+- Removed the self-update and update-channel commands.
 - Removed background update checks, release-note announcements, product announcements, and update notifications from the TUI/server runtime.
-- Removed remote bootstrap downloads from `gmux.dev`; remote use now requires an existing compatible remote binary, a same-platform local binary, or `GMUX_REMOTE_BINARY`.
+- Removed remote bootstrap downloads from hosted manifests; remote use now requires an existing compatible remote binary, a same-platform local binary, or `GMUX_REMOTE_BINARY`.
