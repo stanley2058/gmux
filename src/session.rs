@@ -158,6 +158,10 @@ pub fn active_name() -> Option<String> {
         .filter(|name| validate_name(name).is_ok())
 }
 
+pub fn active_display_name() -> String {
+    active_name().unwrap_or_else(|| DEFAULT_SESSION_NAME.to_string())
+}
+
 pub fn local_attach_command() -> String {
     match active_name() {
         Some(name) => format!("gmux session attach {name}"),
@@ -486,6 +490,24 @@ mod tests {
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn active_display_name_uses_default_when_session_env_is_absent() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::remove_var(SESSION_ENV_VAR);
+
+        assert_eq!(active_display_name(), DEFAULT_SESSION_NAME);
+    }
+
+    #[test]
+    fn active_display_name_uses_named_session() {
+        let _guard = env_lock().lock().unwrap();
+        std::env::set_var(SESSION_ENV_VAR, "work");
+
+        assert_eq!(active_display_name(), "work");
+
+        std::env::remove_var(SESSION_ENV_VAR);
     }
 
     #[test]

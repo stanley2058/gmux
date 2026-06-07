@@ -8,6 +8,7 @@ use ratatui::{
 
 use super::widgets::panel_contrast_fg;
 use crate::app::AppState;
+use crate::session;
 use crate::terminal::TerminalRuntimeRegistry;
 use crate::workspace::{SessionUiState, Tab};
 
@@ -86,10 +87,8 @@ fn focused_program_name(app: &AppState, terminal_runtimes: &TerminalRuntimeRegis
         .unwrap_or_else(|| "shell".to_string())
 }
 
-fn session_name(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) -> String {
-    app.session()
-        .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
-        .unwrap_or_else(|| "gmux".to_string())
+fn session_name(_app: &AppState, _terminal_runtimes: &TerminalRuntimeRegistry) -> String {
+    session::active_display_name()
 }
 
 pub(crate) fn top_bar_menu_width(app: &AppState) -> u16 {
@@ -535,5 +534,18 @@ pub(super) fn render_tab_bar(
                 .set_symbol("…")
                 .set_style(Style::default().fg(p.overlay0));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn launch_label_uses_command_basename() {
+        assert_eq!(
+            launch_label(Some(&vec!["/usr/bin/fish".to_string()])),
+            Some("fish".to_string())
+        );
     }
 }

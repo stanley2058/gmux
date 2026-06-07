@@ -98,7 +98,17 @@ fn process_display_name(process: &crate::platform::ForegroundProcess) -> Option<
 }
 
 fn foreground_process_name(shell_pid: u32) -> Option<String> {
-    let job = crate::platform::foreground_job(shell_pid)?;
+    let mut job = crate::platform::foreground_job(shell_pid)?;
+    let session_pids = crate::platform::session_processes(shell_pid);
+    if !session_pids.is_empty() {
+        job.processes
+            .retain(|process| session_pids.contains(&process.pid));
+    }
+
+    if job.processes.is_empty() {
+        return None;
+    }
+
     job.processes
         .iter()
         .find(|process| process.pid != shell_pid)
