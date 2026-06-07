@@ -255,10 +255,10 @@ pub(super) fn render_panes(
         return;
     };
 
-    render_top_separator(app, frame);
-
     let multi_pane = ws.layout.pane_count() > 1;
     let terminal_active = app.mode == Mode::Terminal;
+
+    render_top_separator(app, frame, terminal_active);
 
     for info in &app.view.pane_infos {
         if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, info.id) {
@@ -309,26 +309,107 @@ fn top_separator_rect(app: &AppState) -> Option<Rect> {
     Some(Rect::new(terminal.x, terminal.y - 1, terminal.width, 1))
 }
 
-fn render_top_separator(app: &AppState, frame: &mut Frame) {
+fn render_top_separator(app: &AppState, frame: &mut Frame, terminal_active: bool) {
     let Some(separator) = top_separator_rect(app) else {
         return;
     };
-    let style = Style::default().fg(app.palette.overlay0);
     let y = separator.y;
+    let focused = app
+        .view
+        .pane_infos
+        .iter()
+        .find(|info| info.is_focused)
+        .map(|info| info.rect);
+
     for x in separator.x..separator.x + separator.width {
+        let focused_segment = terminal_active
+            && focused.is_some_and(|rect| {
+                rect.y == app.view.terminal_area.y
+                    && x >= rect.x
+                    && x < rect.x.saturating_add(rect.width)
+            });
+        let style = split_border_style(app, focused_segment);
         frame.buffer_mut()[(x, y)].set_symbol("─").set_style(style);
     }
 }
 
-fn split_touches_focused_pane(border: &SplitBorder, focused: Rect) -> bool {
+fn split_border_style(app: &AppState, focused_segment: bool) -> Style {
+    if focused_segment {
+        Style::default().fg(app.palette.accent)
+    } else {
+        Style::default().fg(app.palette.overlay0)
+    }
+}
+
+fn overlapping_range(a_start: u16, a_len: u16, b_start: u16, b_len: u16) -> Option<(u16, u16)> {
+    let start = a_start.max(b_start);
+    let end = a_start
+        .saturating_add(a_len)
+        .min(b_start.saturating_add(b_len));
+    (start < end).then_some((start, end))
+}
+
+fn pane_covers_horizontal_side(pane: &PaneInfo, border: &SplitBorder, left: bool) -> bool {
+    let touches = if left {
+        pane.rect.x.saturating_add(pane.rect.width) == border.pos
+    } else {
+        pane.rect.x == border.pos
+    };
+    touches
+        && pane.rect.y <= border.area.y
+        && pane.rect.y.saturating_add(pane.rect.height)
+            >= border.area.y.saturating_add(border.area.height)
+}
+
+fn horizontal_border_has_one_pane_per_side(border: &SplitBorder, panes: &[PaneInfo]) -> bool {
+    let left_count = panes
+        .iter()
+        .filter(|pane| pane_covers_horizontal_side(pane, border, true))
+        .count();
+    let right_count = panes
+        .iter()
+        .filter(|pane| pane_covers_horizontal_side(pane, border, false))
+        .count();
+    left_count == 1 && right_count == 1
+}
+
+fn focused_split_border_segment(
+    border: &SplitBorder,
+    focused: Rect,
+    panes: &[PaneInfo],
+) -> Option<(u16, u16)> {
     match border.direction {
         Direction::Horizontal => {
-            (border.pos == focused.x || border.pos == focused.x.saturating_add(focused.width))
-                && ranges_overlap(focused.y, focused.height, border.area.y, border.area.height)
+            let focused_left_of_border = border.pos == focused.x.saturating_add(focused.width);
+            let focused_right_of_border = border.pos == focused.x;
+            if !focused_left_of_border && !focused_right_of_border {
+                return None;
+            }
+
+            let overlap =
+                overlapping_range(focused.y, focused.height, border.area.y, border.area.height)?;
+            if overlap
+                == (
+                    border.area.y,
+                    border.area.y.saturating_add(border.area.height),
+                )
+                && horizontal_border_has_one_pane_per_side(border, panes)
+            {
+                let midpoint = border.area.y + border.area.height.saturating_add(1) / 2;
+                if focused_left_of_border {
+                    Some((border.area.y, midpoint))
+                } else {
+                    Some((midpoint, border.area.y.saturating_add(border.area.height)))
+                }
+            } else {
+                Some(overlap)
+            }
         }
         Direction::Vertical => {
-            (border.pos == focused.y || border.pos == focused.y.saturating_add(focused.height))
-                && ranges_overlap(focused.x, focused.width, border.area.x, border.area.width)
+            if border.pos != focused.y {
+                return None;
+            }
+            overlapping_range(focused.x, focused.width, border.area.x, border.area.width)
         }
     }
 }
@@ -353,12 +434,11 @@ fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool
     let terminal_bottom = terminal.y.saturating_add(terminal.height);
 
     for border in &app.view.split_borders {
-        let style = if terminal_active
-            && focused.is_some_and(|rect| split_touches_focused_pane(border, rect))
-        {
-            Style::default().fg(app.palette.accent)
+        let focused_segment = if terminal_active {
+            focused
+                .and_then(|rect| focused_split_border_segment(border, rect, &app.view.pane_infos))
         } else {
-            Style::default().fg(app.palette.overlay0)
+            None
         };
         match border.direction {
             Direction::Horizontal => {
@@ -375,7 +455,16 @@ fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool
                 for y in y_start..y_end {
                     let cell = &mut frame.buffer_mut()[(x, y)];
                     let symbol = merged_border_symbol(cell.symbol(), "│");
-                    cell.set_symbol(symbol).set_style(style);
+                    let style = split_border_style(
+                        app,
+                        focused_segment.is_some_and(|(start, end)| y >= start && y < end),
+                    );
+                    if style.fg == Some(app.palette.accent)
+                        || cell.style().fg != Some(app.palette.accent)
+                    {
+                        cell.set_style(style);
+                    }
+                    cell.set_symbol(symbol);
                 }
             }
             Direction::Vertical => {
@@ -392,7 +481,16 @@ fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool
                 for x in x_start..x_end {
                     let cell = &mut frame.buffer_mut()[(x, y)];
                     let symbol = merged_border_symbol(cell.symbol(), "─");
-                    cell.set_symbol(symbol).set_style(style);
+                    let style = split_border_style(
+                        app,
+                        focused_segment.is_some_and(|(start, end)| x >= start && x < end),
+                    );
+                    if style.fg == Some(app.palette.accent)
+                        || cell.style().fg != Some(app.palette.accent)
+                    {
+                        cell.set_style(style);
+                    }
+                    cell.set_symbol(symbol);
                 }
             }
         }
@@ -581,6 +679,30 @@ mod tests {
     use crate::terminal::TerminalRuntime;
     use crate::workspace::Workspace;
 
+    fn test_app_with_workspace(workspace: Workspace) -> AppState {
+        let mut app = AppState::test_new();
+        app.sessions = vec![workspace];
+        app.active_session = Some(0);
+        app.selected_session = 0;
+        app.mode = Mode::Terminal;
+        app
+    }
+
+    fn draw_panes(app: &mut AppState, width: u16, height: u16) -> ratatui::buffer::Buffer {
+        crate::ui::compute_view(app, Rect::new(0, 0, width, height));
+        let backend = ratatui::backend::TestBackend::new(width, height);
+        let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+        terminal
+            .draw(|frame| render_panes(app, &terminal_runtimes, frame, app.view.terminal_area))
+            .expect("draw panes");
+        terminal.backend().buffer().clone()
+    }
+
+    fn cell_fg(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> Option<Color> {
+        buffer[(x, y)].style().fg
+    }
+
     #[tokio::test]
     async fn pane_scrollbar_gutter_is_reserved_before_scrollback_exists() {
         let mut app = AppState::test_new();
@@ -699,6 +821,98 @@ mod tests {
 
         assert_eq!(left_info.inner_rect, Rect::new(0, 0, 19, 8));
         assert_eq!(right_info.inner_rect, Rect::new(21, 0, 18, 8));
+    }
+
+    #[test]
+    fn left_right_split_focus_owns_top_border_half_and_vertical_half() {
+        let mut workspace = Workspace::test_new("test");
+        let left = workspace.tabs[0].root_pane;
+        let right = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(left);
+        let mut app = test_app_with_workspace(workspace);
+
+        let buffer = draw_panes(&mut app, 100, 20);
+        let accent = app.palette.accent;
+        let neutral = app.palette.overlay0;
+
+        assert_eq!(app.view.terminal_area, Rect::new(0, 2, 100, 18));
+        assert_eq!(cell_fg(&buffer, 25, 1), Some(accent));
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 50, 2), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 10), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(neutral));
+
+        app.sessions[0].tabs[0].layout.focus_pane(right);
+        let buffer = draw_panes(&mut app, 100, 20);
+
+        assert_eq!(cell_fg(&buffer, 25, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 2), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 19), Some(accent));
+    }
+
+    #[test]
+    fn top_bottom_split_focus_uses_top_or_middle_border() {
+        let mut workspace = Workspace::test_new("test");
+        let top = workspace.tabs[0].root_pane;
+        let bottom = workspace.test_split(ratatui::layout::Direction::Vertical);
+        workspace.tabs[0].layout.focus_pane(top);
+        let mut app = test_app_with_workspace(workspace);
+
+        let buffer = draw_panes(&mut app, 100, 20);
+        let accent = app.palette.accent;
+        let neutral = app.palette.overlay0;
+
+        assert_eq!(cell_fg(&buffer, 25, 1), Some(accent));
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(neutral));
+
+        app.sessions[0].tabs[0].layout.focus_pane(bottom);
+        let buffer = draw_panes(&mut app, 100, 20);
+
+        assert_eq!(cell_fg(&buffer, 25, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(accent));
+    }
+
+    #[test]
+    fn three_pane_focus_highlights_adjacent_owned_segments() {
+        let mut workspace = Workspace::test_new("test");
+        let left = workspace.tabs[0].root_pane;
+        let right_top = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        let right_bottom = workspace.test_split(ratatui::layout::Direction::Vertical);
+        workspace.tabs[0].layout.focus_pane(left);
+        let mut app = test_app_with_workspace(workspace);
+
+        let buffer = draw_panes(&mut app, 100, 20);
+        let accent = app.palette.accent;
+        let neutral = app.palette.overlay0;
+
+        assert_eq!(cell_fg(&buffer, 25, 1), Some(accent));
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 50, 2), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 19), Some(accent));
+
+        app.sessions[0].tabs[0].layout.focus_pane(right_top);
+        let buffer = draw_panes(&mut app, 100, 20);
+
+        assert_eq!(cell_fg(&buffer, 25, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 2), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 10), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 75, 11), Some(neutral));
+
+        app.sessions[0].tabs[0].layout.focus_pane(right_bottom);
+        let buffer = draw_panes(&mut app, 100, 20);
+
+        assert_eq!(cell_fg(&buffer, 75, 1), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 50, 10), Some(neutral));
+        assert_eq!(cell_fg(&buffer, 50, 11), Some(accent));
+        assert_eq!(cell_fg(&buffer, 75, 11), Some(accent));
+        assert_eq!(cell_fg(&buffer, 50, 19), Some(accent));
     }
 
     #[tokio::test]
