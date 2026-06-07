@@ -1635,8 +1635,12 @@ fn pane_close_removes_the_session_when_it_closes_the_last_pane() {
     let closed_json: serde_json::Value = serde_json::from_slice(&closed.stdout).unwrap();
     assert_eq!(closed_json["result"]["type"], "ok");
 
-    let tabs_json = list_tabs_api(&socket_path);
-    assert!(tabs_json["result"]["tabs"].as_array().unwrap().is_empty());
+    assert!(
+        wait_until(Duration::from_secs(3), Duration::from_millis(25), || {
+            !socket_path.exists() || UnixStream::connect(&socket_path).is_err()
+        }),
+        "server socket should close after closing the final pane"
+    );
 
     cleanup_spawned_gmux(gmux, base);
 }
