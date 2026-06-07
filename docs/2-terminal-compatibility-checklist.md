@@ -1,7 +1,7 @@
 # Terminal Compatibility Checklist
 
-Gmux keeps Herdr's terminal extension work as a core product requirement. Use
-this checklist before releases and after changes to rendering, raw input,
+Gmux keeps terminal extension support as a core product requirement. Use
+this checklist before larger local updates and after changes to rendering, raw input,
 remote attach, pane runtime, or client/server protocol code.
 
 The checked feature matrix lives at:

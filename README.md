@@ -1,45 +1,37 @@
 # gmux
 
-<p align="center">
-  <img src="assets/logo.png" alt="gmux" width="100" />
-</p>
-
-<p align="center">
-  <a href="https://gmux.dev">gmux.dev</a> ·
-  <a href="#install">install</a> ·
-  <a href="#quick-start">quick start</a> ·
-  <a href="#keybindings">keybindings</a> ·
-  <a href="#configuration">configuration</a> ·
-  <a href="#socket-api">socket api</a>
-</p>
-
----
-
 **A terminal multiplexer with persistent sessions, tabs, panes, and a scriptable local socket.**
 
-gmux runs in the terminal you already use. It keeps pane processes alive when clients detach, supports named sessions, provides tmux-style defaults, and preserves the terminal features that matter for real interactive programs: mouse input, focus events, bracketed paste, OSC 52 clipboard, OSC 8 hyperlinks, Kitty keyboard input, and Kitty graphics.
+This is a personal fork of gmux. It is intended to be built and installed from source; public installers, package-manager formulas, hosted docs, release manifests, and in-app update channels are not maintained here.
 
-## install
+## Build
 
-```bash
-curl -fsSL https://gmux.dev/install.sh | sh
-```
+Requirements:
 
-or install with Homebrew:
+- Rust toolchain
+- `just` for the local task recipes
 
-```bash
-brew install gmux
-```
-
-or install with mise:
+Build a release binary:
 
 ```bash
-mise use -g gmux
+cargo build --release --locked
+./target/release/gmux
 ```
 
-or download a binary from [releases](https://github.com/ogulcancelik/gmux/releases). gmux supports Linux and macOS.
+Run checks:
 
-## quick start
+```bash
+just test
+just check
+```
+
+Install locally if desired:
+
+```bash
+cargo install --path . --locked
+```
+
+## Quick Start
 
 Start or attach the default session:
 
@@ -64,7 +56,7 @@ gmux ls
 gmux kill-session -t work
 ```
 
-## concepts
+## Concepts
 
 **Server and client.** A gmux session is owned by a background server. Clients attach to that server, render its panes, and forward input. Detaching closes only the client. `gmux kill-session` stops the server and exits its panes.
 
@@ -79,7 +71,9 @@ gmux --remote workbox
 gmux --remote ssh://you@server:2222
 ```
 
-## cli
+Remote auto-downloads are disabled in this fork. Install a matching `gmux` binary on the remote host manually, use a same-platform local binary, or set `GMUX_REMOTE_BINARY` to a target-compatible binary.
+
+## CLI
 
 Sessions:
 
@@ -116,7 +110,7 @@ gmux capture-pane [-t pane] [-S lines] [-e]
 
 Scriptable namespaces such as `gmux session`, `gmux tab`, and `gmux pane` remain available for lower-level automation.
 
-## keybindings
+## Keybindings
 
 The default prefix is `ctrl+b`.
 
@@ -136,7 +130,7 @@ The default prefix is `ctrl+b`.
 
 Mouse is supported for pane focus, pane resizing, tab selection, and scrollback. Resize mode uses `h/j/k/l` and Esc exits.
 
-## configuration
+## Configuration
 
 Config file:
 
@@ -152,7 +146,7 @@ gmux --default-config
 
 gmux supports theme, terminal, remote, mouse, toast, and keybinding settings. Logs are written under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files.
 
-## socket api
+## Socket API
 
 The local Unix socket lets scripts create tabs, split panes, send input, read pane output, wait for events, and control sessions without driving the terminal UI.
 
@@ -166,45 +160,15 @@ gmux split-pane     # create another pane
 gmux new-tab        # create another tab
 ```
 
-See [socket API docs](https://gmux.dev/docs/socket-api/) for protocol details.
+## Development
 
-## update
-
-For installs managed by gmux's installer:
+Read [`AGENTS.md`](./AGENTS.md) before larger changes.
 
 ```bash
-gmux update
-```
-
-Homebrew, mise, and Nix installs update through their package managers. A running server keeps using the old binary until that session is stopped or handed off, so restart sessions after upgrading when you want every server on the new version.
-
-## docs
-
-- [quick start](https://gmux.dev/docs/quick-start/)
-- [install](https://gmux.dev/docs/install/)
-- [session state](https://gmux.dev/docs/session-state/)
-- [configuration](https://gmux.dev/docs/configuration/)
-- [socket API](https://gmux.dev/docs/socket-api/)
-
-## development
-
-```bash
-git clone https://github.com/ogulcancelik/gmux
-cd gmux
-cargo build --release
-./target/release/gmux
-
 just test
 just check
 ```
 
-Read [`AGENTS.md`](./AGENTS.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md) before opening larger changes.
+## License
 
-## license
-
-gmux is dual-licensed:
-
-1. Open source: GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).
-2. Commercial: commercial licenses are available for organizations that cannot comply with AGPL.
-
-Contact: hey@gmux.dev
+gmux is licensed under the GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`).

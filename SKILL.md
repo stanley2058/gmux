@@ -21,7 +21,7 @@ this means you can:
 
 the `gmux` binary is available in your PATH. its workspace, tab, pane, and wait commands talk to the running gmux instance over a local unix socket.
 
-if you need the raw protocol or full api reference, read the [socket api docs](https://gmux.dev/docs/socket-api/).
+use `gmux --help` and the local source for protocol details; this fork does not publish hosted socket API docs.
 
 ## concepts
 

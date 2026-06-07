@@ -8,15 +8,9 @@ __pycache__/
 .DS_Store
 
 /docs/*
-!/docs/0-implementation-stages.md
-!/docs/1-herdr-trim-plan.md
-!/docs/next/
-!/docs/next/**
+!/docs/2-terminal-compatibility-checklist.md
 /herdr-upstream/
 /.local/
 
-/.pi/todos
-/.pi/issues
-/.pi/cache
 /result
 /result-*
