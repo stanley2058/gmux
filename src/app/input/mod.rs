@@ -32,16 +32,13 @@ mod settings;
 mod sidebar;
 mod terminal;
 
+use self::modal::{modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS};
 pub(crate) use self::{
     modal::{
         handle_confirm_close_key, handle_context_menu_key, handle_global_menu_key,
         handle_keybind_help_key, handle_navigator_key, handle_rename_key, handle_resize_key,
     },
     navigate::terminal_direct_navigation_action,
-};
-use self::{
-    modal::{modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS},
-    settings::SettingsAction,
 };
 use super::state::{AppState, Mode};
 use super::App;
@@ -147,18 +144,7 @@ impl App {
         let previous_pane_panel_scope = self.state.pane_panel_scope;
         if !handled_pane_double_click {
             if let Some(action) = self.state.handle_mouse(&mut self.terminal_runtimes, mouse) {
-                match action {
-                    SettingsAction::SaveTheme(name) => self.save_theme(&name),
-                    SettingsAction::SaveToastDelivery(delivery) => {
-                        self.save_toast_delivery(delivery)
-                    }
-                    SettingsAction::SavePaneHistory(enabled) => {
-                        self.save_pane_history_persistence(enabled)
-                    }
-                    SettingsAction::SaveSwitchAsciiInputSourceInPrefix(enabled) => {
-                        self.save_switch_ascii_input_source_in_prefix(enabled)
-                    }
-                }
+                self.apply_settings_action(action);
             }
         }
         if self.state.pane_panel_scope != previous_pane_panel_scope {

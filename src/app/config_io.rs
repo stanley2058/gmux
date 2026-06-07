@@ -41,6 +41,42 @@ impl App {
         });
     }
 
+    pub(super) fn save_top_level_bool(&mut self, context: &str, key: &str, value: bool) {
+        if self.update_config_file(context, |content| {
+            crate::config::upsert_top_level_bool(content, key, value)
+        }) {
+            self.apply_config_from_disk(false);
+        }
+    }
+
+    pub(super) fn save_section_bool(
+        &mut self,
+        context: &str,
+        section: &str,
+        key: &str,
+        value: bool,
+    ) {
+        if self.update_config_file(context, |content| {
+            crate::config::upsert_section_bool(content, section, key, value)
+        }) {
+            self.apply_config_from_disk(false);
+        }
+    }
+
+    pub(super) fn save_section_value(
+        &mut self,
+        context: &str,
+        section: &str,
+        key: &str,
+        value: &str,
+    ) {
+        if self.update_config_file(context, |content| {
+            crate::config::upsert_section_value(content, section, key, value)
+        }) {
+            self.apply_config_from_disk(false);
+        }
+    }
+
     pub(super) fn save_theme(&mut self, name: &str) {
         if self.update_config_file("theme", |content| {
             crate::config::upsert_section_value(content, "theme", "name", &format!("\"{name}\""))
@@ -65,22 +101,10 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn save_pane_history_persistence(&mut self, enabled: bool) {
         if self.update_config_file("pane screen history", |content| {
             crate::config::upsert_section_bool(content, "experimental", "pane_history", enabled)
-        }) {
-            self.apply_config_from_disk(false);
-        }
-    }
-
-    pub(super) fn save_switch_ascii_input_source_in_prefix(&mut self, enabled: bool) {
-        if self.update_config_file("prefix ascii input source", |content| {
-            crate::config::upsert_section_bool(
-                content,
-                "experimental",
-                "switch_ascii_input_source_in_prefix",
-                enabled,
-            )
         }) {
             self.apply_config_from_disk(false);
         }

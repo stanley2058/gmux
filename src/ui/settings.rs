@@ -2,24 +2,19 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph, Tabs},
+    widgets::{List, ListItem, ListState, Paragraph},
     Frame,
 };
 
 use super::widgets::{
     action_button_row_rects, centered_popup_rect, modal_stack_areas, panel_contrast_fg,
-    render_action_button, render_modal_choice_list, render_panel_shell, ActionButtonSpec,
+    render_action_button, render_panel_shell, ActionButtonSpec,
 };
-use crate::{
-    app::{state::ExperimentSetting, AppState},
-    config::ToastDelivery,
-};
+use crate::app::{settings_catalog, state::SettingsPage, AppState};
 
 pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: Rect) {
-    use crate::app::state::SettingsSection;
-
     let p = &app.palette;
-    let Some(popup) = centered_popup_rect(area, 76, 22) else {
+    let Some(popup) = centered_popup_rect(area, 82, 24) else {
         return;
     };
 
@@ -42,42 +37,15 @@ pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: R
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![Span::styled(
-            " settings",
+            settings_title(app),
             Style::default().fg(p.text).add_modifier(Modifier::BOLD),
         )])),
         header_rows[0],
     );
-
-    let tab_labels = SettingsSection::ALL.iter().map(|section| {
-        if app.settings_section_has_badge(*section) {
-            Line::from(vec![
-                Span::styled(
-                    "● ",
-                    Style::default().fg(p.accent).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(section.label()),
-            ])
-        } else {
-            Line::from(section.label())
-        }
-    });
-    let tabs = Tabs::new(tab_labels)
-        .select(
-            SettingsSection::ALL
-                .iter()
-                .position(|section| *section == app.settings.section)
-                .unwrap_or(0),
-        )
-        .style(Style::default().fg(p.overlay1))
-        .highlight_style(
-            Style::default()
-                .fg(panel_contrast_fg(p))
-                .bg(p.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-        .divider(" ")
-        .padding(" ", " ");
-    frame.render_widget(tabs, header_rows[1]);
+    frame.render_widget(
+        Paragraph::new(settings_description(app)).style(Style::default().fg(p.overlay1)),
+        header_rows[1],
+    );
 
     let sep = "─".repeat(inner.width as usize);
     frame.render_widget(
@@ -85,42 +53,19 @@ pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: R
         header_rows[2],
     );
 
-    let content_area = stack.content;
-
-    match app.settings.section {
-        SettingsSection::Theme => {
-            render_settings_theme(app, frame, content_area);
-        }
-        SettingsSection::Toast => {
-            render_modal_choice_list(
-                frame,
-                content_area,
-                "notification popups",
-                "choose where background popup notifications should appear",
-                &[
-                    ("off", ToastDelivery::Off),
-                    ("inside gmux", ToastDelivery::Gmux),
-                    ("via terminal", ToastDelivery::Terminal),
-                    ("via system", ToastDelivery::System),
-                ],
-                app.toast_delivery(),
-                app.settings.list.selected,
-                p,
-                2,
-            );
-        }
-        SettingsSection::Experiments => {
-            render_settings_experiments(app, frame, content_area);
-        }
+    if app.settings.edit.is_some() {
+        render_settings_editor(app, frame, stack.content);
+    } else {
+        render_settings_page(app, frame, stack.content);
     }
 
     if let Some(footer_area) = stack.footer {
         let footer_rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)])
             .areas::<2>(footer_area);
-        let primary_label = settings_primary_button_label(app.settings.section);
+        let primary_label = settings_primary_button_label(app.settings.page);
         let show_primary = settings_show_primary_action(app);
         let (apply_rect, close_rect) =
-            settings_button_rects(inner, app.settings.section, show_primary);
+            settings_button_rects(inner, app.settings.page, show_primary);
         if let Some(apply_rect) = apply_rect {
             render_action_button(
                 frame,
@@ -148,18 +93,18 @@ pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: R
             Paragraph::new(Line::from(vec![
                 Span::styled(" ↑↓", Style::default().fg(p.overlay0)),
                 Span::styled(" select  ", Style::default().fg(p.overlay1)),
-                Span::styled("tab", Style::default().fg(p.overlay0)),
-                Span::styled(" section", Style::default().fg(p.overlay1)),
+                Span::styled("enter", Style::default().fg(p.overlay0)),
+                Span::styled(" open/toggle  ", Style::default().fg(p.overlay1)),
+                Span::styled("esc", Style::default().fg(p.overlay0)),
+                Span::styled(" back", Style::default().fg(p.overlay1)),
             ])),
             footer_rows[0],
         );
     }
 }
 
-pub(crate) fn settings_primary_button_label(
-    _section: crate::app::state::SettingsSection,
-) -> &'static str {
-    "apply"
+pub(crate) fn settings_primary_button_label(_page: SettingsPage) -> &'static str {
+    "select"
 }
 
 pub(crate) fn settings_show_primary_action(_app: &AppState) -> bool {
@@ -168,7 +113,7 @@ pub(crate) fn settings_show_primary_action(_app: &AppState) -> bool {
 
 pub(crate) fn settings_button_rects(
     inner: Rect,
-    section: crate::app::state::SettingsSection,
+    page: SettingsPage,
     show_primary: bool,
 ) -> (Option<Rect>, Rect) {
     if !show_primary {
@@ -189,7 +134,7 @@ pub(crate) fn settings_button_rects(
         &[
             ActionButtonSpec {
                 hint: Some("↵"),
-                label: settings_primary_button_label(section),
+                label: settings_primary_button_label(page),
             },
             ActionButtonSpec {
                 hint: Some("esc"),
@@ -202,20 +147,33 @@ pub(crate) fn settings_button_rects(
     (Some(rects[0]), rects[1])
 }
 
-fn render_settings_theme(app: &AppState, frame: &mut Frame, area: Rect) {
-    use crate::app::state::THEME_NAMES;
-
+fn render_settings_page(app: &AppState, frame: &mut Frame, area: Rect) {
     let p = &app.palette;
-    let items: Vec<ListItem> = THEME_NAMES
+    let rows = settings_catalog::settings_rows(app);
+    let items: Vec<ListItem> = rows
         .iter()
-        .map(|name| {
-            let is_current = name.to_lowercase().replace([' ', '_'], "-")
-                == app.theme_name.to_lowercase().replace([' ', '_'], "-");
-            let marker = if is_current { " ✓" } else { "" };
-            ListItem::new(Line::from(vec![
-                Span::styled(*name, Style::default().fg(p.subtext0)),
-                Span::styled(marker, Style::default().fg(p.green)),
-            ]))
+        .map(|row| {
+            let mut spans = Vec::new();
+            let marker = if row.selected { "✓ " } else { "  " };
+            spans.push(Span::styled(marker, Style::default().fg(p.green)));
+            spans.push(Span::styled(
+                row.label.as_str(),
+                Style::default().fg(p.subtext0),
+            ));
+            if let Some(value) = &row.value {
+                spans.push(Span::styled(": ", Style::default().fg(p.overlay0)));
+                spans.push(Span::styled(value.as_str(), Style::default().fg(p.text)));
+            }
+            if row.readonly {
+                spans.push(Span::styled("  readonly", Style::default().fg(p.overlay0)));
+            } else if matches!(row.action, settings_catalog::SettingsRowAction::Open(_)) {
+                spans.push(Span::styled("  >", Style::default().fg(p.overlay0)));
+            }
+            if !row.hint.is_empty() {
+                spans.push(Span::styled("  ", Style::default().fg(p.overlay0)));
+                spans.push(Span::styled(row.hint, Style::default().fg(p.overlay0)));
+            }
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
@@ -233,119 +191,123 @@ fn render_settings_theme(app: &AppState, frame: &mut Frame, area: Rect) {
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn render_settings_experiments(app: &AppState, frame: &mut Frame, area: Rect) {
+fn render_settings_editor(app: &AppState, frame: &mut Frame, area: Rect) {
     let p = &app.palette;
-    let [desc_area, _, list_area] = Layout::vertical([
+    let Some(edit) = &app.settings.edit else {
+        return;
+    };
+    let [label_area, input_area, error_area] = Layout::vertical([
         Constraint::Length(2),
         Constraint::Length(1),
-        Constraint::Min(1),
+        Constraint::Length(2),
     ])
     .areas::<3>(area);
 
     super::widgets::render_modal_description(
         frame,
-        desc_area,
-        "optional features that are off by default",
+        label_area,
+        settings_catalog::edit_field_label(edit.field),
         Style::default().fg(p.overlay1),
     );
 
-    for (idx, setting) in ExperimentSetting::ALL.iter().copied().enumerate() {
-        let marker = if setting.enabled(app) { "[✓]" } else { "[ ]" };
-        let style = if app.settings.list.selected == idx {
+    frame.render_widget(
+        Paragraph::new(format!(" {}█", edit.input)).style(
             Style::default()
-                .bg(p.surface0)
                 .fg(p.text)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(p.subtext0)
-        };
-        let row = Rect::new(list_area.x, list_area.y + idx as u16, list_area.width, 1);
+                .bg(p.surface0)
+                .add_modifier(Modifier::BOLD),
+        ),
+        input_area,
+    );
+
+    if let Some(error) = &edit.error {
         frame.render_widget(
-            Paragraph::new(format!(" {} {marker}", setting.label())).style(style),
-            row,
+            Paragraph::new(error.as_str()).style(Style::default().fg(p.red)),
+            error_area,
         );
+    }
+}
+
+fn settings_title(app: &AppState) -> String {
+    let mut pages = Vec::new();
+    let mut page = Some(app.settings.page);
+    while let Some(current) = page {
+        pages.push(current.label());
+        page = current.parent();
+    }
+    pages.reverse();
+    format!(" {}", pages.join(" / "))
+}
+
+fn settings_description(app: &AppState) -> &'static str {
+    if app.settings.edit.is_some() {
+        return "enter saves, esc cancels the edit";
+    }
+    match app.settings.page {
+        SettingsPage::Main => "choose a settings group",
+        SettingsPage::ThemeCustom => "structured theme color overrides are readonly here",
+        _ => "scalar config fields only; keybindings stay in the readonly keybindings menu",
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{state::SettingsSection, Mode};
+    use crate::app::Mode;
     use ratatui::{backend::TestBackend, Terminal};
 
-    #[test]
-    fn experiments_pane_history_uses_settings_checkmark_marker() {
-        let mut app = AppState::test_new();
-        app.pane_history_persistence = true;
-        app.settings.section = SettingsSection::Experiments;
-        app.settings.list.selected = 0;
-        app.mode = Mode::Settings;
-
+    fn rendered_settings(app: &AppState) -> String {
         let mut terminal =
-            Terminal::new(TestBackend::new(80, 24)).expect("test terminal should initialize");
+            Terminal::new(TestBackend::new(90, 26)).expect("test terminal should initialize");
         terminal
-            .draw(|frame| render_settings_overlay(&app, frame, Rect::new(0, 0, 80, 24)))
+            .draw(|frame| render_settings_overlay(app, frame, Rect::new(0, 0, 90, 26)))
             .expect("settings overlay should render");
 
-        let rendered = terminal
+        terminal
             .backend()
             .buffer()
             .content()
             .iter()
             .map(|cell| cell.symbol())
-            .collect::<String>();
-
-        assert!(rendered.contains("pane screen history [✓]"));
-        assert!(!rendered.contains("[x]"));
+            .collect::<String>()
     }
 
     #[test]
-    fn experiments_pane_history_keeps_empty_checkbox_marker_when_disabled() {
+    fn main_settings_renders_hierarchical_categories() {
         let mut app = AppState::test_new();
-        app.pane_history_persistence = false;
-        app.settings.section = SettingsSection::Experiments;
-        app.settings.list.selected = 0;
+        app.settings.page = SettingsPage::Main;
         app.mode = Mode::Settings;
 
-        let mut terminal =
-            Terminal::new(TestBackend::new(80, 24)).expect("test terminal should initialize");
-        terminal
-            .draw(|frame| render_settings_overlay(&app, frame, Rect::new(0, 0, 80, 24)))
-            .expect("settings overlay should render");
+        let rendered = rendered_settings(&app);
 
-        let rendered = terminal
-            .backend()
-            .buffer()
-            .content()
-            .iter()
-            .map(|cell| cell.symbol())
-            .collect::<String>();
-
-        assert!(rendered.contains("pane screen history [ ]"));
+        assert!(rendered.contains("theme"));
+        assert!(rendered.contains("notifications"));
+        assert!(rendered.contains("experiments"));
+        assert!(!rendered.contains("keybindings"));
     }
 
     #[test]
-    fn experiments_renders_switch_ascii_input_source_row() {
+    fn experiments_render_switch_ascii_input_source_row() {
         let mut app = AppState::test_new();
         app.switch_ascii_input_source_in_prefix = true;
-        app.settings.section = SettingsSection::Experiments;
-        app.settings.list.selected = 1;
+        app.settings.page = SettingsPage::Experiments;
+        app.settings.list.selected = 5;
         app.mode = Mode::Settings;
 
-        let mut terminal =
-            Terminal::new(TestBackend::new(80, 24)).expect("test terminal should initialize");
-        terminal
-            .draw(|frame| render_settings_overlay(&app, frame, Rect::new(0, 0, 80, 24)))
-            .expect("settings overlay should render");
+        let rendered = rendered_settings(&app);
 
-        let rendered = terminal
-            .backend()
-            .buffer()
-            .content()
-            .iter()
-            .map(|cell| cell.symbol())
-            .collect::<String>();
+        assert!(rendered.contains("switch to ascii input source in prefix (macOS): on"));
+    }
 
-        assert!(rendered.contains("switch to ascii input source in prefix (macOS) [✓]"));
+    #[test]
+    fn theme_custom_rows_render_readonly_hint() {
+        let mut app = AppState::test_new();
+        app.settings.page = SettingsPage::ThemeCustom;
+        app.mode = Mode::Settings;
+
+        let rendered = rendered_settings(&app);
+
+        assert!(rendered.contains("accent: readonly"));
+        assert!(rendered.contains("edit config.toml"));
     }
 }

@@ -13,6 +13,7 @@ mod ids;
 mod input;
 mod runtime;
 mod session;
+pub(crate) mod settings_catalog;
 pub mod state;
 mod theme_sync;
 
@@ -366,6 +367,8 @@ impl App {
             mouse_scroll_lines: config.ui.mouse_scroll_lines(),
             confirm_close: config.ui.confirm_close,
             prompt_new_tab_name: config.ui.prompt_new_tab_name,
+            show_onboarding_on_next_launch: config.should_show_onboarding(),
+            allow_nested_gmux: config.experimental.allow_nested,
             pane_history_persistence: config.experimental.pane_history,
             reveal_hidden_cursor_for_cjk_ime: config.experimental.reveal_hidden_cursor_for_cjk_ime,
             cjk_ime_cursor_shape: config.experimental.cjk_ime_cursor_shape.to_decscusr(),
@@ -379,6 +382,7 @@ impl App {
             pane_scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
             accent: crate::config::parse_color(&config.ui.accent),
             toast_config: config.ui.toast.clone(),
+            remote_manage_ssh_config: config.remote.manage_ssh_config,
             keybinds: config.keybinds(),
             spinner_tick: 0,
             palette: resolve_palette(config),
@@ -388,8 +392,9 @@ impl App {
                 .clone()
                 .unwrap_or_else(|| "catppuccin".to_string()),
             settings: state::SettingsState {
-                section: state::SettingsSection::Theme,
+                page: state::SettingsPage::Main,
                 list: state::SelectionListState::new(0),
+                edit: None,
                 original_palette: None,
                 original_theme: None,
             },
@@ -793,6 +798,8 @@ impl App {
         let invalid_section =
             |section: &str| invalid_sections.iter().any(|invalid| invalid == section);
 
+        self.state.show_onboarding_on_next_launch = config.should_show_onboarding();
+
         if !invalid_section("keys") {
             match config.live_keybinds() {
                 Ok(live) => {
@@ -859,6 +866,7 @@ impl App {
 
         if !invalid_section("experimental") {
             let was_kitty_graphics_enabled = self.state.kitty_graphics_enabled;
+            self.state.allow_nested_gmux = config.experimental.allow_nested;
             self.state.kitty_graphics_enabled = config.experimental.kitty_graphics;
             crate::kitty_graphics::set_enabled(config.experimental.kitty_graphics);
             if was_kitty_graphics_enabled && !config.experimental.kitty_graphics {
@@ -885,6 +893,10 @@ impl App {
             self.state.default_shell = config.terminal.default_shell.clone();
             self.state.shell_mode = config.terminal.shell_mode;
             self.state.new_terminal_cwd = config.terminal.new_cwd.clone();
+        }
+
+        if !invalid_section("remote") {
+            self.state.remote_manage_ssh_config = config.remote.manage_ssh_config;
         }
 
         if !invalid_section("theme") {

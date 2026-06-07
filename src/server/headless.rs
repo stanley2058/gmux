@@ -3171,7 +3171,7 @@ next_tab = ""
             writer,
         }));
         server.app.state.mode = crate::app::Mode::Settings;
-        server.app.state.settings.section = crate::app::state::SettingsSection::Toast;
+        server.app.state.settings.page = crate::app::state::SettingsPage::ToastDelivery;
         server.app.state.settings.list.selected = 1;
 
         assert!(server.handle_server_event(ServerEvent::ClientInput {
@@ -3245,7 +3245,7 @@ next_tab = ""
             writer: writer_a,
         }));
         server.app.state.mode = crate::app::Mode::Settings;
-        server.app.state.settings.section = crate::app::state::SettingsSection::Toast;
+        server.app.state.settings.page = crate::app::state::SettingsPage::ToastDelivery;
         server.app.state.settings.list.selected = 1;
 
         assert!(server.handle_server_event(ServerEvent::ClientInput {

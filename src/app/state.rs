@@ -668,52 +668,89 @@ pub enum PanePanelScope {
 // Settings UI state
 // ---------------------------------------------------------------------------
 
-/// Which section of the settings panel is focused.
+/// Which settings page is focused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsSection {
+pub enum SettingsPage {
+    Main,
     Theme,
-    Toast,
+    ThemePicker,
+    ThemeCustom,
+    Notifications,
+    ToastDelivery,
+    Terminal,
+    ShellMode,
+    NewTerminalCwd,
+    Interface,
+    PanePanelScope,
+    Mouse,
+    RightClickPassthroughModifier,
+    Remote,
+    Advanced,
     Experiments,
+    CjkImeCursorShape,
 }
 
-impl SettingsSection {
-    pub const ALL: &[Self] = &[Self::Theme, Self::Toast, Self::Experiments];
-
+impl SettingsPage {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Main => "settings",
             Self::Theme => "theme",
-            Self::Toast => "toasts",
+            Self::ThemePicker => "theme selection",
+            Self::ThemeCustom => "custom colors",
+            Self::Notifications => "notifications",
+            Self::ToastDelivery => "notification popups",
+            Self::Terminal => "terminal",
+            Self::ShellMode => "shell mode",
+            Self::NewTerminalCwd => "new terminal cwd",
+            Self::Interface => "interface",
+            Self::PanePanelScope => "pane panel scope",
+            Self::Mouse => "mouse",
+            Self::RightClickPassthroughModifier => "right-click passthrough",
+            Self::Remote => "remote",
+            Self::Advanced => "advanced",
             Self::Experiments => "experiments",
+            Self::CjkImeCursorShape => "CJK IME cursor shape",
+        }
+    }
+
+    pub fn parent(self) -> Option<Self> {
+        match self {
+            Self::Main => None,
+            Self::ThemePicker | Self::ThemeCustom => Some(Self::Theme),
+            Self::ToastDelivery => Some(Self::Notifications),
+            Self::ShellMode | Self::NewTerminalCwd => Some(Self::Terminal),
+            Self::PanePanelScope => Some(Self::Interface),
+            Self::RightClickPassthroughModifier => Some(Self::Mouse),
+            Self::CjkImeCursorShape => Some(Self::Experiments),
+            Self::Theme
+            | Self::Notifications
+            | Self::Terminal
+            | Self::Interface
+            | Self::Mouse
+            | Self::Remote
+            | Self::Advanced
+            | Self::Experiments => Some(Self::Main),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExperimentSetting {
-    PaneHistory,
-    SwitchAsciiInputSourceInPrefix,
+pub enum SettingsEditField {
+    DefaultShell,
+    NewTerminalCwdPath,
+    SidebarWidth,
+    SidebarMinWidth,
+    SidebarMaxWidth,
+    MobileWidthThreshold,
+    MouseScrollLines,
+    ScrollbackLimitBytes,
 }
 
-impl ExperimentSetting {
-    pub(crate) const ALL: [Self; 2] = [Self::PaneHistory, Self::SwitchAsciiInputSourceInPrefix];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::PaneHistory => "pane screen history",
-            Self::SwitchAsciiInputSourceInPrefix => {
-                "switch to ascii input source in prefix (macOS)"
-            }
-        }
-    }
-
-    pub(crate) fn enabled(self, state: &AppState) -> bool {
-        match self {
-            Self::PaneHistory => state.pane_history_persistence_enabled(),
-            Self::SwitchAsciiInputSourceInPrefix => {
-                state.switch_ascii_input_source_in_prefix_enabled()
-            }
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsEditState {
+    pub field: SettingsEditField,
+    pub input: String,
+    pub error: Option<String>,
 }
 
 /// All built-in theme names in display order.
@@ -791,10 +828,12 @@ impl SelectionListState {
 }
 
 pub struct SettingsState {
-    /// Which section tab is active.
-    pub section: SettingsSection,
-    /// Selected item index within the current section.
+    /// Which settings page is active.
+    pub page: SettingsPage,
+    /// Selected item index within the current page.
     pub list: SelectionListState,
+    /// One-line editor state for scalar text/number values.
+    pub edit: Option<SettingsEditState>,
     /// The palette before opening settings (for cancel/restore).
     pub original_palette: Option<Palette>,
     /// The theme name before opening settings.
@@ -1013,6 +1052,8 @@ pub struct AppState {
     pub mouse_scroll_lines: usize,
     pub confirm_close: bool,
     pub prompt_new_tab_name: bool,
+    pub show_onboarding_on_next_launch: bool,
+    pub allow_nested_gmux: bool,
     pub pane_history_persistence: bool,
     /// Expose the focused pane's cursor anchor to the outer terminal even when
     /// the pane requested `?25l`. See `[experimental] reveal_hidden_cursor_for_cjk_ime`.
@@ -1032,6 +1073,7 @@ pub struct AppState {
     #[allow(dead_code)] // kept for backward compat; palette.accent is the source of truth
     pub accent: Color,
     pub toast_config: ToastConfig,
+    pub remote_manage_ssh_config: bool,
     pub keybinds: Keybinds,
     /// Frame counter for spinner animations (wraps around).
     pub spinner_tick: u32,
@@ -1073,24 +1115,11 @@ impl AppState {
         self.toast_config.delivery
     }
 
-    pub fn pane_history_persistence_enabled(&self) -> bool {
-        self.pane_history_persistence
-    }
-
-    pub fn switch_ascii_input_source_in_prefix_enabled(&self) -> bool {
-        self.switch_ascii_input_source_in_prefix
-    }
-
     pub(crate) fn global_menu_attention_badge_visible(&self) -> bool {
         false
     }
 
     pub(crate) fn global_menu_item_has_badge(&self, _item: &str) -> bool {
-        false
-    }
-
-    pub(crate) fn settings_section_has_badge(&self, section: SettingsSection) -> bool {
-        let _ = section;
         false
     }
 
@@ -1353,6 +1382,8 @@ impl AppState {
             mouse_scroll_lines: crate::config::DEFAULT_MOUSE_SCROLL_LINES,
             confirm_close: true,
             prompt_new_tab_name: true,
+            show_onboarding_on_next_launch: false,
+            allow_nested_gmux: false,
             pane_history_persistence: false,
             reveal_hidden_cursor_for_cjk_ime: false,
             cjk_ime_cursor_shape: 2, // steady_block
@@ -1364,13 +1395,15 @@ impl AppState {
             pane_scrollback_limit_bytes: crate::config::DEFAULT_SCROLLBACK_LIMIT_BYTES,
             accent: Color::Cyan,
             toast_config: ToastConfig::default(),
+            remote_manage_ssh_config: true,
             keybinds: Keybinds::default(),
             spinner_tick: 0,
             palette: Palette::catppuccin(),
             theme_name: "catppuccin".to_string(),
             settings: SettingsState {
-                section: SettingsSection::Theme,
+                page: SettingsPage::Main,
                 list: SelectionListState::new(0),
+                edit: None,
                 original_palette: None,
                 original_theme: None,
             },
