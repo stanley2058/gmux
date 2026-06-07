@@ -26,7 +26,8 @@ impl App {
         }
 
         if let AppEvent::PaneDied { pane_id } = &ev {
-            if self.runtime_exit_action(*pane_id) == RuntimeExitAction::RespawnShell
+            if !self.pane_is_last_remaining(*pane_id)
+                && self.runtime_exit_action(*pane_id) == RuntimeExitAction::RespawnShell
                 && self.respawn_shell_for_launch_pane(*pane_id)
             {
                 self.overlay_panes.remove(pane_id);
@@ -111,6 +112,18 @@ impl App {
         } else {
             RuntimeExitAction::ClosePane
         }
+    }
+
+    fn pane_is_last_remaining(&self, pane_id: crate::layout::PaneId) -> bool {
+        let mut pane_count = 0usize;
+        let mut contains_pane = false;
+        for entry in self.state.session_tab_entries() {
+            for candidate in entry.tab.panes.keys() {
+                pane_count += 1;
+                contains_pane |= *candidate == pane_id;
+            }
+        }
+        contains_pane && pane_count == 1
     }
 
     fn respawn_shell_for_launch_pane(&mut self, pane_id: crate::layout::PaneId) -> bool {
@@ -308,6 +321,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::layout::Direction;
 
     #[tokio::test]
     async fn pane_died_respawns_shell_and_clears_launch_metadata() {
@@ -319,8 +333,9 @@ mod tests {
             api_rx,
             crate::api::EventHub::default(),
         );
-        let workspace = crate::workspace::Workspace::test_new("restored");
+        let mut workspace = crate::workspace::Workspace::test_new("restored");
         let pane_id = workspace.tabs[0].root_pane;
+        workspace.test_split(Direction::Horizontal);
         let terminal_id = workspace.terminal_id(pane_id).cloned().unwrap();
         app.state.sessions = vec![workspace];
         app.state.ensure_test_terminals();
@@ -347,5 +362,34 @@ mod tests {
         for (_, runtime) in app.terminal_runtimes.drain() {
             runtime.shutdown();
         }
+    }
+
+    #[tokio::test]
+    async fn pane_died_last_respawnable_pane_quits_without_respawn() {
+        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(
+            &crate::config::Config::default(),
+            true,
+            None,
+            api_rx,
+            crate::api::EventHub::default(),
+        );
+        let workspace = crate::workspace::Workspace::test_new("restored");
+        let pane_id = workspace.tabs[0].root_pane;
+        let terminal_id = workspace.terminal_id(pane_id).cloned().unwrap();
+        app.state.sessions = vec![workspace];
+        app.state.active_session = Some(0);
+        app.state.ensure_test_terminals();
+        let terminal = app
+            .state
+            .terminals
+            .get_mut(&terminal_id)
+            .expect("test terminal should exist");
+        terminal.respawn_shell_on_exit = true;
+
+        app.handle_internal_event(AppEvent::PaneDied { pane_id });
+
+        assert!(app.find_pane(pane_id).is_none());
+        assert!(app.state.should_quit);
     }
 }

@@ -881,6 +881,7 @@ impl AppState {
             crate::logging::session_closed(&session_id);
         }
         self.clear_session();
+        self.should_quit = true;
         self.remove_unattached_terminal_ids(terminal_ids);
         self.tab_scroll = 0;
         self.tab_scroll_follow_active = true;
@@ -1542,6 +1543,7 @@ impl AppState {
 
         if should_close_session {
             self.clear_session();
+            self.should_quit = true;
             self.remove_unattached_terminal_ids(session_terminal_ids);
             if self.mode == Mode::Terminal {
                 self.mode = Mode::Navigate;
@@ -2372,6 +2374,7 @@ mod tests {
         assert!(state.sessions.is_empty());
         assert_eq!(state.selected_session, 0);
         assert_eq!(state.active_session, None);
+        assert!(state.should_quit);
     }
 
     #[test]
@@ -2383,6 +2386,7 @@ mod tests {
         assert!(state.sessions.is_empty());
         assert_eq!(state.active_session, None);
         assert_eq!(state.selected_session, 0);
+        assert!(state.should_quit);
     }
 
     #[test]
@@ -2396,6 +2400,7 @@ mod tests {
         assert!(state.sessions.is_empty());
         assert_eq!(state.selected_session, 0);
         assert_eq!(state.active_session, None);
+        assert!(state.should_quit);
     }
 
     #[test]
@@ -2420,6 +2425,7 @@ mod tests {
 
         assert!(state.sessions.is_empty());
         assert_eq!(state.mode, Mode::Navigate);
+        assert!(state.should_quit);
     }
 
     #[test]
@@ -2552,6 +2558,16 @@ mod tests {
     }
 
     #[test]
+    fn close_pane_last_pane_requests_quit() {
+        let mut state = app_with_workspaces(&["test"]);
+
+        state.close_pane();
+
+        assert!(state.sessions.is_empty());
+        assert!(state.should_quit);
+    }
+
+    #[test]
     fn close_tab_removes_unattached_terminal_states() {
         let mut state = app_with_workspaces(&["test"]);
         let tab_idx = state.sessions[0].test_add_tab(Some("logs"));
@@ -2607,5 +2623,6 @@ mod tests {
         assert_eq!(state.sessions.len(), 1);
         assert_eq!(state.sessions[0].display_name(), "selected");
         assert!(!state.terminals.contains_key(&active_terminal_id));
+        assert!(!state.should_quit);
     }
 }
