@@ -2129,15 +2129,12 @@ mod tests {
     }
 
     #[test]
-    fn new_terminal_cwd_follow_without_source_uses_home() {
-        let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
-            return;
-        };
-
+    fn new_terminal_cwd_follow_without_source_uses_current_dir() {
+        let current = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
         let cwd =
             creation::resolve_new_terminal_cwd(&crate::config::NewTerminalCwdConfig::Follow, None);
 
-        assert_eq!(cwd, home);
+        assert_eq!(cwd, current);
     }
 
     #[test]

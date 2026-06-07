@@ -84,8 +84,9 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # shell_mode = "auto"
 
 # CWD policy for new panes and tabs when no explicit --cwd is provided.
-# Use "follow" to inherit the source pane or session, "home" for $HOME,
-# "current" for Gmux's process directory, or a fixed path such as "~/Projects".
+# Use "follow" to inherit the source pane/session, falling back to Gmux's
+# process directory; "home" for $HOME; "current" for Gmux's process directory;
+# or a fixed path such as "~/Projects".
 # new_cwd = "follow"
 
 [keys]
