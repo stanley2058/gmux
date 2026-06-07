@@ -224,17 +224,6 @@ impl AppState {
                 }
 
                 if !in_sidebar {
-                    if let Some(border) = self.find_border_at(mouse.column, mouse.row) {
-                        self.drag = Some(DragState {
-                            target: DragTarget::PaneSplit {
-                                path: border.path.clone(),
-                                direction: border.direction,
-                                area: border.area,
-                            },
-                        });
-                        return None;
-                    }
-
                     if let Some((pane_id, target)) =
                         self.scrollbar_target_at(terminal_runtimes, mouse.column, mouse.row)
                     {
@@ -259,6 +248,17 @@ impl AppState {
                         if self.mode != Mode::Terminal {
                             self.mode = Mode::Terminal;
                         }
+                        return None;
+                    }
+
+                    if let Some(border) = self.find_border_at(mouse.column, mouse.row) {
+                        self.drag = Some(DragState {
+                            target: DragTarget::PaneSplit {
+                                path: border.path.clone(),
+                                direction: border.direction,
+                                area: border.area,
+                            },
+                        });
                         return None;
                     }
                 }
@@ -1925,6 +1925,78 @@ mod tests {
             .state
             .find_border_at(border.pos.saturating_add(1), row)
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn pane_scrollbar_hitbox_wins_over_adjacent_split_resize_hitbox() {
+        let mut app = app_for_mouse_test();
+        let mut ws = Workspace::test_new("test");
+        let left_pane = ws.tabs[0].root_pane;
+        ws.test_split(Direction::Horizontal);
+        app.state.sessions = vec![ws];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+
+        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
+        let left_info = app
+            .state
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == left_pane)
+            .expect("left pane info")
+            .clone();
+        app.state.insert_test_runtime(
+            left_pane,
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
+                left_info.inner_rect.width.max(1),
+                left_info.inner_rect.height.max(1),
+                16 * 1024,
+                &numbered_lines_bytes(64),
+            ),
+        );
+        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
+
+        let left_info = app
+            .state
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == left_pane)
+            .expect("left pane info");
+        let track = crate::ui::pane_scrollbar_rect(left_info).expect("visible pane scrollbar");
+        let border = app
+            .state
+            .view
+            .split_borders
+            .iter()
+            .find(|border| border.direction == Direction::Horizontal)
+            .expect("horizontal split border");
+        assert_eq!(track.x, border.pos.saturating_sub(1));
+        assert!(app.state.find_border_at(track.x, track.y).is_some());
+
+        let metrics = app
+            .state
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, left_pane)
+            .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
+            .expect("scroll metrics");
+        let thumb_row = (track.y..track.y + track.height)
+            .find(|row| crate::ui::scrollbar_thumb_grab_offset(metrics, track, *row).is_some())
+            .expect("scrollbar thumb row");
+
+        app.handle_mouse(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            track.x,
+            thumb_row,
+        ));
+
+        assert!(matches!(
+            app.state.drag,
+            Some(DragState {
+                target: DragTarget::PaneScrollbar { pane_id, .. },
+            }) if pane_id == left_pane
+        ));
     }
 
     #[test]
