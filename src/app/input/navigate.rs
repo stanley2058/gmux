@@ -695,8 +695,7 @@ pub(super) fn execute_navigate_action_in_context(
         }
         NavigateAction::EnterResizeMode => state.mode = Mode::Resize,
         NavigateAction::ToggleSidebar => {
-            state.sidebar_collapsed = !state.sidebar_collapsed;
-            leave_navigate_mode(state);
+            super::modal::open_global_menu(state);
         }
         NavigateAction::CyclePaneNext => {
             state.cycle_pane(false);
@@ -901,7 +900,7 @@ mod tests {
     }
 
     #[test]
-    fn custom_sidebar_toggle_key_toggles_and_exits_navigate() {
+    fn custom_sidebar_toggle_key_opens_global_menu() {
         let mut state = state_with_workspaces(&["test"]);
         state.keybinds.toggle_sidebar = crate::config::ActionKeybinds::prefix("g");
         assert!(!state.sidebar_collapsed);
@@ -911,8 +910,8 @@ mod tests {
             KeyEvent::new(KeyCode::Char('g'), KeyModifiers::empty()),
         );
 
-        assert!(state.sidebar_collapsed);
-        assert_eq!(state.mode, Mode::Terminal);
+        assert!(!state.sidebar_collapsed);
+        assert_eq!(state.mode, Mode::GlobalMenu);
     }
 
     #[test]
@@ -1284,8 +1283,8 @@ last_pane = "prefix+tab"
 
         app.handle_navigate_key(TerminalKey::new(KeyCode::Char('n'), KeyModifiers::SHIFT));
 
-        assert!(app.state.sidebar_collapsed);
-        assert_eq!(app.state.mode, Mode::Terminal);
+        assert!(!app.state.sidebar_collapsed);
+        assert_eq!(app.state.mode, Mode::GlobalMenu);
     }
 
     #[tokio::test]
@@ -1306,8 +1305,8 @@ last_pane = "prefix+tab"
 
         app.handle_navigate_key(TerminalKey::new(KeyCode::Char('N'), KeyModifiers::empty()));
 
-        assert!(app.state.sidebar_collapsed);
-        assert_eq!(app.state.mode, Mode::Terminal);
+        assert!(!app.state.sidebar_collapsed);
+        assert_eq!(app.state.mode, Mode::GlobalMenu);
     }
 
     #[tokio::test]
@@ -1495,7 +1494,8 @@ last_pane = "prefix+tab"
             KeyEvent::new(KeyCode::Char('H'), KeyModifiers::SHIFT),
         );
 
-        assert!(state.sidebar_collapsed);
+        assert!(!state.sidebar_collapsed);
+        assert_eq!(state.mode, Mode::GlobalMenu);
     }
 
     #[test]

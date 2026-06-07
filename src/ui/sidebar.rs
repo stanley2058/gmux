@@ -1,3 +1,7 @@
+// Sidebar rendering is retained for now because pane-panel helpers and tests
+// still share this module while desktop chrome has moved to the top bar.
+#![allow(dead_code)]
+
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},

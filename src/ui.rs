@@ -41,7 +41,6 @@ pub(crate) use self::scrollbar::{
     scrollbar_offset_from_row, scrollbar_thumb_grab_offset, should_show_scrollbar,
 };
 use self::settings::render_settings_overlay;
-use self::sidebar::{render_sidebar, render_sidebar_collapsed};
 use self::status::{
     render_config_diagnostic, render_copy_feedback, render_toast_notification,
     toast_notification_rect,
@@ -64,14 +63,12 @@ pub(crate) use self::{
         MobileSwitcherTarget,
     },
     panes::pane_is_scrolled_back,
-    tabs::compute_tab_bar_view,
+    tabs::{compute_tab_bar_view, top_bar_menu_width, top_bar_tab_area},
     widgets::{centered_popup_rect, modal_stack_areas},
 };
 use crate::app::state::ViewLayout;
 use crate::app::{AppState, Mode};
 use crate::terminal::TerminalRuntimeRegistry;
-
-const COLLAPSED_WIDTH: u16 = 4; // num + space + dot + separator
 
 /// Compute view geometry and reconcile pane sizes.
 /// Called before render to separate mutation from drawing.
@@ -152,40 +149,23 @@ fn compute_view_internal(
         return;
     }
 
-    let sidebar_w = if app.sidebar_collapsed {
-        COLLAPSED_WIDTH
-    } else {
-        app.sidebar_width
-            .clamp(app.sidebar_min_width, app.sidebar_max_width)
-    };
-
-    let [sidebar_area, main_area] =
-        Layout::horizontal([Constraint::Length(sidebar_w), Constraint::Min(1)]).areas(area);
-
     let has_tabs = app.session().is_some();
-    let (tab_bar_rect, terminal_area) = if has_tabs && main_area.height > 1 {
+    let (tab_bar_rect, terminal_area) = if has_tabs && area.height > 1 {
         let [tab_bar_rect, terminal_area] =
-            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(main_area);
+            Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         (tab_bar_rect, terminal_area)
     } else {
-        (Rect::default(), main_area)
+        (Rect::default(), area)
     };
 
-    if !app.sidebar_collapsed {
-        let detail_area = expanded_pane_panel_rect(sidebar_area);
-        let max_pane_panel_scroll =
-            pane_panel_scroll_metrics(app, detail_area).max_offset_from_bottom;
-        app.pane_panel_scroll = app.pane_panel_scroll.min(max_pane_panel_scroll);
-    } else {
-        app.pane_panel_scroll = 0;
-    }
+    app.pane_panel_scroll = 0;
 
     let tab_bar_view = app
         .session()
         .map(|ws| {
             compute_tab_bar_view(
                 ws,
-                tab_bar_rect,
+                top_bar_tab_area(app, terminal_runtimes, tab_bar_rect),
                 app.tab_scroll,
                 app.tab_scroll_follow_active,
                 app.mouse_capture,
@@ -223,7 +203,7 @@ fn compute_view_internal(
 
     app.view = crate::app::ViewState {
         layout: ViewLayout::Desktop,
-        sidebar_rect: sidebar_area,
+        sidebar_rect: Rect::default(),
         tab_bar_rect,
         tab_hit_areas: tab_bar_view.tab_hit_areas,
         tab_scroll_left_hit_area: tab_bar_view.scroll_left_hit_area,
@@ -317,19 +297,14 @@ pub fn render_with_runtime_registry(
     terminal_runtimes: &TerminalRuntimeRegistry,
     frame: &mut Frame,
 ) {
-    let sidebar_area = app.view.sidebar_rect;
     let tab_bar_area = app.view.tab_bar_rect;
     let terminal_area = app.view.terminal_area;
 
     if app.view.layout == ViewLayout::Mobile {
         render_mobile_header(app, terminal_runtimes, frame, app.view.mobile_header_rect);
-    } else if app.sidebar_collapsed {
-        render_sidebar_collapsed(app, frame, sidebar_area);
-    } else {
-        render_sidebar(app, terminal_runtimes, frame, sidebar_area);
     }
     if app.view.layout != ViewLayout::Mobile {
-        render_tab_bar(app, frame, tab_bar_area);
+        render_tab_bar(app, terminal_runtimes, frame, tab_bar_area);
     }
     render_panes(app, terminal_runtimes, frame, terminal_area);
 
@@ -462,7 +437,7 @@ mod tests {
             .find(|info| info.id == first_pane)
             .expect("focused pane info");
 
-        let backend = TestBackend::new(80, 20);
+        let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| render(&app, frame)).unwrap();
 
@@ -512,94 +487,40 @@ mod tests {
     }
 
     #[test]
-    fn compute_view_clamps_sidebar_width_to_configured_max() {
+    fn desktop_view_uses_full_width_top_bar_and_terminal_area() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
         app.active_session = Some(0);
         app.selected_session = 0;
         app.mode = Mode::Terminal;
-        app.sidebar_max_width = 30;
-        app.sidebar_width = 999;
 
         compute_view(&mut app, Rect::new(0, 0, 100, 20));
 
-        assert_eq!(app.view.sidebar_rect.width, 30);
+        assert_eq!(app.view.sidebar_rect, Rect::default());
+        assert_eq!(app.view.tab_bar_rect, Rect::new(0, 0, 100, 1));
+        assert_eq!(app.view.terminal_area, Rect::new(0, 1, 100, 19));
     }
 
     #[test]
-    fn compute_view_clamps_sidebar_width_to_configured_min() {
+    fn top_bar_renders_menu_button_at_top_right() {
         let mut app = crate::app::state::AppState::test_new();
         app.sessions = vec![Workspace::test_new("one")];
         app.active_session = Some(0);
         app.selected_session = 0;
         app.mode = Mode::Terminal;
-        app.sidebar_min_width = 22;
-        app.sidebar_width = 5;
 
         compute_view(&mut app, Rect::new(0, 0, 100, 20));
 
-        assert_eq!(app.view.sidebar_rect.width, 22);
-    }
-
-    #[test]
-    fn collapsed_sidebar_renders_only_session_glance() {
-        let mut app = crate::app::state::AppState::test_new();
-        app.sidebar_collapsed = true;
-        app.sessions = vec![Workspace::test_new("one"), Workspace::test_new("two")];
-        app.active_session = Some(1);
-        app.selected_session = 0;
-        app.mode = Mode::Terminal;
-
-        compute_view(&mut app, Rect::new(0, 0, 80, 20));
-
-        let backend = TestBackend::new(80, 20);
+        let backend = TestBackend::new(100, 20);
         let mut terminal = Terminal::new(backend).unwrap();
         terminal.draw(|frame| render(&app, frame)).unwrap();
         let buffer = terminal.backend().buffer();
 
-        let (ws_area, _, _) = collapsed_sidebar_sections(app.view.sidebar_rect);
-        let active_style = buffer[(ws_area.x, ws_area.y)].style();
+        let menu = app.global_launcher_rect();
+        let row = buffer_row_text(buffer, menu, menu.y);
 
-        assert_eq!(buffer[(ws_area.x, ws_area.y)].symbol(), "2");
-        assert_eq!(active_style.bg, Some(app.palette.surface_dim));
-        assert_eq!(buffer[(ws_area.x, ws_area.y + 1)].symbol(), " ");
-        assert_ne!(
-            buffer[(ws_area.x, ws_area.y + 1)].style().bg,
-            Some(app.palette.surface_dim)
-        );
-    }
-
-    #[test]
-    fn expanded_sidebar_omits_workspace_rows() {
-        let mut app = crate::app::state::AppState::test_new();
-        let mut ws = Workspace::test_new("one");
-        let dir = temp_workspace_dir();
-        ws.identity_cwd = dir.clone();
-        let root_pane = ws.tabs[0].root_pane;
-
-        app.sessions = vec![ws];
-        app.ensure_test_terminals();
-        let root_terminal_id = app.sessions[0].tabs[0].panes[&root_pane]
-            .attached_terminal_id
-            .clone();
-        app.terminals.get_mut(&root_terminal_id).unwrap().cwd = dir.clone();
-        app.selected_session = 0;
-        app.mode = Mode::Navigate;
-
-        compute_view(&mut app, Rect::new(0, 0, 80, 20));
-
-        let backend = TestBackend::new(80, 20);
-        let mut terminal = Terminal::new(backend).unwrap();
-        terminal.draw(|frame| render(&app, frame)).unwrap();
-        let buffer = terminal.backend().buffer();
-
-        let pane_area = expanded_pane_panel_rect(app.view.sidebar_rect);
-        let line1 = buffer_row_text(buffer, pane_area, pane_area.y + 1);
-
-        assert!(line1.contains(" panes"));
-        assert!(!line1.contains("one"));
-
-        std::fs::remove_dir_all(dir).ok();
+        assert_eq!(menu, Rect::new(94, 0, 6, 1));
+        assert!(row.contains("menu"));
     }
 
     #[test]
@@ -877,16 +798,6 @@ mod tests {
             .collect::<String>()
             .trim_end()
             .to_string()
-    }
-
-    fn temp_workspace_dir() -> std::path::PathBuf {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("unix time")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("gmux-ui-test-{unique}"));
-        std::fs::create_dir_all(&root).expect("create workspace dir");
-        root
     }
 
     #[test]

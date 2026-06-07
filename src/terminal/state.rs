@@ -53,10 +53,6 @@ impl TerminalState {
         self.launch_argv = None;
         self.respawn_shell_on_exit = false;
     }
-
-    pub fn border_label(&self) -> Option<String> {
-        self.effective_title().or_else(|| self.manual_label.clone())
-    }
 }
 
 #[cfg(test)]
@@ -65,23 +61,6 @@ mod tests {
 
     fn test_terminal() -> TerminalState {
         TerminalState::new(TerminalId::alloc(), "/tmp".into())
-    }
-
-    #[test]
-    fn border_label_uses_title_and_manual_label_only() {
-        let mut terminal = test_terminal();
-
-        assert_eq!(terminal.border_label(), None);
-
-        terminal.set_manual_label(" reviewer ".into());
-        assert_eq!(terminal.border_label().as_deref(), Some("reviewer"));
-
-        terminal.set_manual_label("   ".into());
-        assert_eq!(terminal.border_label(), None);
-
-        terminal.set_manual_label("reviewer".into());
-        terminal.clear_manual_label();
-        assert_eq!(terminal.border_label(), None);
     }
 
     #[test]

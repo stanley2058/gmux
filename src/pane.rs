@@ -75,6 +75,37 @@ fn foreground_member_cwd_different_from_shell(
     None
 }
 
+fn process_display_name(process: &crate::platform::ForegroundProcess) -> Option<String> {
+    process
+        .argv0
+        .as_deref()
+        .or_else(|| {
+            process
+                .argv
+                .as_ref()
+                .and_then(|argv| argv.first().map(String::as_str))
+        })
+        .map(|value| {
+            Path::new(value)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(value)
+                .trim_start_matches('-')
+                .to_string()
+        })
+        .filter(|name| !name.is_empty())
+        .or_else(|| (!process.name.is_empty()).then(|| process.name.clone()))
+}
+
+fn foreground_process_name(shell_pid: u32) -> Option<String> {
+    let job = crate::platform::foreground_job(shell_pid)?;
+    job.processes
+        .iter()
+        .find(|process| process.pid != shell_pid)
+        .and_then(process_display_name)
+        .or_else(|| job.processes.iter().find_map(process_display_name))
+}
+
 fn spawn_basic_detection_task(
     pane_id: PaneId,
     child_pid: Arc<AtomicU32>,
@@ -1265,6 +1296,14 @@ impl PaneRuntime {
         {
             None
         }
+    }
+
+    pub fn foreground_process_name(&self) -> Option<String> {
+        let pid = self.child_pid.load(Ordering::Acquire);
+        if pid == 0 {
+            return None;
+        }
+        foreground_process_name(pid)
     }
 }
 

@@ -263,7 +263,7 @@ pub struct KeysConfig {
     pub zoom: BindingConfig,
     /// Enter resize mode. Default: "prefix+r"
     pub resize_mode: BindingConfig,
-    /// Toggle sidebar collapse. Default: "prefix+b"
+    /// Open the global menu. Legacy key name from the removed sidebar. Default: "prefix+b".
     pub toggle_sidebar: BindingConfig,
     /// Optional indexed shortcuts expanded over number keys 1-9.
     pub indexed: IndexedKeysConfig,

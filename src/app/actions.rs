@@ -888,7 +888,8 @@ impl AppState {
     }
 
     fn refresh_tab_bar_view(&mut self) {
-        let area = self.view.tab_bar_rect;
+        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
+        let area = crate::ui::top_bar_tab_area(self, &terminal_runtimes, self.view.tab_bar_rect);
         let Some(ws) = self.session() else {
             self.tab_scroll = 0;
             self.view.tab_hit_areas.clear();
@@ -2131,7 +2132,7 @@ mod tests {
     }
 
     #[test]
-    fn previous_pane_panel_entry_keeps_wrapped_target_visible_in_pane_panel() {
+    fn previous_pane_panel_entry_wraps_to_last_entry() {
         let mut workspace = Workspace::test_new("one");
         let root = workspace.tabs[0].root_pane;
         for idx in 1..8 {
@@ -2152,7 +2153,7 @@ mod tests {
 
         let last_idx = state.sessions[0].tabs.len() - 1;
         assert_eq!(state.sessions[0].active_tab, last_idx);
-        assert!(state.pane_panel_scroll > 0);
+        assert_eq!(state.pane_panel_scroll, 0);
     }
 
     #[test]
@@ -2532,7 +2533,10 @@ mod tests {
         assert_eq!(state.sessions[0].focused_pane_id(), Some(right));
         assert_eq!(state.view.pane_infos.len(), 1);
         assert_eq!(state.view.pane_infos[0].id, right);
-        assert!(state.view.pane_infos[0].inner_rect.x > state.view.pane_infos[0].rect.x);
+        assert_eq!(
+            state.view.pane_infos[0].inner_rect.x,
+            state.view.pane_infos[0].rect.x
+        );
     }
 
     #[test]

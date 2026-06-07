@@ -1,17 +1,23 @@
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
+    text::{Line, Span},
     widgets::Paragraph,
     Frame,
 };
 
 use super::widgets::panel_contrast_fg;
 use crate::app::AppState;
+use crate::terminal::TerminalRuntimeRegistry;
 use crate::workspace::{SessionUiState, Tab};
 
 const MIN_TAB_WIDTH: u16 = 8;
 const NEW_TAB_WIDTH: u16 = 3;
 const TAB_SCROLL_BUTTON_WIDTH: u16 = 3;
+const MENU_WIDTH: u16 = 6;
+const MENU_BADGE_WIDTH: u16 = 8;
+const SESSION_MAX_WIDTH: u16 = 24;
+const PROGRAM_MAX_WIDTH: u16 = 18;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TabBarView {
@@ -22,8 +28,106 @@ pub(crate) struct TabBarView {
     pub new_tab_hit_area: Rect,
 }
 
+fn truncate_label(text: &str, max_width: u16) -> String {
+    let max_width = max_width as usize;
+    let len = text.chars().count();
+    if len <= max_width {
+        return text.to_string();
+    }
+    if max_width == 0 {
+        return String::new();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+    let prefix: String = text.chars().take(max_width - 1).collect();
+    format!("{prefix}…")
+}
+
+fn tab_bar_label(tab: &Tab) -> String {
+    match &tab.custom_name {
+        Some(name) => format!("{}: {}", tab.number, name),
+        None => tab.number.to_string(),
+    }
+}
+
 fn tab_width(tab: &Tab) -> u16 {
-    (tab.display_name().chars().count() as u16 + 4).max(MIN_TAB_WIDTH)
+    (tab_bar_label(tab).chars().count() as u16 + 4).max(MIN_TAB_WIDTH)
+}
+
+fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
+    let command = argv?.first()?;
+    std::path::Path::new(command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_string)
+        .or_else(|| Some(command.clone()))
+}
+
+fn focused_program_name(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) -> String {
+    let ws_idx = match app.session_index() {
+        Some(ws_idx) => ws_idx,
+        None => return "shell".to_string(),
+    };
+    let Some(ws) = app.session() else {
+        return "shell".to_string();
+    };
+    let Some(pane_id) = ws.focused_pane_id() else {
+        return "shell".to_string();
+    };
+
+    app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)
+        .and_then(|runtime| runtime.foreground_process_name())
+        .or_else(|| {
+            ws.pane_state(pane_id)
+                .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
+                .and_then(|terminal| launch_label(terminal.launch_argv.as_ref()))
+        })
+        .unwrap_or_else(|| "shell".to_string())
+}
+
+fn session_name(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) -> String {
+    app.session()
+        .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
+        .unwrap_or_else(|| "gmux".to_string())
+}
+
+pub(crate) fn top_bar_menu_width(app: &AppState) -> u16 {
+    if app.global_menu_attention_badge_visible() {
+        MENU_BADGE_WIDTH
+    } else {
+        MENU_WIDTH
+    }
+}
+
+pub(crate) fn top_bar_tab_area(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    area: Rect,
+) -> Rect {
+    if area.width == 0 || area.height == 0 {
+        return Rect::default();
+    }
+
+    let session_w = session_name(app, terminal_runtimes)
+        .chars()
+        .count()
+        .min(SESSION_MAX_WIDTH as usize) as u16;
+    let program_w = focused_program_name(app, terminal_runtimes)
+        .chars()
+        .count()
+        .min(PROGRAM_MAX_WIDTH as usize) as u16;
+    let left_w = session_w
+        .saturating_add(3)
+        .saturating_add(program_w)
+        .saturating_add(3);
+    let menu_w = top_bar_menu_width(app).min(area.width);
+    let tabs_x = area.x.saturating_add(left_w.min(area.width));
+    let menu_x = area.x + area.width.saturating_sub(menu_w);
+    if tabs_x >= menu_x {
+        return Rect::new(tabs_x.min(menu_x), area.y, 0, 1);
+    }
+    Rect::new(tabs_x, area.y, menu_x - tabs_x, 1)
 }
 
 fn layout_tab_hit_areas(session: &SessionUiState, area: Rect, scroll: usize) -> Vec<Rect> {
@@ -234,7 +338,12 @@ fn tab_drop_indicator_x(
     None
 }
 
-pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
+pub(super) fn render_tab_bar(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+    area: Rect,
+) {
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -251,6 +360,32 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
         Paragraph::new(" ".repeat(area.width as usize)).style(Style::default().bg(p.panel_bg)),
         area,
     );
+
+    let session = truncate_label(&session_name(app, terminal_runtimes), SESSION_MAX_WIDTH);
+    let program = truncate_label(
+        &focused_program_name(app, terminal_runtimes),
+        PROGRAM_MAX_WIDTH,
+    );
+    let tabs_area = top_bar_tab_area(app, terminal_runtimes, area);
+    let left_width = tabs_area.x.saturating_sub(area.x).min(area.width);
+    if left_width > 0 {
+        let line = Line::from(vec![
+            Span::styled(
+                session,
+                Style::default()
+                    .fg(p.overlay1)
+                    .bg(p.panel_bg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" | ", Style::default().fg(p.overlay0).bg(p.panel_bg)),
+            Span::styled(program, Style::default().fg(p.teal).bg(p.panel_bg)),
+            Span::styled(" | ", Style::default().fg(p.overlay0).bg(p.panel_bg)),
+        ]);
+        frame.render_widget(
+            Paragraph::new(line),
+            Rect::new(area.x, area.y, left_width, 1),
+        );
+    }
 
     let first_visible_idx = app
         .view
@@ -325,7 +460,7 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
             Style::default().fg(p.overlay1).bg(p.surface0)
         };
         let width = rect.width as usize;
-        let name = tab.display_name();
+        let name = tab_bar_label(tab);
         let text = format!(" {:width$}", name, width = width.saturating_sub(1));
         frame.render_widget(Paragraph::new(text).style(style), rect);
     }
@@ -353,6 +488,28 @@ pub(super) fn render_tab_bar(app: &AppState, frame: &mut Frame, area: Rect) {
             Paragraph::new(" + ").style(Style::default().fg(p.overlay1)),
             app.view.new_tab_hit_area,
         );
+    }
+
+    let menu_rect = app.global_launcher_rect();
+    if menu_rect.width > 0 {
+        let menu_line = if app.global_menu_attention_badge_visible() {
+            Line::from(vec![
+                Span::styled(
+                    "● ",
+                    Style::default()
+                        .fg(p.accent)
+                        .bg(p.panel_bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("menu", Style::default().fg(p.overlay1).bg(p.panel_bg)),
+            ])
+        } else {
+            Line::from(vec![Span::styled(
+                "menu",
+                Style::default().fg(p.overlay1).bg(p.panel_bg),
+            )])
+        };
+        frame.render_widget(Paragraph::new(menu_line), menu_rect);
     }
 
     if first_visible_idx.is_some_and(|idx| idx > 0) {

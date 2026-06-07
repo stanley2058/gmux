@@ -95,12 +95,18 @@ impl AppState {
             return self.view.mobile_menu_hit_area;
         }
 
+        let top_bar = self.view.tab_bar_rect;
+        if top_bar.width > 0 && top_bar.height > 0 {
+            let width = crate::ui::top_bar_menu_width(self).min(top_bar.width);
+            return Rect::new(
+                top_bar.x + top_bar.width.saturating_sub(width),
+                top_bar.y,
+                width,
+                1,
+            );
+        }
+
         let footer = self.sidebar_footer_rect();
-        let width = if self.global_menu_attention_badge_visible() {
-            8
-        } else {
-            6
-        };
         let toggle = crate::ui::expanded_sidebar_toggle_rect(self.view.sidebar_rect);
         let max_x_exclusive = if toggle == Rect::default() {
             footer.x + footer.width
@@ -108,9 +114,13 @@ impl AppState {
             toggle.x
         };
         let available_width = max_x_exclusive.saturating_sub(footer.x).max(1);
-        let width = width.min(available_width);
-        let x = max_x_exclusive.saturating_sub(width).max(footer.x);
-        Rect::new(x, footer.y, width, footer.height)
+        let width = crate::ui::top_bar_menu_width(self).min(available_width);
+        Rect::new(
+            max_x_exclusive.saturating_sub(width).max(footer.x),
+            footer.y,
+            width,
+            footer.height,
+        )
     }
 
     pub(crate) fn global_menu_labels(&self) -> Vec<&'static str> {
@@ -141,7 +151,13 @@ impl AppState {
         let max_x = screen.x + screen.width.saturating_sub(menu_w);
         let desired_x = launcher.x + launcher.width.saturating_sub(menu_w);
         let x = desired_x.min(max_x);
-        let y = launcher.y.saturating_sub(menu_h);
+        let below_y = launcher.y.saturating_add(launcher.height);
+        let max_y = screen.y + screen.height.saturating_sub(menu_h);
+        let y = if launcher.y <= screen.y {
+            below_y.min(max_y)
+        } else {
+            launcher.y.saturating_sub(menu_h)
+        };
         Rect::new(x, y, menu_w, menu_h)
     }
 
@@ -683,45 +699,6 @@ mod tests {
         app.handle_mouse(mouse(MouseEventKind::ScrollDown, footer.x + 1, footer.y));
 
         assert_eq!(app.state.selected_session, 0);
-    }
-
-    #[test]
-    fn dragging_expanded_sidebar_body_does_not_reorder_sessions() {
-        let mut app = app_for_mouse_test();
-        app.state.sessions = vec![
-            Workspace::test_new("a"),
-            Workspace::test_new("b"),
-            Workspace::test_new("c"),
-        ];
-        app.state.active_session = Some(1);
-        app.state.selected_session = 2;
-        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
-        let detail_area = app.state.pane_panel_rect();
-        let source_row = detail_area.y + 1;
-        let target_row = source_row.saturating_sub(1);
-
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            2,
-            source_row,
-        ));
-        app.handle_mouse(mouse(
-            MouseEventKind::Drag(MouseButton::Left),
-            2,
-            target_row,
-        ));
-        assert!(app.state.drag.is_none());
-        app.handle_mouse(mouse(MouseEventKind::Up(MouseButton::Left), 2, target_row));
-
-        let names: Vec<_> = app
-            .state
-            .sessions
-            .iter()
-            .map(|ws| ws.display_name())
-            .collect();
-        assert_eq!(names, vec!["a", "b", "c"]);
-        assert_eq!(app.state.active_session, Some(1));
-        assert_eq!(app.state.selected_session, 2);
     }
 
     #[test]

@@ -84,7 +84,7 @@ impl AppState {
         }
 
         let launcher_enabled = self.view.layout != ViewLayout::Mobile
-            && !self.sidebar_collapsed
+            && self.mouse_capture
             && matches!(
                 self.mode,
                 Mode::Terminal
@@ -1508,7 +1508,7 @@ mod tests {
         app.state.mode = Mode::Terminal;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let info = app.state.view.pane_infos[0].clone();
-        assert!(info.inner_rect.x > 0, "sidebar offset should be present");
+        assert_eq!(info.inner_rect.x, 0, "sidebar offset should be absent");
         assert!(info.inner_rect.y > 0, "tab bar offset should be present");
 
         app.state.handle_pane_mouse_only(
@@ -1548,7 +1548,7 @@ mod tests {
         app.state.mode = Mode::Terminal;
         crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
         let info = app.state.view.pane_infos[0].clone();
-        assert!(info.inner_rect.x > 0, "sidebar offset should be present");
+        assert_eq!(info.inner_rect.x, 0, "sidebar offset should be absent");
         assert!(info.inner_rect.y > 0, "tab bar offset should be present");
 
         app.handle_mouse(mouse(
@@ -1706,18 +1706,17 @@ mod tests {
             crate::terminal::TerminalRuntime::test_with_screen_bytes(10, 5, b""),
         );
 
-        assert!(app.state.pane_at(info.rect.x, info.rect.y).is_none());
-        assert!(app
-            .state
-            .pane_mouse_target(info.rect.x, info.rect.y)
-            .is_some());
+        let border = app.state.view.split_borders[0].clone();
+        let (col, row) = match border.direction {
+            Direction::Horizontal => (border.pos, info.rect.y),
+            Direction::Vertical => (info.rect.x, border.pos),
+        };
+
+        assert!(app.state.pane_at(col, row).is_none());
+        assert!(app.state.pane_mouse_target(col, row).is_some());
         app.handle_mouse(MouseEvent {
             modifiers: KeyModifiers::CONTROL,
-            ..mouse(
-                MouseEventKind::Down(MouseButton::Right),
-                info.rect.x,
-                info.rect.y,
-            )
+            ..mouse(MouseEventKind::Down(MouseButton::Right), col, row)
         });
 
         assert_eq!(app.state.mode, Mode::ContextMenu);
@@ -1764,14 +1763,7 @@ mod tests {
 
         let hit = app.state.view.toast_hit_area;
         assert!(app.state.toast.is_none());
-        app.handle_mouse(mouse(
-            MouseEventKind::Down(MouseButton::Left),
-            hit.x + 1,
-            hit.y + 1,
-        ));
-
-        assert_eq!(app.state.active_session, Some(0));
-        assert_eq!(app.state.sessions[1].focused_pane_id(), Some(first_pane));
+        assert_eq!(hit, Rect::default());
         assert_eq!(app.state.mode, Mode::Terminal);
     }
 

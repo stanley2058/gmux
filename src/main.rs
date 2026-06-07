@@ -127,7 +127,7 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # close_pane = "prefix+x"
 # zoom = "prefix+z"       # legacy alias: fullscreen
 # resize_mode = "prefix+r"
-# toggle_sidebar = "prefix+b"
+# toggle_sidebar = "prefix+b" # legacy name; opens the global menu
 
 # Navigate-mode movement. These local shortcuts win while navigate mode is open.
 # They are independent from focus_pane_*. Do not include prefix+, esc, enter, tab, or 1..9 here.
@@ -150,7 +150,7 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # tabs = ""       # e.g. "ctrl" makes ctrl+1..9 switch tabs directly
 
 [ui]
-# Sidebar width (auto-scaled based on session item names, this sets the default)
+# Legacy sidebar settings are parsed for older configs but the desktop UI now uses a top bar.
 # sidebar_width = 26
 
 # Minimum sidebar width when expanded (columns)
