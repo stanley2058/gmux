@@ -2,7 +2,7 @@
 
 **A terminal multiplexer with persistent sessions, tabs, panes, and a scriptable local socket.**
 
-This is a personal fork of gmux. It is intended to be built and installed from source; public installers, package-manager formulas, hosted docs, release manifests, and in-app update channels are not maintained here.
+This is a fork of [herdr](https://github.com/ogulcancelik/herdr) with all agent integrations removed. Modified to focus on becoming a tmux replacement.
 
 ## Build
 
@@ -114,19 +114,19 @@ Scriptable namespaces such as `gmux session`, `gmux tab`, and `gmux pane` remain
 
 The default prefix is `ctrl+b`.
 
-| key | action |
-|-----|--------|
-| `prefix+c` | new tab |
+| key                     | action              |
+| ----------------------- | ------------------- |
+| `prefix+c`              | new tab             |
 | `prefix+n` / `prefix+p` | next / previous tab |
-| `prefix+1..9` | switch tab |
-| `prefix+g` | session navigator |
-| `prefix+h/j/k/l` | focus pane |
-| `prefix+%` / `prefix+"` | split pane |
-| `prefix+x` | close pane |
-| `prefix+z` | zoom pane |
-| `prefix+r` | resize mode |
-| `prefix+[` | copy mode |
-| `prefix+d` | detach |
+| `prefix+1..9`           | switch tab          |
+| `prefix+g`              | session navigator   |
+| `prefix+h/j/k/l`        | focus pane          |
+| `prefix+%` / `prefix+"` | split pane          |
+| `prefix+x`              | close pane          |
+| `prefix+z`              | zoom pane           |
+| `prefix+r`              | resize mode         |
+| `prefix+[`              | copy mode           |
+| `prefix+d`              | detach              |
 
 Mouse is supported for pane focus, pane resizing, tab selection, and scrollback. Resize mode uses `h/j/k/l` and Esc exits.
 
