@@ -295,7 +295,13 @@ impl AppState {
             return;
         };
         let lines = copy_mode_page_lines(info.inner_rect.height, half_page);
-        self.scroll_copy_mode_lines_with_state(terminal_runtimes, copy_mode, info, direction, lines);
+        self.scroll_copy_mode_lines_with_state(
+            terminal_runtimes,
+            copy_mode,
+            info,
+            direction,
+            lines,
+        );
     }
 
     fn scroll_copy_mode_lines(
@@ -311,7 +317,13 @@ impl AppState {
             self.exit_copy_mode(terminal_runtimes, false);
             return;
         };
-        self.scroll_copy_mode_lines_with_state(terminal_runtimes, copy_mode, info, direction, lines);
+        self.scroll_copy_mode_lines_with_state(
+            terminal_runtimes,
+            copy_mode,
+            info,
+            direction,
+            lines,
+        );
     }
 
     fn scroll_copy_mode_lines_with_state(
