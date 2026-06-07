@@ -754,4 +754,64 @@ mod tests {
         assert!(rows.iter().any(|row| row.label == "accent"));
         assert!(rows.iter().all(|row| row.readonly));
     }
+
+    #[test]
+    fn scalar_settings_catalog_covers_non_keybinding_config_scope() {
+        let mut state = AppState::test_new();
+        let expected = [
+            (SettingsPage::Theme, &["theme", "custom colors"] as &[&str]),
+            (SettingsPage::Notifications, &["notification popups"]),
+            (
+                SettingsPage::Terminal,
+                &["default shell", "shell mode", "new terminal cwd"],
+            ),
+            (
+                SettingsPage::Interface,
+                &[
+                    "sidebar width",
+                    "sidebar min width",
+                    "sidebar max width",
+                    "mobile width threshold",
+                    "pane panel scope",
+                    "confirm close",
+                    "prompt new tab name",
+                    "redraw on focus gained",
+                    "show onboarding on next launch",
+                    "legacy accent",
+                ],
+            ),
+            (
+                SettingsPage::Mouse,
+                &[
+                    "mouse capture",
+                    "right-click passthrough modifier",
+                    "mouse scroll lines",
+                ],
+            ),
+            (SettingsPage::Remote, &["manage ssh config"]),
+            (SettingsPage::Advanced, &["scrollback limit bytes"]),
+            (
+                SettingsPage::Experiments,
+                &[
+                    "allow nested gmux",
+                    "kitty graphics",
+                    "pane screen history",
+                    "reveal hidden cursor for CJK IME",
+                    "CJK IME cursor shape",
+                    "switch to ascii input source in prefix (macOS)",
+                ],
+            ),
+        ];
+
+        for (page, labels) in expected {
+            state.settings.page = page;
+            let rows = settings_rows(&state);
+            for label in labels {
+                assert!(
+                    rows.iter().any(|row| row.label == *label),
+                    "missing {label:?} on {page:?}"
+                );
+            }
+        }
+    }
 }

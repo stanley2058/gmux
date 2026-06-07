@@ -1782,6 +1782,45 @@ mod tests {
     }
 
     #[test]
+    fn settings_save_scalar_values_persist_then_apply_live_config() {
+        let _guard = config_env_lock().lock().unwrap();
+        let path = temp_config_path("settings-save-scalar-values");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "onboarding = false\n").unwrap();
+        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
+
+        let mut app = test_app();
+
+        app.save_section_value("default shell", "terminal", "default_shell", "\"nu\"");
+        app.save_section_value("sidebar width", "ui", "sidebar_width", "30");
+        app.save_section_bool(
+            "remote ssh config setting",
+            "remote",
+            "manage_ssh_config",
+            false,
+        );
+        app.save_top_level_bool("onboarding setting", "onboarding", true);
+
+        assert_eq!(app.state.default_shell, "nu");
+        assert_eq!(app.state.default_sidebar_width, 30);
+        assert!(!app.state.remote_manage_ssh_config);
+        assert!(app.state.show_onboarding_on_next_launch);
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("[terminal]"));
+        assert!(content.contains("default_shell = \"nu\""));
+        assert!(content.contains("[ui]"));
+        assert!(content.contains("sidebar_width = 30"));
+        assert!(content.contains("[remote]"));
+        assert!(content.contains("manage_ssh_config = false"));
+        assert!(content.contains("onboarding = true"));
+        assert!(app.state.config_diagnostic.is_none());
+
+        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
     fn reload_config_keeps_current_state_on_invalid_toml() {
         let _guard = config_env_lock().lock().unwrap();
         let path = temp_config_path("reload-config-invalid-toml");
