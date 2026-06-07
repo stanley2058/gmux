@@ -8,7 +8,7 @@ mod theme;
 pub use self::{
     io::{
         config_diagnostic_summary, config_dir, config_path, load_live_config,
-        remove_keybinding_config_sections, remove_section_key, state_dir, upsert_section_bool,
+        remove_keybinding_config_sections, remove_section_key, upsert_section_bool,
         upsert_section_value,
     },
     keybinds::{
@@ -19,7 +19,6 @@ pub use self::{
     model::{
         validated_sidebar_bounds, Config, ConfigReloadReport, ConfigReloadStatus, KeysConfig,
         NewTerminalCwdConfig, PanePanelScopeConfig, ShellModeConfig, ToastConfig, ToastDelivery,
-        UpdateChannelConfig,
     },
     theme::{parse_color, CustomThemeColors, ThemeConfig},
 };

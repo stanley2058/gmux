@@ -1,13 +1,15 @@
+use ratatui::layout::Rect;
+#[cfg(test)]
 use ratatui::{
-    layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Paragraph, Wrap},
 };
 
 use super::widgets::action_button_width;
+#[cfg(test)]
 use crate::app::state::Palette;
 
+#[cfg(test)]
 fn markdown_inline_spans<'a>(
     text: &str,
     base_style: Style,
@@ -58,6 +60,7 @@ fn markdown_inline_spans<'a>(
     (width, spans)
 }
 
+#[cfg(test)]
 pub(crate) fn markdown_lines<'a>(body: &'a str, p: &Palette) -> Vec<(usize, Line<'a>)> {
     let mut lines = Vec::new();
     let mut in_fenced_code_block = false;
@@ -133,17 +136,6 @@ pub(crate) fn markdown_lines<'a>(body: &'a str, p: &Palette) -> Vec<(usize, Line
     }
 
     lines
-}
-
-pub(crate) fn markdown_wrapped_line_count(lines: &[(usize, Line<'_>)], width: u16) -> usize {
-    Paragraph::new(
-        lines
-            .iter()
-            .map(|(_, line)| line.clone())
-            .collect::<Vec<_>>(),
-    )
-    .wrap(Wrap { trim: false })
-    .line_count(width.max(1))
 }
 
 pub(crate) fn overlay_close_button_rect(area: Rect) -> Rect {

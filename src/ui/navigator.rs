@@ -265,7 +265,7 @@ fn tab_detail(
         .map(|ws| ws.display_name_from(&app.terminals, terminal_runtimes))
         .unwrap_or_else(|| "session".to_string());
     let tab_label = crate::workspace::session_tab_display_name(ws_idx, ws, tab_idx, tab);
-    let parts = vec![
+    let parts = [
         session_label,
         format!("tab: {tab_label}"),
         format!("{} panes", tab.panes.len()),

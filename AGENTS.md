@@ -26,6 +26,8 @@ Run `just check` before committing unless a narrower validation is explicitly ac
 
 Unit tests live next to the code (`#[cfg(test)] mod tests`). New `AppState` or `Workspace` behavior should be testable with `AppState::test_new()` and `Workspace::test_new()` without PTYs.
 
+The vendored `libghostty-vt` build requires Zig 0.15.2. If `vendor/zig-0.15.2/zig` is absent, run `just bootstrap-zig` before `just check`. The downloaded Zig tree is intentionally gitignored; `build.rs` uses it automatically when `ZIG` is unset.
+
 ## Vendored libghostty-vt
 
 `vendor/libghostty-vt.vendor.json` records the upstream source commit currently vendored.

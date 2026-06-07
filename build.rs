@@ -27,6 +27,19 @@ fn env_bool(name: &str) -> Option<bool> {
     }
 }
 
+fn zig_command(manifest_dir: &std::path::Path) -> PathBuf {
+    if let Ok(zig) = env::var("ZIG") {
+        return PathBuf::from(zig);
+    }
+
+    let vendored_zig = manifest_dir.join("vendor/zig-0.15.2/zig");
+    if vendored_zig.exists() {
+        return vendored_zig;
+    }
+
+    PathBuf::from("zig")
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=vendor/libghostty-vt.vendor.json");
@@ -36,6 +49,7 @@ fn main() {
     println!("cargo:rerun-if-changed=vendor/libghostty-vt/pkg");
     println!("cargo:rerun-if-changed=vendor/libghostty-vt/src");
     println!("cargo:rerun-if-changed=vendor/libghostty-vt/VERSION");
+    println!("cargo:rerun-if-changed=vendor/zig-0.15.2/zig");
     println!("cargo:rerun-if-env-changed=LIBGHOSTTY_VT_OPTIMIZE");
     println!("cargo:rerun-if-env-changed=LIBGHOSTTY_VT_SIMD");
     println!("cargo:rerun-if-env-changed=LIBGHOSTTY_VT_ZIG_SYSTEM_DIR");
@@ -52,8 +66,7 @@ fn main() {
         .trim()
         .to_string();
 
-    let zig = env::var("ZIG").unwrap_or_else(|_| "zig".into());
-    let mut command = Command::new(zig);
+    let mut command = Command::new(zig_command(&manifest_dir));
     command
         .arg("build")
         .arg("-Demit-lib-vt")

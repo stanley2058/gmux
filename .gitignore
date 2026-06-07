@@ -1,5 +1,7 @@
 /target
 /vendor/libghostty-vt/zig-pkg/
+/vendor/.zig-downloads/
+/vendor/zig-0.15.2/
 __pycache__/
 *.pyc
 *.swp

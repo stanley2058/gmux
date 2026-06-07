@@ -391,7 +391,7 @@ mod tests {
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
             menu.x + 2,
-            menu.y + 3,
+            menu.y + 4,
         ));
 
         assert!(app.state.detach_requested);

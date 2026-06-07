@@ -1033,7 +1033,6 @@ fn status_commands_report_client_and_server_versions() {
         socket_path.display().to_string()
     );
     assert_eq!(full_json["server"]["restart_needed"], false);
-    assert_eq!(full_json["update"]["restart_needed"], false);
 
     let server_json = run_cli_json(&socket_path, &["status", "server", "--json"]);
     assert_eq!(server_json["status"], "running");
@@ -1077,7 +1076,6 @@ fn status_reports_not_running_when_server_socket_is_missing() {
         socket_path.display().to_string()
     );
     assert_eq!(status_json["server"]["restart_needed"], false);
-    assert_eq!(status_json["update"]["restart_needed"], false);
 
     cleanup_test_base(&base);
 }
@@ -1409,7 +1407,10 @@ fn top_level_tab_and_pane_aliases_work() {
     assert!(listed_sessions.status.success());
     let listed_sessions_json: serde_json::Value =
         serde_json::from_slice(&listed_sessions.stdout).unwrap();
-    assert!(listed_sessions_json["sessions"].as_array().unwrap().len() >= 1);
+    assert!(!listed_sessions_json["sessions"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     let created_tab = run_cli(
         &socket_path,

@@ -86,17 +86,12 @@ fn print_full_status(json: bool) -> std::io::Result<i32> {
         print_json(&FullStatusJson {
             client: client_status_json(),
             server: server_status_json(&server),
-            update: update_status_json(&server),
         })?;
         return Ok(0);
     }
 
     println!("client:");
     println!("  version: {}", crate::build_info::version());
-    println!(
-        "  channel: {}",
-        crate::config::Config::load().config.update.channel.as_str()
-    );
     println!("  protocol: {}", crate::protocol::PROTOCOL_VERSION);
     println!();
     println!("server:");
@@ -125,10 +120,6 @@ fn print_client_status(json: bool) -> std::io::Result<()> {
     }
 
     println!("version: {}", crate::build_info::version());
-    println!(
-        "channel: {}",
-        crate::config::Config::load().config.update.channel.as_str()
-    );
     println!("protocol: {}", crate::protocol::PROTOCOL_VERSION);
     println!("binary: {}", current_exe_label());
     Ok(())
@@ -213,13 +204,11 @@ fn restart_needed_label(server: &ServerRuntimeStatus) -> &'static str {
 struct FullStatusJson {
     client: ClientStatusJson,
     server: ServerStatusJson,
-    update: UpdateStatusJson,
 }
 
 #[derive(Serialize)]
 struct ClientStatusJson {
     version: String,
-    channel: &'static str,
     protocol: u32,
     binary: String,
     session: Option<String>,
@@ -243,15 +232,9 @@ struct ServerCapabilitiesJson {
     live_handoff: bool,
 }
 
-#[derive(Serialize)]
-struct UpdateStatusJson {
-    restart_needed: Option<bool>,
-}
-
 fn client_status_json() -> ClientStatusJson {
     ClientStatusJson {
         version: crate::build_info::version(),
-        channel: crate::config::Config::load().config.update.channel.as_str(),
         protocol: crate::protocol::PROTOCOL_VERSION,
         binary: current_exe_label(),
         session: crate::session::active_name(),
@@ -290,12 +273,6 @@ fn server_status_json(server: &ServerRuntimeStatus) -> ServerStatusJson {
             session: crate::session::active_name(),
             restart_needed: Some(false),
         },
-    }
-}
-
-fn update_status_json(server: &ServerRuntimeStatus) -> UpdateStatusJson {
-    UpdateStatusJson {
-        restart_needed: restart_needed_bool(server),
     }
 }
 

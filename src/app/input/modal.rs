@@ -73,7 +73,7 @@ pub(crate) enum GlobalMenuAction {
     Settings,
 }
 
-pub(super) fn global_menu_actions(state: &AppState) -> Vec<GlobalMenuAction> {
+pub(super) fn global_menu_actions(_state: &AppState) -> Vec<GlobalMenuAction> {
     let mut actions = vec![
         GlobalMenuAction::Settings,
         GlobalMenuAction::Keybinds,

@@ -2,21 +2,21 @@
 
 # Run tests
 test:
-    cargo nextest run --locked --status-level fail --final-status-level fail --failure-output final --success-output never
+    cargo test --locked
     python3 -m unittest scripts.test_vendor_libghostty_vt
 
-# Run one nextest filter, e.g. `just test-one codex_stale_working`
+# Run one cargo test filter, e.g. `just test-one codex_stale_working`
 test-one filter:
-    cargo nextest run --locked "{{filter}}" --status-level fail --final-status-level fail --failure-output final --success-output never
+    cargo test --locked "{{filter}}"
 
 # Run fast local lint checks
 lint:
     cargo fmt --check
     cargo clippy --all-targets --locked -- -D warnings
 
-# Run PR CI checks
-ci filter='all()': lint
-    cargo nextest run --locked -E "{{filter}}" --status-level fail --final-status-level slow --failure-output final --success-output never
+# Run local CI checks
+ci: lint
+    cargo test --locked
 
 # Check formatting + run unit tests + maintenance script tests
 check: ci
@@ -36,6 +36,10 @@ build:
 # Build the vendored libghostty-vt source dist
 build-libghostty-vt:
     scripts/build_vendored_libghostty_vt.sh
+
+# Download local Zig required by vendored libghostty-vt
+bootstrap-zig:
+    scripts/bootstrap_zig_0_15_2.sh
 
 # Print default config
 default-config:

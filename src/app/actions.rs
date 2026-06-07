@@ -10,8 +10,7 @@ use crate::workspace::SessionUiState;
 use unicode_width::UnicodeWidthChar;
 
 use super::state::{
-    text_matches_query, AppState, Mode, NavigatorRow, NavigatorTarget, PaneFocusTarget, ToastKind,
-    ToastNotification, ViewLayout,
+    text_matches_query, AppState, Mode, NavigatorRow, NavigatorTarget, PaneFocusTarget, ViewLayout,
 };
 // ---------------------------------------------------------------------------
 // Navigator operations
@@ -646,11 +645,6 @@ impl AppState {
             self.mobile_switcher_scroll = self
                 .mobile_switcher_scroll
                 .min(crate::ui::mobile_switcher_max_scroll(self));
-            return;
-        }
-
-        if self.sidebar_collapsed {
-            return;
         }
     }
 

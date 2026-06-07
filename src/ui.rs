@@ -22,7 +22,7 @@ mod widgets;
 
 use self::dialogs::{render_confirm_close_overlay, render_rename_overlay};
 use self::keybind_help::render_keybind_help_overlay;
-pub(crate) use self::markdown_overlay::{markdown_wrapped_line_count, overlay_close_button_rect};
+pub(crate) use self::markdown_overlay::overlay_close_button_rect;
 use self::menus::{
     render_context_menu, render_copy_mode_overlay, render_global_launcher_menu,
     render_navigate_overlay, render_prefix_overlay, render_resize_overlay,

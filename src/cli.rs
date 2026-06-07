@@ -552,10 +552,12 @@ fn send_keys_alias(args: &[String]) -> std::io::Result<i32> {
     pane::run_pane_command(&pane_args)
 }
 
+type PaneAliasParseResult = Result<Option<(String, Vec<String>)>, i32>;
+
 fn parse_pane_target_and_payload(
     args: &[String],
     usage: &str,
-) -> std::io::Result<Result<Option<(String, Vec<String>)>, i32>> {
+) -> std::io::Result<PaneAliasParseResult> {
     if matches!(
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")

@@ -956,10 +956,11 @@ impl PaneRuntime {
                 };
                 tokio::time::sleep(delay).await;
                 let pid = theme_child_pid.load(Ordering::Acquire);
-                if pid > 0 && theme_terminal.maybe_restore_host_terminal_theme(pane_id, pid) {
-                    if !theme_render_dirty.swap(true, Ordering::AcqRel) {
-                        theme_render_notify.notify_one();
-                    }
+                if pid > 0
+                    && theme_terminal.maybe_restore_host_terminal_theme(pane_id, pid)
+                    && !theme_render_dirty.swap(true, Ordering::AcqRel)
+                {
+                    theme_render_notify.notify_one();
                 }
             }
         })

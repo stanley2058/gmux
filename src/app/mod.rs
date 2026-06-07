@@ -1286,14 +1286,6 @@ mod tests {
         std::env::temp_dir().join(unique).join("config.toml")
     }
 
-    fn restore_xdg_state_home(original: Option<std::ffi::OsString>) {
-        if let Some(value) = original {
-            std::env::set_var("XDG_STATE_HOME", value);
-        } else {
-            std::env::remove_var("XDG_STATE_HOME");
-        }
-    }
-
     #[test]
     fn clipboard_write_event_shows_feedback_toast() {
         let mut app = test_app();
