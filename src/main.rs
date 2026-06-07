@@ -21,7 +21,6 @@ const NESTED_GMUX_MESSAGES: [&str; 6] = [
 mod api;
 mod app;
 mod build_info;
-mod checksum;
 mod cli;
 mod client;
 mod config;
@@ -36,11 +35,9 @@ mod logging;
 mod pane;
 mod persist;
 mod platform;
-mod product_announcements;
 mod protocol;
 mod pty;
 mod raw_input;
-mod release_notes;
 mod remote;
 mod render_prof;
 mod selection;
@@ -50,7 +47,6 @@ mod terminal;
 mod terminal_notify;
 mod terminal_theme;
 mod ui;
-mod update;
 mod workspace;
 
 fn init_logging() {
@@ -91,11 +87,6 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # Use "follow" to inherit the source pane or session, "home" for $HOME,
 # "current" for Gmux's process directory, or a fixed path such as "~/Projects".
 # new_cwd = "follow"
-
-[update]
-# Update channel used by background checks and `gmux update`.
-# Use "stable" for normal releases or "preview" for opt-in preview builds.
-# channel = "stable"
 
 [keys]
 # Prefix key to enter prefix mode (default: "ctrl+b")
@@ -327,32 +318,6 @@ fn main() -> io::Result<()> {
         return client::run_client();
     }
 
-    if args.get(1).map(|s| s.as_str()) == Some("update") {
-        let options = match update::parse_self_update_args(&args[2..]) {
-            Ok(options) => options,
-            Err(err) if err.starts_with("usage:") => {
-                eprintln!("{err}");
-                std::process::exit(0);
-            }
-            Err(err) => {
-                eprintln!("{err}");
-                eprintln!("usage: gmux update [--handoff]");
-                std::process::exit(2);
-            }
-        };
-        match update::self_update(options) {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                if e.starts_with("self-update is disabled") {
-                    eprintln!("{e}");
-                } else {
-                    eprintln!("update failed: {e}");
-                }
-                std::process::exit(1);
-            }
-        }
-    }
-
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("gmux — terminal multiplexer and session manager");
         println!();
@@ -376,12 +341,9 @@ fn main() -> io::Result<()> {
         println!("       gmux send-keys [-t pane] <key> [key ...]");
         println!("       gmux split-pane [-t pane] [-h|-v] [command ...]");
         println!("       gmux kill-pane [-t pane]");
-        println!("       gmux update [--handoff]");
-        println!("       gmux channel set <stable|preview>");
         println!("       gmux server stop");
         println!("       gmux server reload-config");
         println!("       gmux config <subcommand> ...");
-        println!("       gmux channel <subcommand> ...");
         println!("       gmux tab <subcommand> ...");
         println!("       gmux pane <subcommand> ...");
         println!("       gmux session <subcommand> ...");
@@ -409,14 +371,9 @@ fn main() -> io::Result<()> {
                 "gmux status [server|client]",
                 "Show local client and running server status",
             ),
-            ("gmux update", "Download and install the latest version"),
             (
                 "gmux server stop",
                 "Stop the running server via the API socket",
-            ),
-            (
-                "gmux channel set <stable|preview>",
-                "Choose the stable or preview update channel",
             ),
             (
                 "gmux server reload-config",
@@ -425,10 +382,6 @@ fn main() -> io::Result<()> {
             (
                 "gmux config reset-keys",
                 "Back up config.toml and remove custom keybindings",
-            ),
-            (
-                "gmux channel <subcommand>",
-                "Manage the stable or preview update channel",
             ),
             (
                 "gmux session <subcommand>",
@@ -447,7 +400,7 @@ fn main() -> io::Result<()> {
         println!("  --remote <target>   Attach through SSH to a remote Gmux server");
         println!("  --remote-keybindings <local|server>");
         println!("                      Keybindings for --remote app attach (default: local)");
-        println!("  --handoff           Opt into live handoff for update or remote attach");
+        println!("  --handoff           Opt into live handoff for remote attach");
         println!("  --default-config    Print default configuration and exit");
         println!("  --version, -V       Print version and exit");
         println!("  --help, -h          Show this help");
@@ -455,7 +408,7 @@ fn main() -> io::Result<()> {
         println!("Config: {}", config::config_path().display());
         println!("Logs:   {}", logging::help_log_paths_summary());
         println!("Env:    GMUX_CONFIG_PATH overrides config file path");
-        println!("Home:   https://gmux.dev");
+        println!("Home:   https://github.com/stanley2058/gmux");
         return Ok(());
     }
 
@@ -510,10 +463,8 @@ fn main() -> io::Result<()> {
                 "send-keys",
                 "split-pane",
                 "kill-pane",
-                "update",
                 "status",
                 "config",
-                "channel",
                 "pane",
                 "wait",
                 "session",
@@ -592,10 +543,6 @@ fn main() -> io::Result<()> {
     let config = &loaded_config.config;
     let config_diagnostic = config::config_diagnostic_summary(&loaded_config.diagnostics);
     logging::startup("app");
-
-    // Background update check (non-blocking, best-effort)
-    // Only checks for newer versions and notifies the TUI.
-    // Skipped in --no-session mode (testing).
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

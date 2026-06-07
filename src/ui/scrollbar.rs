@@ -11,7 +11,7 @@ pub(crate) fn pane_scrollbar_rect(info: &PaneInfo) -> Option<Rect> {
     info.scrollbar_rect
 }
 
-pub(crate) fn release_notes_scrollbar_rect(
+pub(crate) fn markdown_scrollbar_rect(
     body: Rect,
     metrics: crate::pane::ScrollMetrics,
 ) -> Option<Rect> {

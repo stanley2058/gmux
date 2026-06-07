@@ -1495,26 +1495,6 @@ impl AppState {
             AppEvent::PaneDied { pane_id } => {
                 self.handle_pane_died(pane_id);
             }
-            AppEvent::UpdateReady {
-                version,
-                install_command,
-            } => {
-                self.update_available = Some(version.clone());
-                self.update_install_command = install_command.clone();
-                self.latest_release_notes_available = true;
-                self.update_dismissed = true;
-                if matches!(
-                    self.toast_config.delivery,
-                    crate::config::ToastDelivery::Gmux
-                ) {
-                    self.toast = Some(ToastNotification {
-                        kind: ToastKind::UpdateInstalled,
-                        title: format!("v{version} available"),
-                        context: crate::update::update_install_instruction(&install_command),
-                        target: None,
-                    });
-                }
-            }
             // Intercepted in App::handle_internal_event before reaching this
             // dispatch; never touches AppState.
             AppEvent::ClipboardWrite { .. } => {}
@@ -2063,26 +2043,6 @@ mod tests {
     }
 
     #[test]
-    fn update_ready_sets_explicit_upgrade_toast() {
-        let mut state = AppState::test_new();
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-
-        state.handle_app_event(crate::events::AppEvent::UpdateReady {
-            version: "0.5.0".into(),
-            install_command: "gmux update".into(),
-        });
-
-        assert_eq!(state.update_available.as_deref(), Some("0.5.0"));
-        assert!(state.latest_release_notes_available);
-        let toast = state.toast.as_ref().expect("update toast");
-        assert_eq!(toast.title, "v0.5.0 available");
-        assert_eq!(
-            toast.context,
-            "detach, run `gmux update`, then follow its restart guidance"
-        );
-    }
-
-    #[test]
     fn next_pane_panel_entry_cycles_pane_panel_entries_in_all_scope() {
         let mut first = Workspace::test_new("one");
         let first_root = first.tabs[0].root_pane;
@@ -2532,49 +2492,6 @@ mod tests {
         assert!(state.selection_autoscroll.is_none());
         assert_eq!(state.sessions[0].panes.len(), 1);
         assert_eq!(state.sessions[0].panes.keys().next().unwrap(), &first_id);
-    }
-
-    #[test]
-    fn update_ready_sets_manual_update_toast() {
-        let mut state = AppState::test_new();
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-
-        state.handle_app_event(AppEvent::UpdateReady {
-            version: "0.5.0".into(),
-            install_command: "gmux update".into(),
-        });
-
-        assert_eq!(state.update_available.as_deref(), Some("0.5.0"));
-        assert!(state.latest_release_notes_available);
-        assert!(state.update_dismissed);
-        let toast = state.toast.as_ref().expect("update toast");
-        assert_eq!(toast.kind, ToastKind::UpdateInstalled);
-        assert_eq!(toast.title, "v0.5.0 available");
-        assert_eq!(
-            toast.context,
-            "detach, run `gmux update`, then follow its restart guidance"
-        );
-    }
-
-    #[test]
-    fn update_ready_uses_event_install_command_in_toast() {
-        let mut state = AppState::test_new();
-        state.toast_config.delivery = crate::config::ToastDelivery::Gmux;
-
-        state.handle_app_event(AppEvent::UpdateReady {
-            version: "0.5.0".into(),
-            install_command: "brew update && brew upgrade gmux".into(),
-        });
-
-        assert_eq!(
-            state.update_install_command,
-            "brew update && brew upgrade gmux"
-        );
-        let toast = state.toast.as_ref().expect("update toast");
-        assert_eq!(
-            toast.context,
-            "detach, run `brew update && brew upgrade gmux`, then restart this Gmux session when ready"
-        );
     }
 
     #[test]

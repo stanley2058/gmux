@@ -9,11 +9,6 @@ use crate::layout::PaneId;
 pub enum AppEvent {
     /// A pane's child process exited.
     PaneDied { pane_id: PaneId },
-    /// A new version is available through the active installation manager.
-    UpdateReady {
-        version: String,
-        install_command: String,
-    },
     /// A pane child emitted a valid OSC 52 clipboard write. The main loop
     /// re-emits it through gmux's own clipboard writer.
     ClipboardWrite { content: Vec<u8> },

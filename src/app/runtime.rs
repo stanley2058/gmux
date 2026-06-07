@@ -3,8 +3,7 @@ use std::time::{Duration, Instant};
 use crossterm::terminal;
 
 use super::{
-    auto_updates_enabled, repeat_key_identity, App, Mode, ANIMATION_INTERVAL,
-    AUTO_UPDATE_CHECK_INTERVAL, MIN_RENDER_INTERVAL, RESIZE_POLL_INTERVAL,
+    repeat_key_identity, App, Mode, ANIMATION_INTERVAL, MIN_RENDER_INTERVAL, RESIZE_POLL_INTERVAL,
     SELECTION_AUTOSCROLL_INTERVAL,
 };
 impl App {
@@ -201,13 +200,6 @@ impl App {
         changed |= self.clear_due_selection_highlight(now);
 
         if self
-            .next_auto_update_check
-            .is_some_and(|deadline| now >= deadline)
-        {
-            self.run_auto_update_check();
-        }
-
-        if self
             .session_save_deadline
             .is_some_and(|deadline| now >= deadline)
         {
@@ -354,26 +346,6 @@ impl App {
         }
     }
 
-    pub(crate) fn run_auto_update_check(&mut self) {
-        if !auto_updates_enabled(self.no_session) {
-            self.next_auto_update_check = None;
-            return;
-        }
-
-        self.next_auto_update_check = self
-            .state
-            .update_available
-            .is_none()
-            .then_some(Instant::now() + AUTO_UPDATE_CHECK_INTERVAL);
-
-        if self.state.update_available.is_some() {
-            return;
-        }
-
-        let update_tx = self.event_tx.clone();
-        std::thread::spawn(move || crate::update::auto_update(update_tx));
-    }
-
     pub(crate) fn next_loop_deadline(&self, now: Instant, needs_render: bool) -> Option<Instant> {
         self.next_loop_deadline_with_resize_poll(now, needs_render, true)
     }
@@ -406,7 +378,6 @@ impl App {
             self.toast_deadline,
             self.copy_feedback_deadline,
             self.next_animation_tick,
-            self.next_auto_update_check,
             self.session_save_deadline,
             self.selection_autoscroll_deadline,
             self.selection_highlight_clear_deadline,

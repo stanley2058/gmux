@@ -40,9 +40,7 @@ pub(crate) use self::{
     navigate::terminal_direct_navigation_action,
 };
 use self::{
-    modal::{
-        modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS, RELEASE_NOTES_ACTIONS,
-    },
+    modal::{modal_action_from_key, ModalAction, ONBOARDING_WELCOME_ACTIONS},
     settings::SettingsAction,
 };
 use super::state::{AppState, Mode};
@@ -63,8 +61,6 @@ impl App {
                 let key_event = key.as_key_event();
                 match self.state.mode {
                     Mode::Onboarding => self.handle_onboarding_key(key_event),
-                    Mode::ReleaseNotes => self.handle_release_notes_key(key_event),
-                    Mode::ProductAnnouncement => self.handle_product_announcement_key(key_event),
                     Mode::Prefix | Mode::Navigate | Mode::Copy => unreachable!(),
                     Mode::RenameTab | Mode::RenamePane => {
                         handle_rename_key(&mut self.state, key_event)
@@ -110,58 +106,6 @@ impl App {
                     modal_action_from_key(&key, ONBOARDING_WELCOME_ACTIONS)
                 {
                     self.open_settings_from_onboarding();
-                }
-            }
-        }
-    }
-
-    pub(crate) fn handle_release_notes_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.scroll_release_notes(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.scroll_release_notes(1),
-            KeyCode::PageUp => self.scroll_release_notes(-8),
-            KeyCode::PageDown => self.scroll_release_notes(8),
-            KeyCode::Home => {
-                if let Some(notes) = &mut self.state.release_notes {
-                    notes.scroll = 0;
-                }
-            }
-            KeyCode::End => {
-                let max_scroll = self.state.release_notes_max_scroll();
-                if let Some(notes) = &mut self.state.release_notes {
-                    notes.scroll = max_scroll;
-                }
-            }
-            _ => {
-                if let Some(ModalAction::Close) = modal_action_from_key(&key, RELEASE_NOTES_ACTIONS)
-                {
-                    self.dismiss_release_notes();
-                }
-            }
-        }
-    }
-
-    pub(crate) fn handle_product_announcement_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.scroll_product_announcement(-1),
-            KeyCode::Down | KeyCode::Char('j') => self.scroll_product_announcement(1),
-            KeyCode::PageUp => self.scroll_product_announcement(-8),
-            KeyCode::PageDown => self.scroll_product_announcement(8),
-            KeyCode::Home => {
-                if let Some(announcement) = &mut self.state.product_announcement {
-                    announcement.scroll = 0;
-                }
-            }
-            KeyCode::End => {
-                let max_scroll = self.state.product_announcement_max_scroll();
-                if let Some(announcement) = &mut self.state.product_announcement {
-                    announcement.scroll = max_scroll;
-                }
-            }
-            _ => {
-                if let Some(ModalAction::Close) = modal_action_from_key(&key, RELEASE_NOTES_ACTIONS)
-                {
-                    self.dismiss_product_announcement();
                 }
             }
         }
@@ -445,8 +389,6 @@ fn app_for_mouse_test() -> App {
         crate::api::EventHub::default(),
     );
     app.state.mode = Mode::Terminal;
-    app.state.update_available = None;
-    app.state.latest_release_notes_available = false;
     app.state.view.sidebar_rect = ratatui::layout::Rect::new(0, 0, 26, 20);
     app.state.view.terminal_area = ratatui::layout::Rect::new(26, 0, 80, 20);
     app

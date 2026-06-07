@@ -1,6 +1,5 @@
 //! Remote thin-client launcher over SSH command stdio.
 
-use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, IsTerminal, Write as _};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -20,8 +19,6 @@ const BRIDGE_SOCKET_PERMISSION_MODE: u32 = 0o600;
 const REMOTE_SERVER_SHUTDOWN_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
 const REMOTE_SERVER_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const CURRENT_PROTOCOL: u32 = crate::protocol::PROTOCOL_VERSION;
-const STABLE_UPDATE_MANIFEST_URL: &str = "https://gmux.dev/latest.json";
-const PREVIEW_UPDATE_MANIFEST_URL: &str = "https://gmux.dev/preview.json";
 const REMOTE_BINARY_ENV_VAR: &str = "GMUX_REMOTE_BINARY";
 pub(crate) const REATTACH_COMMAND_ENV_VAR: &str = "GMUX_REATTACH_COMMAND";
 
@@ -306,122 +303,12 @@ impl RemoteGmux {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-enum RemoteAssetRef {
-    Url(String),
-    Object { url: String, sha256: Option<String> },
-}
-
-impl RemoteAssetRef {
-    fn url(&self) -> &str {
-        match self {
-            Self::Url(url) => url,
-            Self::Object { url, .. } => url,
-        }
-    }
-
-    fn sha256(&self) -> Option<&str> {
-        match self {
-            Self::Url(_) => None,
-            Self::Object { sha256, .. } => {
-                sha256.as_deref().filter(|value| !value.trim().is_empty())
-            }
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct RemoteUpdateManifest {
-    version: String,
-    protocol: Option<u32>,
-    assets: BTreeMap<String, RemoteAssetRef>,
-    #[serde(default, deserialize_with = "deserialize_remote_manifest_releases")]
-    releases: BTreeMap<String, RemoteReleaseMetadata>,
-}
-
-#[derive(Deserialize)]
-struct RemoteReleaseMetadata {
-    protocol: Option<u32>,
-    #[serde(default)]
-    assets: BTreeMap<String, RemoteAssetRef>,
-}
-
-#[derive(Deserialize)]
-struct RemotePreviewManifest {
-    build_id: String,
-    protocol: u32,
-    assets: BTreeMap<String, RemoteAssetRef>,
-    #[serde(default)]
-    builds: BTreeMap<String, RemotePreviewBuildMetadata>,
-}
-
-#[derive(Deserialize)]
-struct RemotePreviewBuildMetadata {
-    protocol: u32,
-    assets: BTreeMap<String, RemoteAssetRef>,
-}
-
-fn deserialize_remote_manifest_releases<'de, D>(
-    deserializer: D,
-) -> Result<BTreeMap<String, RemoteReleaseMetadata>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(match value {
-        Some(serde_json::Value::Object(object)) => object
-            .into_iter()
-            .filter_map(|(version, release)| {
-                serde_json::from_value::<RemoteReleaseMetadata>(release)
-                    .ok()
-                    .map(|metadata| (version, metadata))
-            })
-            .collect(),
-        _ => BTreeMap::new(),
-    })
-}
-
-impl RemoteUpdateManifest {
-    fn release_for_version(&self, version: &str) -> Option<RemoteManifestReleaseRef<'_>> {
-        if self.version.trim_start_matches('v') == version {
-            return Some(RemoteManifestReleaseRef {
-                protocol: self.protocol,
-                assets: &self.assets,
-            });
-        }
-
-        self.releases.get(version).and_then(|release| {
-            (!release.assets.is_empty()).then_some(RemoteManifestReleaseRef {
-                protocol: release.protocol,
-                assets: &release.assets,
-            })
-        })
-    }
-}
-
-#[derive(Clone, Copy)]
-struct RemoteManifestReleaseRef<'a> {
-    protocol: Option<u32>,
-    assets: &'a BTreeMap<String, RemoteAssetRef>,
-}
-
 fn current_version() -> String {
     crate::build_info::version()
 }
 
-fn current_channel() -> &'static str {
-    crate::build_info::channel()
-}
-
 struct InstallSource {
     path: PathBuf,
-    temporary_dir: Option<PathBuf>,
-}
-
-struct RemoteReleaseAsset {
-    url: String,
-    sha256: Option<String>,
 }
 
 struct PreparedRemoteGmux {
@@ -432,24 +319,10 @@ struct PreparedRemoteGmux {
 
 impl InstallSource {
     fn persistent(path: PathBuf) -> Self {
-        Self {
-            path,
-            temporary_dir: None,
-        }
+        Self { path }
     }
 
-    fn temporary(path: PathBuf, temporary_dir: PathBuf) -> Self {
-        Self {
-            path,
-            temporary_dir: Some(temporary_dir),
-        }
-    }
-
-    fn cleanup(&self) {
-        if let Some(dir) = &self.temporary_dir {
-            let _ = fs::remove_dir_all(dir);
-        }
-    }
+    fn cleanup(&self) {}
 }
 
 fn prepare_remote_gmux(target: &str, live_handoff_enabled: bool) -> io::Result<PreparedRemoteGmux> {
@@ -637,9 +510,7 @@ fn install_source_description_for(
         "the current local gmux binary".to_string()
     } else {
         format!(
-            "the {} {} asset for {}",
-            current_version(),
-            current_channel(),
+            "{REMOTE_BINARY_ENV_VAR} or a manually installed gmux binary for {}",
             platform.asset_key()
         )
     }
@@ -654,13 +525,14 @@ fn resolve_install_source(
     }
 
     if *platform == RemotePlatform::local() {
-        let path = std::env::current_exe()?;
-        if !crate::update::is_package_manager_managed_exe_path(&path) {
-            return Ok(InstallSource::persistent(path));
-        }
+        return Ok(InstallSource::persistent(std::env::current_exe()?));
     }
 
-    download_release_asset(platform)
+    Err(io::Error::other(format!(
+        "remote auto-download is disabled; set {REMOTE_BINARY_ENV_VAR} to a gmux binary for {} or install matching gmux {} on the remote host manually",
+        platform.asset_key(),
+        current_version()
+    )))
 }
 
 fn local_binary_can_seed_remote(platform: &RemotePlatform) -> bool {
@@ -668,9 +540,7 @@ fn local_binary_can_seed_remote(platform: &RemotePlatform) -> bool {
         return false;
     }
 
-    std::env::current_exe()
-        .map(|path| !crate::update::is_package_manager_managed_exe_path(&path))
-        .unwrap_or(false)
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -761,7 +631,7 @@ fn confirm_remote_install_with_running_server(
         Err(err) => {
             if !io::stdin().is_terminal() {
                 return Err(io::Error::other(format!(
-                    "could not inspect the running remote gmux server on {target} before installing: {err}; run from an interactive terminal to approve updating the remote binary"
+                    "could not inspect the running remote gmux server on {target} before installing: {err}; run from an interactive terminal to approve replacing the remote binary"
                 )));
             }
             eprintln!(
@@ -795,7 +665,7 @@ fn confirm_remote_install_with_running_server(
             return Ok(false);
         }
         return Err(io::Error::other(format!(
-            "remote gmux server on {target} is running v{}; run from an interactive terminal to approve stopping it for the update",
+            "remote gmux server on {target} is running v{}; run from an interactive terminal to approve stopping it after installing the replacement binary",
             version_label(version.as_deref())
         )));
     }
@@ -813,7 +683,7 @@ fn confirm_remote_install_with_running_server(
     eprintln!("remote gmux server on {target} is currently running:");
     eprintln!("  server: v{}", version_label(version.as_deref()));
     eprintln!(
-        "To complete the remote update, Gmux must stop the running remote server after installing."
+        "To complete the remote binary replacement, Gmux must stop the running remote server after installing."
     );
     eprintln!("This stops active remote pane processes, including shells, dev servers, and tests.");
     eprintln!();
@@ -1031,149 +901,6 @@ fn remote_shell_resolves_managed_install(stdout: &str) -> bool {
         .next()
         .map(str::trim)
         .is_some_and(|path| path.ends_with("/.local/bin/gmux"))
-}
-
-fn download_release_asset(platform: &RemotePlatform) -> io::Result<InstallSource> {
-    let asset_key = platform.asset_key();
-    let asset = remote_release_asset(&asset_key)?;
-
-    let dir = private_download_dir(&asset_key)?;
-    let path = dir.join("gmux.tmp");
-    let status = Command::new("curl")
-        .args(["-sfL", "--max-time", "120", "-o"])
-        .arg(&path)
-        .arg(&asset.url)
-        .status()
-        .map_err(|err| io::Error::new(err.kind(), format!("download failed: {err}")))?;
-    if !status.success() {
-        let _ = fs::remove_dir_all(&dir);
-        return Err(io::Error::other("download failed"));
-    }
-    if let Some(expected) = &asset.sha256 {
-        if let Err(err) = crate::checksum::verify_sha256(&path, expected) {
-            let _ = fs::remove_dir_all(&dir);
-            return Err(io::Error::new(
-                err.kind(),
-                format!("downloaded remote asset checksum verification failed: {err}"),
-            ));
-        }
-    }
-
-    Ok(InstallSource::temporary(path, dir))
-}
-
-fn fetch_remote_manifest(url: &str) -> io::Result<Vec<u8>> {
-    let output = Command::new("curl")
-        .args([
-            "-sfL",
-            "--retry",
-            "3",
-            "--connect-timeout",
-            "10",
-            "--max-time",
-            "20",
-            url,
-        ])
-        .output()
-        .map_err(|err| io::Error::new(err.kind(), format!("curl failed: {err}")))?;
-    if !output.status.success() {
-        return Err(command_failed("failed to fetch update manifest", &output));
-    }
-    Ok(output.stdout)
-}
-
-fn remote_asset_info(asset: &RemoteAssetRef) -> RemoteReleaseAsset {
-    RemoteReleaseAsset {
-        url: asset.url().to_string(),
-        sha256: asset.sha256().map(str::to_string),
-    }
-}
-
-fn preview_assets_for_build<'a>(
-    manifest: &'a RemotePreviewManifest,
-    build_id: &str,
-) -> io::Result<(u32, &'a BTreeMap<String, RemoteAssetRef>)> {
-    if manifest.build_id == build_id {
-        return Ok((manifest.protocol, &manifest.assets));
-    }
-    let build = manifest.builds.get(build_id).ok_or_else(|| {
-        io::Error::other(format!(
-            "preview manifest no longer includes build {build_id}; run `gmux update` locally or set {REMOTE_BINARY_ENV_VAR}=target/release/gmux"
-        ))
-    })?;
-    Ok((build.protocol, &build.assets))
-}
-
-fn remote_release_asset(asset_key: &str) -> io::Result<RemoteReleaseAsset> {
-    if crate::build_info::is_preview() {
-        let build_id = crate::build_info::build_id().ok_or_else(|| {
-            io::Error::other("preview client has no build id; set GMUX_REMOTE_BINARY or install Gmux on the remote manually")
-        })?;
-        let manifest_bytes = fetch_remote_manifest(PREVIEW_UPDATE_MANIFEST_URL)?;
-        let manifest: RemotePreviewManifest =
-            serde_json::from_slice(&manifest_bytes).map_err(|err| {
-                io::Error::other(format!("failed to parse preview manifest JSON: {err}"))
-            })?;
-        let (protocol, assets) = preview_assets_for_build(&manifest, build_id)?;
-        if protocol != CURRENT_PROTOCOL {
-            return Err(io::Error::other(format!(
-                "preview manifest has build {build_id} protocol {protocol}, but this client needs protocol {CURRENT_PROTOCOL}; set {REMOTE_BINARY_ENV_VAR}=target/release/gmux or install a matching Gmux on the remote host manually"
-            )));
-        }
-        return assets.get(asset_key).map(remote_asset_info).ok_or_else(|| {
-            io::Error::other(format!(
-                "no {asset_key} binary in the preview manifest for build {build_id}"
-            ))
-        });
-    }
-
-    let current_version = current_version();
-    let manifest_bytes = fetch_remote_manifest(STABLE_UPDATE_MANIFEST_URL)?;
-    let manifest: RemoteUpdateManifest = serde_json::from_slice(&manifest_bytes)
-        .map_err(|err| io::Error::other(format!("failed to parse update manifest JSON: {err}")))?;
-    let release = manifest.release_for_version(&current_version).ok_or_else(|| {
-        io::Error::other(format!(
-            "release manifest does not include gmux {current_version}; build gmux for {} or install it there manually",
-            asset_key
-        ))
-    })?;
-    if let Some(protocol) = release.protocol {
-        if protocol != CURRENT_PROTOCOL {
-            return Err(io::Error::other(format!(
-                "release manifest has gmux {current_version} protocol {protocol}, but this client needs protocol {CURRENT_PROTOCOL}; set {REMOTE_BINARY_ENV_VAR}=target/release/gmux or install a matching gmux on the remote host manually"
-            )));
-        }
-    }
-    release
-        .assets
-        .get(asset_key)
-        .map(remote_asset_info)
-        .ok_or_else(|| {
-            io::Error::other(format!(
-                "no {asset_key} binary in the release manifest for gmux {current_version}"
-            ))
-        })
-}
-
-fn private_download_dir(asset_key: &str) -> io::Result<PathBuf> {
-    let base = std::env::temp_dir();
-    for attempt in 0..100 {
-        let dir = base.join(format!(
-            "gmux-remote-{}-{}-{attempt}",
-            std::process::id(),
-            asset_key
-        ));
-        match fs::create_dir(&dir) {
-            Ok(()) => return Ok(dir),
-            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(err) => return Err(err),
-        }
-    }
-
-    Err(io::Error::new(
-        io::ErrorKind::AlreadyExists,
-        "failed to create private gmux remote download directory",
-    ))
 }
 
 fn confirm_remote_install(
@@ -1859,7 +1586,12 @@ mod tests {
 
     #[test]
     fn extract_remote_args_preserves_handoff_without_remote() {
-        let args = vec!["gmux".into(), "update".into(), "--handoff".into()];
+        let args = vec![
+            "gmux".into(),
+            "server".into(),
+            "stop".into(),
+            "--handoff".into(),
+        ];
 
         let (cleaned, remote) = extract_remote_args(&args).unwrap();
 
@@ -2141,168 +1873,15 @@ mod tests {
     }
 
     #[test]
-    fn remote_update_manifest_uses_root_assets_for_latest_version() {
-        let manifest: RemoteUpdateManifest = serde_json::from_str(
-            r#"{
-                "version": "1.2.3",
-                "assets": {
-                    "linux-x86_64": "https://example.com/latest"
-                },
-                "releases": {
-                    "1.2.3": {
-                        "assets": {
-                            "linux-x86_64": "https://example.com/archive"
-                        }
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            manifest
-                .release_for_version("1.2.3")
-                .and_then(|release| release.assets.get("linux-x86_64"))
-                .map(RemoteAssetRef::url),
-            Some("https://example.com/latest")
-        );
-    }
-
-    #[test]
-    fn remote_update_manifest_reads_archived_release_assets() {
-        let manifest: RemoteUpdateManifest = serde_json::from_str(
-            r#"{
-                "version": "1.2.4",
-                "assets": {
-                    "linux-x86_64": "https://example.com/latest"
-                },
-                "releases": {
-                    "1.2.3": {
-                        "notes": "ignored",
-                        "assets": {
-                            "linux-x86_64": "https://example.com/archive"
-                        }
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            manifest
-                .release_for_version("1.2.3")
-                .and_then(|release| release.assets.get("linux-x86_64"))
-                .map(RemoteAssetRef::url),
-            Some("https://example.com/archive")
-        );
-    }
-
-    #[test]
-    fn remote_update_manifest_uses_archived_release_protocol() {
-        let manifest: RemoteUpdateManifest = serde_json::from_str(
-            r#"{
-                "version": "1.2.4",
-                "protocol": 42,
-                "assets": {
-                    "linux-x86_64": "https://example.com/latest"
-                },
-                "releases": {
-                    "1.2.3": {
-                        "notes": "ignored",
-                        "protocol": 41,
-                        "assets": {
-                            "linux-x86_64": "https://example.com/archive"
-                        }
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            manifest
-                .release_for_version("1.2.3")
-                .and_then(|release| release.protocol),
-            Some(41)
-        );
-    }
-
-    #[test]
-    fn remote_update_manifest_does_not_inherit_latest_protocol_for_archived_assets() {
-        let manifest: RemoteUpdateManifest = serde_json::from_str(
-            r#"{
-                "version": "1.2.4",
-                "protocol": 42,
-                "assets": {
-                    "linux-x86_64": "https://example.com/latest"
-                },
-                "releases": {
-                    "1.2.3": {
-                        "notes": "ignored",
-                        "assets": {
-                            "linux-x86_64": "https://example.com/archive"
-                        }
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            manifest
-                .release_for_version("1.2.3")
-                .and_then(|release| release.protocol),
-            None
-        );
-    }
-
-    #[test]
-    fn remote_install_defaults_use_gmux_manifests_and_paths() {
+    fn remote_install_defaults_use_gmux_paths() {
         let remote_gmux = RemoteGmux::for_platform(RemotePlatform {
             os: "linux",
             arch: "x86_64",
         });
 
-        assert_eq!(STABLE_UPDATE_MANIFEST_URL, "https://gmux.dev/latest.json");
-        assert_eq!(PREVIEW_UPDATE_MANIFEST_URL, "https://gmux.dev/preview.json");
         assert_eq!(REMOTE_BINARY_ENV_VAR, "GMUX_REMOTE_BINARY");
         assert_eq!(remote_gmux.install_suffix, ".local/bin/gmux");
         assert_eq!(remote_gmux.shell_path, "\"$HOME/.local/bin/gmux\"");
-    }
-
-    #[test]
-    fn remote_preview_manifest_falls_back_to_archived_exact_build_assets() {
-        let manifest: RemotePreviewManifest = serde_json::from_str(
-            r#"{
-                "build_id": "2026-06-06-new",
-                "protocol": 12,
-                "assets": {
-                    "linux-x86_64": {
-                        "url": "https://example.com/new",
-                        "sha256": "new"
-                    }
-                },
-                "builds": {
-                    "2026-06-02-old": {
-                        "protocol": 11,
-                        "assets": {
-                            "linux-x86_64": {
-                                "url": "https://example.com/old",
-                                "sha256": "old"
-                            }
-                        }
-                    }
-                }
-            }"#,
-        )
-        .unwrap();
-
-        let (protocol, assets) =
-            preview_assets_for_build(&manifest, "2026-06-02-old").expect("archived build");
-        let asset = assets.get("linux-x86_64").expect("asset");
-        assert_eq!(protocol, 11);
-        assert_eq!(asset.url(), "https://example.com/old");
-        assert_eq!(asset.sha256(), Some("old"));
     }
 
     #[test]
@@ -2364,15 +1943,13 @@ mod tests {
     }
 
     #[test]
-    fn install_source_description_uses_release_asset_when_local_binary_cannot_seed_remote() {
+    fn install_source_description_requires_override_when_local_binary_cannot_seed_remote() {
         let platform = RemotePlatform::local();
 
         assert_eq!(
             install_source_description_for(&platform, None, false),
             format!(
-                "the {} {} asset for {}",
-                current_version(),
-                current_channel(),
+                "GMUX_REMOTE_BINARY or a manually installed gmux binary for {}",
                 platform.asset_key()
             )
         );
@@ -2387,7 +1964,6 @@ mod tests {
         let source = resolve_install_source(&platform, Some(PathBuf::from("/tmp/gmux-aarch64")))
             .expect("override source");
         assert_eq!(source.path, PathBuf::from("/tmp/gmux-aarch64"));
-        assert!(source.temporary_dir.is_none());
     }
 
     fn remote_env_lock() -> &'static std::sync::Mutex<()> {
@@ -2472,21 +2048,5 @@ mod tests {
             filename.starts_with("gmux-r-"),
             "expected hashed fallback, got {filename}"
         );
-    }
-
-    #[test]
-    fn install_source_cleanup_removes_temporary_directory() {
-        let dir = std::env::temp_dir().join(format!(
-            "gmux-install-source-cleanup-test-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir(&dir).expect("create temp dir");
-        let path = dir.join("gmux.tmp");
-        fs::write(&path, b"test").expect("write temp file");
-
-        InstallSource::temporary(path, dir.clone()).cleanup();
-
-        assert!(!dir.exists());
     }
 }

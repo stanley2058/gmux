@@ -55,37 +55,10 @@ impl App {
             }
         }
 
-        let update_ready = if let AppEvent::UpdateReady {
-            version,
-            install_command,
-        } = &ev
-        {
-            Some((version.clone(), install_command.clone()))
-        } else {
-            None
-        };
         let previous_toast = self.state.toast.clone();
         self.state.handle_app_event(ev);
         if let Some(overlay) = overlay_state {
             self.restore_overlay_after_exit(overlay);
-        }
-
-        if self.local_terminal_notifications
-            && matches!(
-                self.state.toast_config.delivery,
-                crate::config::ToastDelivery::Terminal | crate::config::ToastDelivery::System
-            )
-        {
-            let notify = match self.state.toast_config.delivery {
-                crate::config::ToastDelivery::Terminal => crate::terminal_notify::show_notification,
-                crate::config::ToastDelivery::System => crate::platform::show_desktop_notification,
-                _ => unreachable!("toast delivery was checked above"),
-            };
-
-            if let Some((version, install_command)) = update_ready {
-                let instruction = crate::update::update_install_instruction(&install_command);
-                let _ = notify(&format!("v{version} available"), Some(&instruction));
-            }
         }
 
         self.sync_toast_deadline(previous_toast);
@@ -197,7 +170,6 @@ impl App {
                 let duration = match toast.kind {
                     ToastKind::NeedsAttention => Duration::from_secs(8),
                     ToastKind::Finished => Duration::from_secs(5),
-                    ToastKind::UpdateInstalled => Duration::from_secs(3),
                 };
                 Instant::now() + duration
             });

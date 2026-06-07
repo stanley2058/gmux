@@ -474,9 +474,7 @@ impl AppState {
                         DragTarget::SidebarDivider => {
                             self.set_manual_sidebar_width(mouse.column);
                         }
-                        DragTarget::ReleaseNotesScrollbar { .. }
-                        | DragTarget::ProductAnnouncementScrollbar { .. }
-                        | DragTarget::KeybindHelpScrollbar { .. } => {}
+                        DragTarget::KeybindHelpScrollbar { .. } => {}
                     }
                 }
             }

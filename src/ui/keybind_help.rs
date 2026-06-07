@@ -8,8 +8,8 @@ use ratatui::{
     Frame,
 };
 
-use super::release_notes::release_notes_close_button_rect;
-use super::scrollbar::{release_notes_scrollbar_rect, render_scrollbar};
+use super::markdown_overlay::overlay_close_button_rect;
+use super::scrollbar::{markdown_scrollbar_rect, render_scrollbar};
 use super::widgets::{
     modal_stack_areas, panel_contrast_fg, render_action_button, render_modal_header,
     render_modal_shell,
@@ -205,7 +205,7 @@ pub(super) fn render_keybind_help_overlay(app: &AppState, frame: &mut Frame) {
     render_modal_header(frame, header_rows[0], "keybinds", &app.palette);
     render_action_button(
         frame,
-        release_notes_close_button_rect(header_rows[0]),
+        overlay_close_button_rect(header_rows[0]),
         Some("esc"),
         "close",
         Style::default()
@@ -227,7 +227,7 @@ pub(super) fn render_keybind_help_overlay(app: &AppState, frame: &mut Frame) {
         max_offset_from_bottom: app.keybind_help_max_scroll() as usize,
         viewport_rows: body_area.height.max(1) as usize,
     };
-    let track = release_notes_scrollbar_rect(body_area, metrics);
+    let track = markdown_scrollbar_rect(body_area, metrics);
     let text_area = track
         .map(|_| {
             Rect::new(

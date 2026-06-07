@@ -16,7 +16,6 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
-        self.state.update_dismissed = true;
         self.state
             .handle_copy_mode_key(&self.terminal_runtimes, key);
         if let Some(content) = self.state.request_clipboard_write.take() {

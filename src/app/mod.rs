@@ -29,7 +29,6 @@ pub(crate) const HEADLESS_ANIMATION_INTERVAL: Duration = Duration::from_millis(1
 pub(crate) const HEADLESS_ANIMATION_TICK_STEP: u32 = 8;
 pub(crate) const SELECTION_AUTOSCROLL_INTERVAL: Duration = Duration::from_millis(30);
 const RESIZE_POLL_INTERVAL: Duration = Duration::from_millis(100);
-const AUTO_UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(30 * 60);
 const SESSION_SAVE_DEBOUNCE: Duration = Duration::from_secs(5);
 const SIDEBAR_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(350);
 const PANE_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(350);
@@ -95,7 +94,6 @@ pub struct App {
     pub(crate) last_pane_click: Option<PaneClickState>,
     pub(crate) next_resize_poll: Instant,
     pub(crate) next_animation_tick: Option<Instant>,
-    pub(crate) next_auto_update_check: Option<Instant>,
     pub(crate) selection_autoscroll_deadline: Option<Instant>,
     pub(crate) selection_highlight_clear_deadline: Option<Instant>,
     pub(crate) session_save_deadline: Option<Instant>,
@@ -163,10 +161,6 @@ fn repeat_key_identity(
     key: &crate::input::TerminalKey,
 ) -> (crossterm::event::KeyCode, crossterm::event::KeyModifiers) {
     (key.code, key.modifiers)
-}
-
-fn auto_updates_enabled(no_session: bool) -> bool {
-    !no_session && !cfg!(debug_assertions)
 }
 
 fn pane_panel_scope_from_config(
@@ -292,20 +286,8 @@ impl App {
             "using pane scrollback configuration"
         );
 
-        let latest_release_notes = crate::release_notes::load_latest();
-        let update_available = latest_release_notes
-            .as_ref()
-            .filter(|notes| notes.preview)
-            .map(|notes| notes.version.clone());
-        let latest_release_notes_available = latest_release_notes.is_some();
-        let update_install_command = crate::update::update_install_command().to_string();
-        let startup_product_announcement =
-            crate::product_announcements::load_unseen_for_current_version();
-
         let mode = if config.should_show_onboarding() {
             state::Mode::Onboarding
-        } else if startup_product_announcement.is_some() {
-            state::Mode::ProductAnnouncement
         } else if restored_session.is_some() {
             state::Mode::Terminal
         } else {
@@ -334,17 +316,6 @@ impl App {
             request_complete_onboarding: false,
             name_input: String::new(),
             name_input_replace_on_type: false,
-            release_notes: None,
-            product_announcement: startup_product_announcement.map(|announcement| {
-                state::ProductAnnouncementState {
-                    version: announcement.version,
-                    id: announcement.id,
-                    title: announcement.title,
-                    body: announcement.body,
-                    scroll: 0,
-                    preview: announcement.preview,
-                }
-            }),
             keybind_help: state::KeybindHelpState { scroll: 0 },
             navigator: state::NavigatorState::default(),
             copy_mode: None,
@@ -372,10 +343,6 @@ impl App {
             selection: None,
             selection_autoscroll: None,
             context_menu: None,
-            update_available,
-            update_install_command,
-            latest_release_notes_available,
-            update_dismissed: false,
             config_diagnostic,
             toast: None,
             copy_feedback: None,
@@ -437,14 +404,6 @@ impl App {
         }
         state.collapse_to_single_session();
 
-        // Background auto-update is disabled in monolithic no-session mode
-        // and in debug/test builds so local development never mutates the
-        // running binary out from under spawned test processes.
-        if auto_updates_enabled(no_session) {
-            let update_tx = event_tx.clone();
-            std::thread::spawn(move || crate::update::auto_update(update_tx));
-        }
-
         let last_focus = state.session_index().and_then(|idx| {
             state
                 .session()
@@ -463,8 +422,6 @@ impl App {
             last_pane_click: None,
             next_resize_poll: Instant::now() + RESIZE_POLL_INTERVAL,
             next_animation_tick: None,
-            next_auto_update_check: auto_updates_enabled(no_session)
-                .then_some(Instant::now() + AUTO_UPDATE_CHECK_INTERVAL),
             session_save_deadline: None,
             selection_autoscroll_deadline: None,
             selection_highlight_clear_deadline: None,
@@ -757,10 +714,7 @@ impl App {
         }
 
         let previous_mode = self.state.mode;
-        let preserve_mode = matches!(
-            previous_mode,
-            Mode::ReleaseNotes | Mode::ProductAnnouncement | Mode::Settings
-        );
+        let preserve_mode = matches!(previous_mode, Mode::Settings);
         let cwd = self.resolve_new_terminal_cwd(None);
 
         match self.create_session_with_options(cwd, true) {
@@ -775,69 +729,6 @@ impl App {
                 self.state.mode = Mode::Navigate;
                 false
             }
-        }
-    }
-
-    pub(crate) fn dismiss_release_notes(&mut self) {
-        let preview = self
-            .state
-            .release_notes
-            .as_ref()
-            .is_some_and(|notes| notes.preview);
-
-        self.state.release_notes = None;
-        if !preview {
-            if let Err(err) = crate::release_notes::mark_current_version_seen() {
-                self.state.config_diagnostic =
-                    Some(format!("failed to update release notes status: {err}"));
-                self.config_diagnostic_deadline = Some(Instant::now() + Duration::from_secs(5));
-            }
-        }
-
-        if self.state.product_announcement.is_some() {
-            self.state.mode = Mode::ProductAnnouncement;
-        } else {
-            self.state.mode = self.state.terminal_or_navigate_mode();
-        }
-    }
-
-    pub(crate) fn dismiss_product_announcement(&mut self) {
-        if let Some(announcement) = self.state.product_announcement.take() {
-            if !announcement.preview {
-                if let Err(err) =
-                    crate::product_announcements::mark_seen(&announcement.version, &announcement.id)
-                {
-                    self.state.config_diagnostic =
-                        Some(format!("failed to update announcement status: {err}"));
-                    self.config_diagnostic_deadline = Some(Instant::now() + Duration::from_secs(5));
-                }
-            }
-        }
-
-        self.state.mode = self.state.terminal_or_navigate_mode();
-    }
-
-    pub(crate) fn scroll_release_notes(&mut self, delta: i16) {
-        let max_scroll = self.state.release_notes_max_scroll();
-        if let Some(notes) = &mut self.state.release_notes {
-            notes.scroll = if delta.is_negative() {
-                notes.scroll.saturating_sub(delta.unsigned_abs())
-            } else {
-                notes.scroll.saturating_add(delta as u16)
-            }
-            .min(max_scroll);
-        }
-    }
-
-    pub(crate) fn scroll_product_announcement(&mut self, delta: i16) {
-        let max_scroll = self.state.product_announcement_max_scroll();
-        if let Some(announcement) = &mut self.state.product_announcement {
-            announcement.scroll = if delta.is_negative() {
-                announcement.scroll.saturating_sub(delta.unsigned_abs())
-            } else {
-                announcement.scroll.saturating_add(delta as u16)
-            }
-            .min(max_scroll);
         }
     }
 
@@ -1009,7 +900,7 @@ impl App {
             self.config_diagnostic_deadline = None;
             if notify_success {
                 self.state.toast = Some(crate::app::state::ToastNotification {
-                    kind: crate::app::state::ToastKind::UpdateInstalled,
+                    kind: crate::app::state::ToastKind::Finished,
                     title: "reloaded config".to_string(),
                     context: "using config.toml".to_string(),
                     target: None,
@@ -1020,7 +911,7 @@ impl App {
             self.config_diagnostic_deadline = None;
             if notify_success {
                 self.state.toast = Some(crate::app::state::ToastNotification {
-                    kind: crate::app::state::ToastKind::UpdateInstalled,
+                    kind: crate::app::state::ToastKind::Finished,
                     title: "reloaded config".to_string(),
                     context: "with warnings".to_string(),
                     target: None,
@@ -1169,12 +1060,6 @@ impl App {
             Mode::Onboarding => {
                 self.handle_onboarding_key(key_event);
             }
-            Mode::ReleaseNotes => {
-                self.handle_release_notes_key(key_event);
-            }
-            Mode::ProductAnnouncement => {
-                self.handle_product_announcement_key(key_event);
-            }
             Mode::Settings => {
                 self.handle_settings_key(key_event);
             }
@@ -1216,15 +1101,6 @@ mod tests {
         crate::raw_input::RawInputEvent::Key(
             crate::input::TerminalKey::new(code, modifiers).with_kind(kind),
         )
-    }
-
-    fn release_notes_state() -> state::ReleaseNotesState {
-        state::ReleaseNotesState {
-            version: "0.1.0".into(),
-            body: "notes".into(),
-            scroll: 0,
-            preview: true,
-        }
     }
 
     fn test_app() -> App {
@@ -1458,57 +1334,6 @@ mod tests {
     }
 
     #[test]
-    fn internal_event_drain_limits_work_per_tick() {
-        let mut app = test_app();
-        for i in 0..=APP_EVENT_DRAIN_LIMIT {
-            app.event_tx
-                .try_send(AppEvent::UpdateReady {
-                    version: format!("2.0.{i}"),
-                    install_command: "gmux install".into(),
-                })
-                .unwrap();
-        }
-
-        assert!(app.drain_internal_events());
-
-        let expected_version = format!("2.0.{}", APP_EVENT_DRAIN_LIMIT - 1);
-        assert_eq!(
-            app.state.update_available.as_deref(),
-            Some(expected_version.as_str())
-        );
-        assert!(app.event_rx.try_recv().is_ok());
-    }
-
-    #[test]
-    fn api_request_drains_all_pending_internal_events_before_reading_state() {
-        let mut app = test_app();
-        for i in 0..=APP_EVENT_DRAIN_LIMIT {
-            app.event_tx
-                .try_send(AppEvent::UpdateReady {
-                    version: format!("3.0.{i}"),
-                    install_command: "gmux install".into(),
-                })
-                .unwrap();
-        }
-
-        let response = app.handle_api_request(crate::api::schema::Request {
-            id: "req_server_stop_after_events".into(),
-            method: crate::api::schema::Method::ServerStop(
-                crate::api::schema::EmptyParams::default(),
-            ),
-        });
-        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
-
-        assert_eq!(response["result"]["type"], "ok");
-        let expected_version = format!("3.0.{APP_EVENT_DRAIN_LIMIT}");
-        assert_eq!(
-            app.state.update_available.as_deref(),
-            Some(expected_version.as_str())
-        );
-        assert!(app.event_rx.try_recv().is_err());
-    }
-
-    #[test]
     fn startup_uses_configured_pane_panel_scope() {
         let mut config = Config::default();
         config.ui.pane_panel_scope = crate::config::PanePanelScopeConfig::Current;
@@ -1528,109 +1353,6 @@ mod tests {
         let app = App::new(&config, true, None, api_rx, crate::api::EventHub::default());
 
         assert!(!app.state.redraw_on_focus_gained);
-    }
-
-    #[test]
-    fn startup_restores_preview_update_available_from_saved_notes() {
-        let _guard = config_env_lock().lock().unwrap();
-        let path = temp_config_path("startup-preview-update-available");
-        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
-
-        // Use a bogus far-future version so preview=true regardless of current binary version.
-        crate::release_notes::save_pending("99.99.99", "### Changed\n- One").unwrap();
-
-        let app = test_app();
-
-        assert_eq!(app.state.update_available.as_deref(), Some("99.99.99"));
-        assert!(app.state.latest_release_notes_available);
-
-        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
-        let _ = std::fs::remove_dir_all(path.parent().unwrap());
-    }
-
-    #[test]
-    fn startup_does_not_restore_update_available_from_older_saved_notes() {
-        let _guard = config_env_lock().lock().unwrap();
-        let path = temp_config_path("startup-stale-update-notes");
-        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
-
-        crate::release_notes::save_pending("0.4.9", "### Changed\n- One").unwrap();
-
-        let app = test_app();
-
-        assert_eq!(app.state.update_available, None);
-        assert!(app.state.latest_release_notes_available);
-
-        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
-        let _ = std::fs::remove_dir_all(path.parent().unwrap());
-    }
-
-    #[test]
-    fn startup_keeps_pending_release_notes_available_without_auto_opening() {
-        let _guard = config_env_lock().lock().unwrap();
-        let path = temp_config_path("startup-pending-release-notes-no-auto-open");
-        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
-
-        crate::release_notes::save_pending(env!("CARGO_PKG_VERSION"), "### Changed\n- One")
-            .unwrap();
-        let config = Config {
-            onboarding: Some(false),
-            ..Default::default()
-        };
-        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
-
-        let app = App::new(&config, true, None, api_rx, crate::api::EventHub::default());
-
-        assert_eq!(app.state.mode, Mode::Navigate);
-        assert!(app.state.release_notes.is_none());
-        assert!(app.state.latest_release_notes_available);
-
-        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
-        let _ = std::fs::remove_dir_all(path.parent().unwrap());
-    }
-
-    #[test]
-    fn startup_still_auto_opens_unseen_product_announcement() {
-        let _guard = config_env_lock().lock().unwrap();
-        let path = temp_config_path("startup-product-announcement-auto-open");
-        let state_home = path.parent().unwrap().join("state");
-        let original_xdg_state_home = std::env::var_os("XDG_STATE_HOME");
-        std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
-        std::env::set_var("XDG_STATE_HOME", &state_home);
-
-        crate::release_notes::save_pending(env!("CARGO_PKG_VERSION"), "### Changed\n- One")
-            .unwrap();
-        crate::product_announcements::save_manifest_announcement(
-            env!("CARGO_PKG_VERSION"),
-            Some(&crate::product_announcements::ManifestAnnouncement {
-                id: "startup-announcement".into(),
-                title: Some("Startup announcement".into()),
-                body: "### Announcement\n- One".into(),
-            }),
-        )
-        .unwrap();
-
-        let config = Config {
-            onboarding: Some(false),
-            ..Default::default()
-        };
-        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
-
-        let app = App::new(&config, true, None, api_rx, crate::api::EventHub::default());
-
-        assert_eq!(app.state.mode, Mode::ProductAnnouncement);
-        assert_eq!(
-            app.state
-                .product_announcement
-                .as_ref()
-                .map(|announcement| announcement.id.as_str()),
-            Some("startup-announcement")
-        );
-        assert!(app.state.release_notes.is_none());
-
-        std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
-        restore_xdg_state_home(original_xdg_state_home);
-        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]
@@ -1679,7 +1401,7 @@ mod tests {
         assert!(app.state.switch_ascii_input_source_in_prefix);
         assert!(app.state.config_diagnostic.is_none());
         let toast = app.state.toast.as_ref().unwrap();
-        assert_eq!(toast.kind, crate::app::state::ToastKind::UpdateInstalled);
+        assert_eq!(toast.kind, crate::app::state::ToastKind::Finished);
         assert_eq!(toast.title, "reloaded config");
         assert_eq!(toast.context, "using config.toml");
 
@@ -2165,8 +1887,7 @@ mod tests {
     #[tokio::test]
     async fn repeat_key_events_are_ignored_outside_terminal_mode() {
         let mut app = test_app();
-        app.state.mode = Mode::ReleaseNotes;
-        app.state.release_notes = Some(release_notes_state());
+        app.state.mode = Mode::KeybindHelp;
 
         let handled = app
             .handle_raw_input_event(raw_key(
@@ -2177,8 +1898,7 @@ mod tests {
             .await;
 
         assert!(!handled);
-        assert_eq!(app.state.mode, Mode::ReleaseNotes);
-        assert!(app.state.release_notes.is_some());
+        assert_eq!(app.state.mode, Mode::KeybindHelp);
     }
 
     #[tokio::test]
@@ -2187,8 +1907,7 @@ mod tests {
         app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active_session = Some(0);
         app.state.selected_session = 0;
-        app.state.mode = Mode::ReleaseNotes;
-        app.state.release_notes = Some(release_notes_state());
+        app.state.mode = Mode::KeybindHelp;
 
         let press_handled = app
             .handle_raw_input_event(raw_key(
@@ -2917,7 +2636,6 @@ mod tests {
         let now = Instant::now();
         app.session_save_deadline = Some(now + Duration::from_secs(2));
         app.next_resize_poll = now + Duration::from_secs(5);
-        app.next_auto_update_check = Some(now + Duration::from_secs(6));
 
         assert_eq!(
             app.next_loop_deadline(now, false),
@@ -2931,7 +2649,6 @@ mod tests {
         let now = Instant::now();
         app.next_resize_poll = now + Duration::from_millis(100);
         app.session_save_deadline = Some(now + Duration::from_secs(2));
-        app.next_auto_update_check = Some(now + Duration::from_secs(6));
 
         assert_eq!(
             app.next_headless_loop_deadline(now, false),
@@ -2947,7 +2664,6 @@ mod tests {
         app.config_diagnostic_deadline = None;
         app.toast_deadline = None;
         app.next_animation_tick = None;
-        app.next_auto_update_check = None;
         app.session_save_deadline = None;
         app.state.sessions.clear();
 
@@ -3011,22 +2727,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn full_internal_event_queue_accepts_update_after_backpressure() {
+    async fn full_internal_event_queue_accepts_event_after_backpressure() {
         let mut app = test_app();
 
         for i in 0..APP_EVENT_CHANNEL_CAPACITY {
             app.event_tx
-                .try_send(AppEvent::UpdateReady {
-                    version: format!("9.9.{i}"),
-                    install_command: "gmux update".into(),
+                .try_send(AppEvent::ClipboardWrite {
+                    content: vec![i as u8],
                 })
                 .unwrap();
         }
 
         let tx = app.event_tx.clone();
-        let send = tx.send(AppEvent::UpdateReady {
-            version: "10.0.0".into(),
-            install_command: "gmux update".into(),
+        let send = tx.send(AppEvent::ClipboardWrite {
+            content: b"later".to_vec(),
         });
         tokio::pin!(send);
 
@@ -3342,18 +3056,16 @@ last_pane = "prefix+tab"
     }
 
     #[test]
-    fn route_client_input_closes_release_notes_modal() {
+    fn route_client_input_closes_keybind_help_modal() {
         let mut app = test_app();
         app.state.sessions = vec![Workspace::test_new("test")];
         app.state.active_session = Some(0);
         app.state.selected_session = 0;
-        app.state.mode = Mode::ReleaseNotes;
-        app.state.release_notes = Some(release_notes_state());
+        app.state.mode = Mode::KeybindHelp;
 
         app.route_client_input(b"\x1b".to_vec());
 
         assert_eq!(app.state.mode, Mode::Terminal);
-        assert!(app.state.release_notes.is_none());
     }
 
     #[test]
