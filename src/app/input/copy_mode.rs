@@ -121,11 +121,23 @@ impl AppState {
         }
 
         match (key.code, key.modifiers) {
+            (KeyCode::Char('b'), mods) if mods.contains(KeyModifiers::CONTROL) => {
+                self.scroll_copy_mode_page(terminal_runtimes, -1, false)
+            }
+            (KeyCode::Char('f'), mods) if mods.contains(KeyModifiers::CONTROL) => {
+                self.scroll_copy_mode_page(terminal_runtimes, 1, false)
+            }
             (KeyCode::Char('u'), mods) if mods.contains(KeyModifiers::CONTROL) => {
                 self.scroll_copy_mode_page(terminal_runtimes, -1, true)
             }
             (KeyCode::Char('d'), mods) if mods.contains(KeyModifiers::CONTROL) => {
                 self.scroll_copy_mode_page(terminal_runtimes, 1, true)
+            }
+            (KeyCode::Char('y'), mods) if mods.contains(KeyModifiers::CONTROL) => {
+                self.scroll_copy_mode_lines(terminal_runtimes, -1, 1)
+            }
+            (KeyCode::Char('e'), mods) if mods.contains(KeyModifiers::CONTROL) => {
+                self.scroll_copy_mode_lines(terminal_runtimes, 1, 1)
             }
             _ => {}
         }
@@ -275,7 +287,7 @@ impl AppState {
         direction: i16,
         half_page: bool,
     ) {
-        let Some(mut copy_mode) = self.copy_mode else {
+        let Some(copy_mode) = self.copy_mode else {
             return;
         };
         let Some(info) = self.pane_info_by_id(copy_mode.pane_id).cloned() else {
@@ -283,6 +295,33 @@ impl AppState {
             return;
         };
         let lines = copy_mode_page_lines(info.inner_rect.height, half_page);
+        self.scroll_copy_mode_lines_with_state(terminal_runtimes, copy_mode, info, direction, lines);
+    }
+
+    fn scroll_copy_mode_lines(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        direction: i16,
+        lines: usize,
+    ) {
+        let Some(copy_mode) = self.copy_mode else {
+            return;
+        };
+        let Some(info) = self.pane_info_by_id(copy_mode.pane_id).cloned() else {
+            self.exit_copy_mode(terminal_runtimes, false);
+            return;
+        };
+        self.scroll_copy_mode_lines_with_state(terminal_runtimes, copy_mode, info, direction, lines);
+    }
+
+    fn scroll_copy_mode_lines_with_state(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        mut copy_mode: CopyModeState,
+        info: crate::layout::PaneInfo,
+        direction: i16,
+        lines: usize,
+    ) {
         if let Some(metrics) = self.pane_scroll_metrics(terminal_runtimes, copy_mode.pane_id) {
             if direction < 0 {
                 let next_offset = metrics.offset_from_bottom.saturating_add(lines);
@@ -754,19 +793,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn copy_mode_ignores_prefix_key() {
-        let (mut app, _) = app_with_copy_screen(b"foo bar\n");
+    async fn copy_mode_ctrl_b_and_ctrl_f_use_full_page_size() {
+        let bytes = numbered_lines_bytes(64);
+        let (mut app, pane_id) = app_with_copy_scrollback(&bytes);
         app.state.enter_copy_mode(&app.terminal_runtimes);
-        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
-            copy_mode.cursor_row = 0;
-            copy_mode.cursor_col = 4;
-        }
+        let height = app.state.copy_mode.expect("copy mode").cursor_row + 1;
+        let expected_lines = copy_mode_page_lines(height, false);
 
         app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('b'), KeyModifiers::CONTROL));
+        assert_eq!(copy_mode_offset_from_bottom(&app, pane_id), expected_lines);
 
-        let copy_mode = app.state.copy_mode.expect("copy mode");
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        assert_eq!(copy_mode_offset_from_bottom(&app, pane_id), 0);
         assert_eq!(app.state.mode, Mode::Copy);
-        assert_eq!(copy_mode.cursor_col, 4);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_ctrl_y_and_ctrl_e_scroll_single_lines() {
+        let bytes = numbered_lines_bytes(64);
+        let (mut app, pane_id) = app_with_copy_scrollback(&bytes);
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('y'), KeyModifiers::CONTROL));
+        assert_eq!(copy_mode_offset_from_bottom(&app, pane_id), 1);
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('e'), KeyModifiers::CONTROL));
+        assert_eq!(copy_mode_offset_from_bottom(&app, pane_id), 0);
+        assert_eq!(app.state.mode, Mode::Copy);
     }
 
     #[tokio::test]
