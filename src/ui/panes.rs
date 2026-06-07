@@ -18,16 +18,35 @@ pub(crate) fn pane_is_scrolled_back(rt: &TerminalRuntime) -> bool {
         .is_some_and(|metrics| metrics.offset_from_bottom > 0)
 }
 
-fn stable_terminal_inner_rect(pane_inner: Rect) -> Rect {
+fn terminal_inner_rect_with_scrollbar(pane_inner: Rect) -> (Rect, Rect) {
     if pane_inner.width <= 4 {
-        return pane_inner;
+        return (pane_inner, Rect::default());
     }
 
-    Rect::new(
+    let inner_rect = Rect::new(
         pane_inner.x,
         pane_inner.y,
         pane_inner.width.saturating_sub(1),
         pane_inner.height,
+    );
+    let scrollbar_rect = Rect::new(
+        pane_inner.x + pane_inner.width.saturating_sub(1),
+        pane_inner.y,
+        1,
+        pane_inner.height,
+    );
+    (inner_rect, scrollbar_rect)
+}
+
+fn terminal_inner_rect(rt: &TerminalRuntime, pane_inner: Rect) -> (Rect, Option<Rect>) {
+    if !rt.scroll_metrics().is_some_and(should_show_scrollbar) {
+        return (pane_inner, None);
+    }
+
+    let (inner_rect, scrollbar_rect) = terminal_inner_rect_with_scrollbar(pane_inner);
+    (
+        inner_rect,
+        (scrollbar_rect.width > 0).then_some(scrollbar_rect),
     )
 }
 
@@ -82,25 +101,6 @@ fn runtime_for_tab_pane<'a>(
         .map(|runtime| (terminal_id, runtime))
 }
 
-fn stable_scrollbar_gutter(rt: &TerminalRuntime, pane_inner: Rect) -> (Rect, Option<Rect>) {
-    let inner_rect = stable_terminal_inner_rect(pane_inner);
-    if inner_rect == pane_inner {
-        return (inner_rect, None);
-    }
-    let gutter = Rect::new(
-        pane_inner.x + pane_inner.width.saturating_sub(1),
-        pane_inner.y,
-        1,
-        pane_inner.height,
-    );
-    let scrollbar_rect = rt
-        .scroll_metrics()
-        .filter(|metrics| should_show_scrollbar(*metrics))
-        .map(|_| gutter);
-
-    (inner_rect, scrollbar_rect)
-}
-
 /// Resize every visible runtime in a tab to the geometry it would receive if the tab were selected.
 pub(super) fn resize_tab_panes(
     app: &AppState,
@@ -119,7 +119,7 @@ pub(super) fn resize_tab_panes(
             } else {
                 pane_inner_rect(area, false)
             };
-            let inner_rect = stable_terminal_inner_rect(pane_inner);
+            let (inner_rect, _) = terminal_inner_rect(rt, pane_inner);
             if !app.direct_attach_resize_locks.contains(terminal_id) {
                 rt.resize(
                     inner_rect.height,
@@ -141,7 +141,7 @@ pub(super) fn resize_tab_panes(
         };
 
         if let Some((terminal_id, rt)) = runtime_for_tab_pane(terminal_runtimes, tab, info.id) {
-            let inner_rect = stable_terminal_inner_rect(pane_inner);
+            let (inner_rect, _) = terminal_inner_rect(rt, pane_inner);
             if !app.direct_attach_resize_locks.contains(terminal_id) {
                 rt.resize(
                     inner_rect.height,
@@ -182,7 +182,7 @@ pub(super) fn compute_pane_infos(
         let mut scrollbar_rect = None;
         if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, focused_id)
         {
-            (inner_rect, scrollbar_rect) = stable_scrollbar_gutter(rt, pane_inner);
+            (inner_rect, scrollbar_rect) = terminal_inner_rect(rt, pane_inner);
             if resize_panes
                 && ws.terminal_id(focused_id).is_some_and(|terminal_id| {
                     !app.direct_attach_resize_locks.contains(terminal_id)
@@ -218,7 +218,7 @@ pub(super) fn compute_pane_infos(
         let mut inner_rect = pane_inner;
         let mut scrollbar_rect = None;
         if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, info.id) {
-            (inner_rect, scrollbar_rect) = stable_scrollbar_gutter(rt, pane_inner);
+            (inner_rect, scrollbar_rect) = terminal_inner_rect(rt, pane_inner);
             if resize_panes
                 && ws.terminal_id(info.id).is_some_and(|terminal_id| {
                     !app.direct_attach_resize_locks.contains(terminal_id)
@@ -349,30 +349,6 @@ fn overlapping_range(a_start: u16, a_len: u16, b_start: u16, b_len: u16) -> Opti
     (start < end).then_some((start, end))
 }
 
-fn pane_covers_horizontal_side(pane: &PaneInfo, border: &SplitBorder, left: bool) -> bool {
-    let touches = if left {
-        pane.rect.x.saturating_add(pane.rect.width) == border.pos
-    } else {
-        pane.rect.x == border.pos
-    };
-    touches
-        && pane.rect.y <= border.area.y
-        && pane.rect.y.saturating_add(pane.rect.height)
-            >= border.area.y.saturating_add(border.area.height)
-}
-
-fn horizontal_border_has_one_pane_per_side(border: &SplitBorder, panes: &[PaneInfo]) -> bool {
-    let left_count = panes
-        .iter()
-        .filter(|pane| pane_covers_horizontal_side(pane, border, true))
-        .count();
-    let right_count = panes
-        .iter()
-        .filter(|pane| pane_covers_horizontal_side(pane, border, false))
-        .count();
-    left_count == 1 && right_count == 1
-}
-
 fn focused_split_border_segment(
     border: &SplitBorder,
     focused: Rect,
@@ -393,7 +369,7 @@ fn focused_split_border_segment(
                     border.area.y,
                     border.area.y.saturating_add(border.area.height),
                 )
-                && horizontal_border_has_one_pane_per_side(border, panes)
+                && panes.len() == 2
             {
                 let midpoint = border.area.y + border.area.height.saturating_add(1) / 2;
                 if focused_left_of_border {
@@ -704,7 +680,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pane_scrollbar_gutter_is_reserved_before_scrollback_exists() {
+    async fn pane_uses_full_width_before_scrollback_exists() {
         let mut app = AppState::test_new();
         let mut workspace = Workspace::test_new("test");
         let root_pane = workspace.tabs[0].root_pane;
@@ -728,11 +704,11 @@ mod tests {
 
         assert_eq!(info.rect, area);
         assert_eq!(info.scrollbar_rect, None);
-        assert_eq!(info.inner_rect, Rect::new(10, 3, 39, 8));
+        assert_eq!(info.inner_rect, Rect::new(10, 3, 40, 8));
     }
 
     #[tokio::test]
-    async fn zoomed_pane_scrollbar_gutter_is_reserved_before_scrollback_exists() {
+    async fn zoomed_pane_uses_full_width_before_scrollback_exists() {
         let mut app = AppState::test_new();
         let mut workspace = Workspace::test_new("test");
         workspace.zoomed = true;
@@ -757,7 +733,7 @@ mod tests {
 
         assert_eq!(info.rect, area);
         assert_eq!(info.scrollbar_rect, None);
-        assert_eq!(info.inner_rect, Rect::new(10, 3, 39, 8));
+        assert_eq!(info.inner_rect, Rect::new(10, 3, 40, 8));
     }
 
     #[tokio::test]
@@ -787,7 +763,7 @@ mod tests {
         assert_eq!(info.id, focused_pane);
         assert_eq!(info.rect, area);
         assert_eq!(info.scrollbar_rect, None);
-        assert_eq!(info.inner_rect, Rect::new(10, 3, 39, 8));
+        assert_eq!(info.inner_rect, Rect::new(10, 3, 40, 8));
     }
 
     #[tokio::test]
@@ -819,8 +795,8 @@ mod tests {
         let left_info = infos.iter().find(|info| info.id == left).unwrap();
         let right_info = infos.iter().find(|info| info.id == right).unwrap();
 
-        assert_eq!(left_info.inner_rect, Rect::new(0, 0, 19, 8));
-        assert_eq!(right_info.inner_rect, Rect::new(21, 0, 18, 8));
+        assert_eq!(left_info.inner_rect, Rect::new(0, 0, 20, 8));
+        assert_eq!(right_info.inner_rect, Rect::new(21, 0, 19, 8));
     }
 
     #[test]
@@ -913,6 +889,25 @@ mod tests {
         assert_eq!(cell_fg(&buffer, 50, 11), Some(accent));
         assert_eq!(cell_fg(&buffer, 75, 11), Some(accent));
         assert_eq!(cell_fg(&buffer, 50, 19), Some(accent));
+    }
+
+    #[test]
+    fn three_column_middle_focus_highlights_both_full_borders() {
+        let mut workspace = Workspace::test_new("test");
+        let _left = workspace.tabs[0].root_pane;
+        let middle = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        let _right = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(middle);
+        let mut app = test_app_with_workspace(workspace);
+
+        let buffer = draw_panes(&mut app, 100, 20);
+        let accent = app.palette.accent;
+
+        for y in app.view.terminal_area.y..app.view.terminal_area.y + app.view.terminal_area.height
+        {
+            assert_eq!(cell_fg(&buffer, 50, y), Some(accent));
+            assert_eq!(cell_fg(&buffer, 75, y), Some(accent));
+        }
     }
 
     #[tokio::test]

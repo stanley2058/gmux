@@ -4222,7 +4222,7 @@ next_tab = ""
         server.resize_shared_runtime_to_effective_size();
 
         let terminal_area = server.app.state.view.terminal_area;
-        let expected = (terminal_area.height, terminal_area.width.saturating_sub(1));
+        let expected = (terminal_area.height, terminal_area.width);
         assert_eq!(
             server
                 .app
