@@ -98,7 +98,7 @@ fn go_back_or_close(state: &mut AppState) {
 
 fn set_settings_page(state: &mut AppState, page: SettingsPage) {
     state.settings.page = page;
-    let rows = settings_catalog::settings_rows(&state);
+    let rows = settings_catalog::settings_rows(state);
     state.settings.list.selected = rows.iter().position(|row| row.selected).unwrap_or(0);
 }
 
