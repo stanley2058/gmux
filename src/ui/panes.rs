@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+use std::collections::HashMap;
 
 use super::scrollbar::{render_pane_scrollbar, should_show_scrollbar};
 use super::widgets::panel_contrast_fg;
@@ -258,8 +259,6 @@ pub(super) fn render_panes(
     let multi_pane = ws.layout.pane_count() > 1;
     let terminal_active = app.mode == Mode::Terminal;
 
-    render_top_separator(app, frame, terminal_active);
-
     for info in &app.view.pane_infos {
         if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, info.id) {
             let show_cursor = info.is_focused && terminal_active && !pane_is_scrolled_back(rt);
@@ -291,9 +290,7 @@ pub(super) fn render_panes(
         }
     }
 
-    if multi_pane {
-        render_split_borders(app, frame, terminal_active);
-    }
+    render_pane_borders(app, frame, terminal_active);
 }
 
 fn top_separator_rect(app: &AppState) -> Option<Rect> {
@@ -309,11 +306,74 @@ fn top_separator_rect(app: &AppState) -> Option<Rect> {
     Some(Rect::new(terminal.x, terminal.y - 1, terminal.width, 1))
 }
 
-fn render_top_separator(app: &AppState, frame: &mut Frame, terminal_active: bool) {
+#[derive(Clone, Copy, Default)]
+struct BorderCell {
+    up: bool,
+    down: bool,
+    left: bool,
+    right: bool,
+    focused: bool,
+}
+
+impl BorderCell {
+    fn horizontal(focused: bool, left: bool, right: bool) -> Self {
+        Self {
+            left,
+            right,
+            focused,
+            ..Self::default()
+        }
+    }
+
+    fn vertical(focused: bool, up: bool, down: bool) -> Self {
+        Self {
+            up,
+            down,
+            focused,
+            ..Self::default()
+        }
+    }
+}
+
+fn merge_border_cell(
+    cells: &mut HashMap<(u16, u16), BorderCell>,
+    x: u16,
+    y: u16,
+    cell: BorderCell,
+) {
+    let entry = cells.entry((x, y)).or_default();
+    entry.up |= cell.up;
+    entry.down |= cell.down;
+    entry.left |= cell.left;
+    entry.right |= cell.right;
+    entry.focused |= cell.focused;
+}
+
+fn border_symbol(cell: BorderCell) -> &'static str {
+    match (cell.up, cell.down, cell.left, cell.right) {
+        (true, true, true, true) => "┼",
+        (false, true, true, true) => "┬",
+        (true, false, true, true) => "┴",
+        (true, true, false, true) => "├",
+        (true, true, true, false) => "┤",
+        (false, true, false, true) => "┌",
+        (false, true, true, false) => "┐",
+        (true, false, false, true) => "└",
+        (true, false, true, false) => "┘",
+        (_, _, true, true) | (_, _, true, false) | (_, _, false, true) => "─",
+        (true, true, _, _) | (true, false, _, _) | (false, true, _, _) => "│",
+        _ => " ",
+    }
+}
+
+fn collect_top_separator_cells(
+    app: &AppState,
+    terminal_active: bool,
+    cells: &mut HashMap<(u16, u16), BorderCell>,
+) {
     let Some(separator) = top_separator_rect(app) else {
         return;
     };
-    let y = separator.y;
     let focused = app
         .view
         .pane_infos
@@ -328,8 +388,16 @@ fn render_top_separator(app: &AppState, frame: &mut Frame, terminal_active: bool
                     && x >= rect.x
                     && x < rect.x.saturating_add(rect.width)
             });
-        let style = split_border_style(app, focused_segment);
-        frame.buffer_mut()[(x, y)].set_symbol("─").set_style(style);
+        merge_border_cell(
+            cells,
+            x,
+            separator.y,
+            BorderCell::horizontal(
+                focused_segment,
+                x > separator.x,
+                x + 1 < separator.x + separator.width,
+            ),
+        );
     }
 }
 
@@ -390,15 +458,11 @@ fn focused_split_border_segment(
     }
 }
 
-fn merged_border_symbol(existing: &str, incoming: &str) -> &'static str {
-    match (existing, incoming) {
-        ("│", "─") | ("─", "│") | ("┼", _) | (_, "┼") => "┼",
-        (_, "│") => "│",
-        _ => "─",
-    }
-}
-
-fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool) {
+fn collect_split_border_cells(
+    app: &AppState,
+    terminal_active: bool,
+    cells: &mut HashMap<(u16, u16), BorderCell>,
+) {
     let focused = app
         .view
         .pane_infos
@@ -408,6 +472,7 @@ fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool
     let terminal = app.view.terminal_area;
     let terminal_right = terminal.x.saturating_add(terminal.width);
     let terminal_bottom = terminal.y.saturating_add(terminal.height);
+    let top_separator = top_separator_rect(app);
 
     for border in &app.view.split_borders {
         let focused_segment = if terminal_active {
@@ -428,19 +493,32 @@ fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool
                     .y
                     .saturating_add(border.area.height)
                     .min(terminal_bottom);
-                for y in y_start..y_end {
-                    let cell = &mut frame.buffer_mut()[(x, y)];
-                    let symbol = merged_border_symbol(cell.symbol(), "│");
-                    let style = split_border_style(
-                        app,
-                        focused_segment.is_some_and(|(start, end)| y >= start && y < end),
-                    );
-                    if style.fg == Some(app.palette.accent)
-                        || cell.style().fg != Some(app.palette.accent)
-                    {
-                        cell.set_style(style);
+                if y_start >= y_end {
+                    continue;
+                }
+                if y_start == terminal.y {
+                    if let Some(separator) = top_separator {
+                        let focused_cell = focused_segment
+                            .is_some_and(|(start, end)| y_start >= start && y_start < end);
+                        merge_border_cell(
+                            cells,
+                            x,
+                            separator.y,
+                            BorderCell::vertical(focused_cell, false, true),
+                        );
                     }
-                    cell.set_symbol(symbol);
+                }
+                for y in y_start..y_end {
+                    merge_border_cell(
+                        cells,
+                        x,
+                        y,
+                        BorderCell::vertical(
+                            focused_segment.is_some_and(|(start, end)| y >= start && y < end),
+                            y > y_start || top_separator.is_some_and(|_| y_start == terminal.y),
+                            y + 1 < y_end,
+                        ),
+                    );
                 }
             }
             Direction::Vertical => {
@@ -454,22 +532,35 @@ fn render_split_borders(app: &AppState, frame: &mut Frame, terminal_active: bool
                     .x
                     .saturating_add(border.area.width)
                     .min(terminal_right);
+                if x_start >= x_end {
+                    continue;
+                }
                 for x in x_start..x_end {
-                    let cell = &mut frame.buffer_mut()[(x, y)];
-                    let symbol = merged_border_symbol(cell.symbol(), "─");
-                    let style = split_border_style(
-                        app,
-                        focused_segment.is_some_and(|(start, end)| x >= start && x < end),
+                    merge_border_cell(
+                        cells,
+                        x,
+                        y,
+                        BorderCell::horizontal(
+                            focused_segment.is_some_and(|(start, end)| x >= start && x < end),
+                            x > x_start,
+                            x + 1 < x_end,
+                        ),
                     );
-                    if style.fg == Some(app.palette.accent)
-                        || cell.style().fg != Some(app.palette.accent)
-                    {
-                        cell.set_style(style);
-                    }
-                    cell.set_symbol(symbol);
                 }
             }
         }
+    }
+}
+
+fn render_pane_borders(app: &AppState, frame: &mut Frame, terminal_active: bool) {
+    let mut cells = HashMap::new();
+    collect_top_separator_cells(app, terminal_active, &mut cells);
+    collect_split_border_cells(app, terminal_active, &mut cells);
+
+    for ((x, y), cell) in cells {
+        frame.buffer_mut()[(x, y)]
+            .set_symbol(border_symbol(cell))
+            .set_style(split_border_style(app, cell.focused));
     }
 }
 
@@ -679,6 +770,10 @@ mod tests {
         buffer[(x, y)].style().fg
     }
 
+    fn cell_symbol(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> &str {
+        buffer[(x, y)].symbol()
+    }
+
     #[tokio::test]
     async fn pane_uses_full_width_before_scrollback_exists() {
         let mut app = AppState::test_new();
@@ -814,6 +909,7 @@ mod tests {
         assert_eq!(app.view.terminal_area, Rect::new(0, 2, 100, 18));
         assert_eq!(cell_fg(&buffer, 25, 1), Some(accent));
         assert_eq!(cell_fg(&buffer, 75, 1), Some(neutral));
+        assert_eq!(cell_symbol(&buffer, 50, 1), "┬");
         assert_eq!(cell_fg(&buffer, 50, 2), Some(accent));
         assert_eq!(cell_fg(&buffer, 50, 10), Some(accent));
         assert_eq!(cell_fg(&buffer, 50, 11), Some(neutral));
@@ -823,6 +919,7 @@ mod tests {
 
         assert_eq!(cell_fg(&buffer, 25, 1), Some(neutral));
         assert_eq!(cell_fg(&buffer, 75, 1), Some(accent));
+        assert_eq!(cell_symbol(&buffer, 50, 1), "┬");
         assert_eq!(cell_fg(&buffer, 50, 2), Some(neutral));
         assert_eq!(cell_fg(&buffer, 50, 11), Some(accent));
         assert_eq!(cell_fg(&buffer, 50, 19), Some(accent));
@@ -879,6 +976,7 @@ mod tests {
         assert_eq!(cell_fg(&buffer, 50, 2), Some(accent));
         assert_eq!(cell_fg(&buffer, 50, 10), Some(accent));
         assert_eq!(cell_fg(&buffer, 50, 11), Some(neutral));
+        assert_eq!(cell_symbol(&buffer, 50, 11), "├");
         assert_eq!(cell_fg(&buffer, 75, 11), Some(neutral));
 
         app.sessions[0].tabs[0].layout.focus_pane(right_bottom);
