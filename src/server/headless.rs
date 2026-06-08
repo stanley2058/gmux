@@ -5710,6 +5710,15 @@ next_tab = ""
             .recv_timeout(Duration::from_millis(100))
             .expect("full redraw frame");
         assert!(!server.app.full_redraw_pending);
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_millis(100))
+            .expect("full redraw baseline");
 
         let runtime = server
             .app
