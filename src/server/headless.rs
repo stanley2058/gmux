@@ -2127,7 +2127,7 @@ impl HeadlessServer {
                 retained_fallback!("no_last_frame");
             };
             for info in &pane_infos {
-                if !rect_fits_frame(info.inner_rect, frame) {
+                if !rect_fits_frame(info.inner_rect, &frame) {
                     retained_fallback!("pane_rect_outside_frame");
                 }
             }
@@ -2163,7 +2163,7 @@ impl HeadlessServer {
                         else {
                             retained_fallback!("no_last_frame");
                         };
-                        if dirty_patch_intersects_hyperlinks(frame, info.inner_rect, &patch) {
+                        if dirty_patch_intersects_hyperlinks(&frame, info.inner_rect, &patch) {
                             retained_fallback!("hyperlink_intersection");
                         }
                     }
@@ -2189,7 +2189,6 @@ impl HeadlessServer {
                 .render_actor
                 .as_ref()
                 .and_then(|render_actor| render_actor.last_frame())
-                .cloned()
             else {
                 retained_fallback!("no_last_frame");
             };
@@ -2353,44 +2352,12 @@ impl HeadlessServer {
                 continue;
             }
             let frame = fit_frame_to_client_size(&frame, cols, rows);
-            let Some(client) = self.clients.get(&client_id) else {
-                continue;
-            };
-            if client
-                .render_actor
-                .as_ref()
-                .is_some_and(|render_actor| render_actor.is_semantic())
-            {
-                if client
-                    .render_actor
-                    .as_ref()
-                    .is_some_and(|render_actor| render_actor.is_semantic_frame_current(&frame))
-                {
-                    continue;
-                }
-                let Some(writer) = client.writer.as_ref().cloned() else {
-                    continue;
-                };
-                if let Some(client) = self.clients.get_mut(&client_id) {
-                    if let Some(render_actor) = &mut client.render_actor {
-                        render_actor.commit_semantic_frame(frame.clone());
-                    }
-                }
-                std::thread::spawn(move || {
-                    if let Ok(serialized) =
-                        HeadlessServer::frame_server_message(&ServerMessage::Frame(frame))
-                    {
-                        let _ = writer.render.send(serialized);
-                    }
-                });
-                sent_any = true;
-                continue;
-            }
             sent_any |= self.stream_frame_to_client(
                 client_id,
                 frame,
                 true,
                 cell_size,
+                false,
                 ServerFrameDebugContext {
                     target_count,
                     mirror_flush: true,
@@ -2411,6 +2378,7 @@ impl HeadlessServer {
         mut frame: FrameData,
         is_app_client: bool,
         cell_size: crate::kitty_graphics::HostCellSize,
+        allow_graphics: bool,
         debug_context: ServerFrameDebugContext,
         broken_clients: &mut Vec<u64>,
     ) -> bool {
@@ -2421,7 +2389,11 @@ impl HeadlessServer {
         let graphics_surface_reset_pending = client.graphics_surface_reset_pending;
 
         let mut graphics_us = None;
-        if is_app_client && self.app.state.kitty_graphics_enabled && cell_size.is_known() {
+        if is_app_client
+            && allow_graphics
+            && self.app.state.kitty_graphics_enabled
+            && cell_size.is_known()
+        {
             if graphics_surface_reset_pending {
                 frame.graphics = next_graphics_cache.clear_bytes();
             }
@@ -2640,6 +2612,7 @@ impl HeadlessServer {
                 frame,
                 is_app_client,
                 cell_size,
+                is_app_client && Some(client_id) == self.foreground_client_id,
                 debug_context,
                 &mut broken_clients,
             );
@@ -5082,9 +5055,8 @@ next_tab = ""
                 .render_actor
                 .as_ref()
                 .unwrap()
-                .terminal_seq()
-                .unwrap(),
-            1
+                .wait_for_terminal_seq(Duration::from_millis(100)),
+            Some(1)
         );
     }
 
@@ -5346,10 +5318,16 @@ next_tab = ""
 
         server.render_and_stream();
 
-        match read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()) {
-            ServerMessage::Terminal(frame) => assert_eq!(frame.seq, 1),
-            other => panic!("expected terminal frame, got {other:?}"),
+        let mut terminal_seq = None;
+        for _ in 0..2 {
+            if let ServerMessage::Terminal(frame) =
+                read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap())
+            {
+                terminal_seq = Some(frame.seq);
+                break;
+            }
         }
+        assert_eq!(terminal_seq, Some(1));
         assert_eq!(
             server
                 .clients
@@ -5453,6 +5431,24 @@ next_tab = ""
         let _ = second_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial second frame");
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_millis(100))
+            .expect("first baseline");
+        server
+            .clients
+            .get(&2)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_millis(100))
+            .expect("second baseline");
 
         let runtime = server
             .app
@@ -5733,9 +5729,8 @@ next_tab = ""
         let mut frame = client
             .render_actor
             .as_ref()
-            .and_then(|render_actor| render_actor.last_frame())
-            .unwrap()
-            .clone();
+            .and_then(|render_actor| render_actor.wait_for_last_frame(Duration::from_millis(100)))
+            .unwrap();
         frame.hyperlinks = vec!["https://example.com".to_owned()];
         let hyperlink_idx =
             usize::from(inner_rect.y) * usize::from(frame.width) + usize::from(inner_rect.x);
@@ -5752,6 +5747,14 @@ next_tab = ""
         let _ = client_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("seed hyperlink frame");
+        client
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame_matching(Duration::from_millis(100), |frame| {
+                !frame.hyperlinks.is_empty()
+            })
+            .expect("seed hyperlink baseline");
 
         let runtime = server
             .app
