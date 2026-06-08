@@ -144,9 +144,6 @@ fn debug_duration_us(duration: Duration) -> u64 {
 struct ServerFrameDebugContext {
     render: ServerRenderDebug,
     target_count: u16,
-    active_only: bool,
-    mirror_flush: bool,
-    pending_mirror: bool,
 }
 
 impl ServerFrameDebugContext {
@@ -154,9 +151,6 @@ impl ServerFrameDebugContext {
         timing.server_render_us = self.render.render_us;
         timing.server_frame_build_us = self.render.frame_build_us;
         timing.server_target_count = self.target_count;
-        timing.server_active_only = self.active_only;
-        timing.server_mirror_flush = self.mirror_flush;
-        timing.server_pending_mirror = self.pending_mirror;
     }
 }
 
@@ -212,8 +206,6 @@ pub struct HeadlessServer {
     effective_size: (u16, u16),
     /// App client that should receive the next frame before mirrors.
     latency_critical_client_id: Option<u64>,
-    /// Latest shared app frame waiting to be mirrored to non-active clients.
-    pending_mirror_app_frame: Option<(FrameData, u64)>,
     /// Monotonic generation for active-sized app render snapshots.
     next_app_snapshot_generation: u64,
     /// Flag set when shutdown is initiated.
@@ -357,7 +349,6 @@ impl HeadlessServer {
             next_activity_stamp: 1,
             effective_size: (MIN_COLS, MIN_ROWS),
             latency_critical_client_id: None,
-            pending_mirror_app_frame: None,
             next_app_snapshot_generation: 1,
             shutting_down: false,
             handoff_in_progress: false,
@@ -505,7 +496,6 @@ impl HeadlessServer {
                 let pty_dirty = self.app.render_dirty.swap(false, Ordering::AcqRel);
                 if pty_dirty {
                     self.app.clear_input_render_bypass_after_pty_dirty();
-                    self.pending_mirror_app_frame = None;
                 }
                 if pty_dirty {
                     crate::render_prof::event("render.attempt.pty_dirty");
@@ -522,7 +512,7 @@ impl HeadlessServer {
                     self.render_and_stream();
                 }
                 self.app.last_render_at = Some(now);
-                needs_render = self.pending_mirror_app_frame.is_some();
+                needs_render = false;
                 needs_full_render = false;
                 continue;
             }
@@ -1145,10 +1135,6 @@ impl HeadlessServer {
         changed
     }
 
-    fn has_pending_priority_input(&self) -> bool {
-        !self.server_input_rx.is_empty()
-    }
-
     /// Drains server events from the dedicated channel.
     ///
     /// Returns true if any input was processed (requiring a re-render).
@@ -1693,7 +1679,6 @@ impl HeadlessServer {
                         .is_some_and(|client| client.is_full_app_client())
                 {
                     self.latency_critical_client_id = Some(client_id);
-                    self.pending_mirror_app_frame = None;
                 }
                 if foreground_changed {
                     self.resize_shared_runtime_to_effective_size_before_input();
@@ -2180,7 +2165,6 @@ impl HeadlessServer {
         let mut broken_clients = Vec::new();
         let mut attempted_send = false;
         let mut sent_any = false;
-        let mut pending_mirror_frame = None;
         for (client_id, _size, _cell_size, _is_foreground, _mode) in retained_targets {
             let Some(client) = self.clients.get(&client_id) else {
                 retained_fallback!("client_missing");
@@ -2206,15 +2190,9 @@ impl HeadlessServer {
             }
 
             attempted_send = true;
-            let send_frame = latency_critical_retained_client_id
-                .filter(|latency_client_id| *latency_client_id == client_id)
-                .map(|_| frame.clone());
             let sent = self.send_retained_frame_to_client(client_id, frame, &mut broken_clients);
             if sent {
                 sent_any = true;
-                if let Some(frame) = send_frame {
-                    pending_mirror_frame = Some((frame, client_id));
-                }
             }
         }
         for broken_client in broken_clients {
@@ -2224,10 +2202,7 @@ impl HeadlessServer {
             retained_success!("clean_no_cursor_change");
         }
         if sent_any {
-            if let Some(frame) = pending_mirror_frame {
-                self.pending_mirror_app_frame = Some(frame);
-                self.latency_critical_client_id = None;
-            }
+            self.latency_critical_client_id = None;
             retained_success!("sent");
         }
         retained_fallback!("send_failed");
@@ -2338,40 +2313,6 @@ impl HeadlessServer {
         )
     }
 
-    fn flush_pending_mirror_app_frame(&mut self) -> bool {
-        let Some((frame, skip_client_id)) = self.pending_mirror_app_frame.take() else {
-            return false;
-        };
-        crate::render_prof::event("mirror.flush_pending");
-        let render_targets = render_targets(&self.clients, self.foreground_client_id);
-        let target_count = render_targets.len().min(usize::from(u16::MAX)) as u16;
-        let mut broken_clients = Vec::new();
-        let mut sent_any = false;
-        for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
-            if client_id == skip_client_id || !matches!(mode, ClientConnectionMode::App) {
-                continue;
-            }
-            let frame = fit_frame_to_client_size(&frame, cols, rows);
-            sent_any |= self.stream_frame_to_client(
-                client_id,
-                frame,
-                true,
-                cell_size,
-                false,
-                ServerFrameDebugContext {
-                    target_count,
-                    mirror_flush: true,
-                    ..Default::default()
-                },
-                &mut broken_clients,
-            );
-        }
-        for client_id in broken_clients {
-            self.remove_client_and_resize_if_needed(client_id);
-        }
-        sent_any
-    }
-
     fn stream_frame_to_client(
         &mut self,
         client_id: u64,
@@ -2477,18 +2418,7 @@ impl HeadlessServer {
 
     fn render_and_stream(&mut self) {
         let full_started = crate::render_prof::timer();
-        let latency_client_id = self.latency_critical_client_id.take().filter(|client_id| {
-            self.clients
-                .get(client_id)
-                .is_some_and(|client| client.is_full_app_client())
-        });
-        if latency_client_id.is_none()
-            && !self.has_pending_priority_input()
-            && self.flush_pending_mirror_app_frame()
-        {
-            crate::render_prof::duration_since("full_render.total", full_started);
-            return;
-        }
+        let _ = self.latency_critical_client_id.take();
         let render_targets = render_targets(&self.clients, self.foreground_client_id);
         let target_count = render_targets.len().min(usize::from(u16::MAX)) as u16;
 
@@ -2517,10 +2447,6 @@ impl HeadlessServer {
         let has_app_targets = render_targets
             .iter()
             .any(|(_, _, _, _, mode)| matches!(mode, ClientConnectionMode::App));
-        let has_mirror_targets = latency_client_id.is_some()
-            && render_targets.iter().any(|(client_id, _, _, _, mode)| {
-                matches!(mode, ClientConnectionMode::App) && Some(*client_id) != latency_client_id
-            });
         let shared_app_render = if has_app_targets {
             Some(self.render_shared_app_snapshot())
         } else {
@@ -2529,17 +2455,9 @@ impl HeadlessServer {
 
         let mut broken_clients: Vec<u64> = Vec::new();
         for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
-            if latency_client_id.is_some()
-                && matches!(mode, ClientConnectionMode::App)
-                && Some(client_id) != latency_client_id
-            {
-                continue;
-            }
             let is_app_client = matches!(mode, ClientConnectionMode::App);
             let mut debug_context = ServerFrameDebugContext {
                 target_count,
-                active_only: latency_client_id == Some(client_id) && has_mirror_targets,
-                pending_mirror: latency_client_id == Some(client_id) && has_mirror_targets,
                 ..Default::default()
             };
             let frame = match mode {
@@ -2616,13 +2534,6 @@ impl HeadlessServer {
                 debug_context,
                 &mut broken_clients,
             );
-        }
-
-        if has_mirror_targets {
-            if let (Some(snapshot), Some(skip_client_id)) = (shared_app_render, latency_client_id) {
-                self.pending_mirror_app_frame =
-                    Some((snapshot.frame.as_ref().clone(), skip_client_id));
-            }
         }
 
         if !broken_clients.is_empty() {
@@ -3102,7 +3013,6 @@ mod tests {
             next_activity_stamp: 1,
             effective_size: (MIN_COLS, MIN_ROWS),
             latency_critical_client_id: None,
-            pending_mirror_app_frame: None,
             next_app_snapshot_generation: 1,
             shutting_down: false,
             handoff_in_progress: false,
@@ -4645,7 +4555,7 @@ next_tab = ""
     }
 
     #[test]
-    fn latency_critical_render_defers_mirror_clients() {
+    fn latency_critical_render_publishes_active_then_mirrors() {
         let mut server = test_headless_server();
         server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
         server.app.state.active_session = Some(0);
@@ -4692,18 +4602,12 @@ next_tab = ""
                 .expect("foreground frame"),
         );
         assert_eq!((foreground_frame.width, foreground_frame.height), (80, 24));
-        assert!(background_rx.try_recv().is_err());
-        assert!(server.pending_mirror_app_frame.is_some());
-
-        server.render_and_stream();
-
         let background_frame = read_server_frame(
             background_rx
                 .recv_timeout(Duration::from_millis(100))
                 .expect("background mirror frame"),
         );
         assert_eq!((background_frame.width, background_frame.height), (80, 24));
-        assert!(server.pending_mirror_app_frame.is_none());
     }
 
     #[test]
@@ -4759,9 +4663,6 @@ next_tab = ""
                 .expect("foreground frame"),
         );
         assert_eq!((foreground_frame.width, foreground_frame.height), (80, 24));
-        assert!(server.pending_mirror_app_frame.is_some());
-
-        server.render_and_stream();
 
         let background_frame = recv_server_frame_within(
             &background_rx,
@@ -5514,18 +5415,7 @@ next_tab = ""
         );
         assert!(first_frame.cells.iter().any(|cell| cell.symbol == "Z"));
         assert!(second_rx.recv_timeout(Duration::from_millis(50)).is_err());
-        assert!(server.pending_mirror_app_frame.is_some());
         assert!(server.latency_critical_client_id.is_none());
-
-        server.render_and_stream();
-
-        let second_frame = read_server_frame(
-            second_rx
-                .recv_timeout(Duration::from_millis(100))
-                .expect("deferred mirror frame"),
-        );
-        assert!(second_frame.cells.iter().any(|cell| cell.symbol == "Z"));
-        assert!(server.pending_mirror_app_frame.is_none());
     }
 
     #[tokio::test]
