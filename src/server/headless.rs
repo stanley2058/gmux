@@ -5498,6 +5498,24 @@ next_tab = ""
         let _ = second_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial second frame");
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_millis(100))
+            .expect("first baseline");
+        server
+            .clients
+            .get(&2)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_millis(100))
+            .expect("second baseline");
 
         let runtime = server
             .app
