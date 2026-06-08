@@ -11,6 +11,12 @@ const MAX_SESSION_NAME_LEN: usize = 64;
 const STOP_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
 const STOP_WAIT_POLL: Duration = Duration::from_millis(25);
 const MIN_SOCKET_TIMEOUT: Duration = Duration::from_millis(1);
+const SESSION_OWNED_FILES: &[&str] = &[
+    "session.json",
+    "session-history.json",
+    "gmux.sock",
+    "gmux-client.sock",
+];
 
 static EXPLICIT_SESSION_REQUESTED: AtomicBool = AtomicBool::new(false);
 
@@ -328,23 +334,135 @@ fn stop_session_with_timeout(name: Option<&str>, timeout: Duration) -> Result<Se
 }
 
 pub fn delete_session(name: &str) -> Result<SessionInfo, String> {
-    if name == DEFAULT_SESSION_NAME {
-        return Err("deleting the default session is not supported".to_string());
-    }
-    validate_name(name)?;
-    let socket_path = api_socket_path_for(Some(name));
+    let target = parse_target_name(name)?;
+    let socket_path = api_socket_path_for(target.as_deref());
     if is_running_at(&socket_path) {
         return Err(format!(
             "session {name} is running; stop it before deleting"
         ));
     }
-    let info = session_info(Some(name));
-    let dir = data_dir_for(Some(name));
+    let info = session_info(target.as_deref());
+    if target.is_none() {
+        clear_session_owned_files(None)?;
+        return Ok(info);
+    }
+
+    let dir = data_dir_for(target.as_deref());
     match std::fs::remove_dir_all(&dir) {
         Ok(()) => Ok(info),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(info),
         Err(err) => Err(err.to_string()),
     }
+}
+
+pub fn rename_session(old_name: &str, new_name: &str) -> Result<SessionInfo, String> {
+    let old_target = parse_target_name(old_name)?;
+    let new_target = parse_target_name(new_name)?;
+    if old_name == new_name {
+        return Err("session names must be different".to_string());
+    }
+
+    let old_socket_path = api_socket_path_for(old_target.as_deref());
+    if is_running_at(&old_socket_path) {
+        return Err(format!(
+            "session {old_name} is running; stop it before renaming"
+        ));
+    }
+    let new_socket_path = api_socket_path_for(new_target.as_deref());
+    if is_running_at(&new_socket_path) {
+        return Err(format!(
+            "session {new_name} is running; stop it before renaming"
+        ));
+    }
+
+    match (old_target.as_deref(), new_target.as_deref()) {
+        (Some(old_name), Some(new_name)) => rename_named_session_dir(old_name, new_name)?,
+        (None, Some(new_name)) => rename_default_session_to_named(new_name)?,
+        (Some(old_name), None) => rename_named_session_to_default(old_name)?,
+        (None, None) => return Err("session names must be different".to_string()),
+    }
+
+    Ok(session_info(new_target.as_deref()))
+}
+
+fn rename_named_session_dir(old_name: &str, new_name: &str) -> Result<(), String> {
+    let old_dir = data_dir_for(Some(old_name));
+    if !old_dir.is_dir() {
+        return Err(format!("session {old_name} does not exist"));
+    }
+    let new_dir = data_dir_for(Some(new_name));
+    if new_dir.exists() {
+        return Err(format!("session {new_name} already exists"));
+    }
+
+    if let Some(parent) = new_dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    std::fs::rename(&old_dir, &new_dir).map_err(|err| err.to_string())
+}
+
+fn rename_default_session_to_named(new_name: &str) -> Result<(), String> {
+    let new_dir = data_dir_for(Some(new_name));
+    if new_dir.exists() {
+        return Err(format!("session {new_name} already exists"));
+    }
+    move_session_owned_files(None, Some(new_name))
+}
+
+fn rename_named_session_to_default(old_name: &str) -> Result<(), String> {
+    let old_dir = data_dir_for(Some(old_name));
+    if !old_dir.is_dir() {
+        return Err(format!("session {old_name} does not exist"));
+    }
+    if session_owned_paths(None).iter().any(|path| path.exists()) {
+        return Err(format!("session {DEFAULT_SESSION_NAME} already exists"));
+    }
+    move_session_owned_files(Some(old_name), None)?;
+    match std::fs::remove_dir_all(&old_dir) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+fn move_session_owned_files(from: Option<&str>, to: Option<&str>) -> Result<(), String> {
+    let to_dir = data_dir_for(to);
+    std::fs::create_dir_all(&to_dir).map_err(|err| err.to_string())?;
+    let from_paths = session_owned_paths(from);
+    let to_paths = session_owned_paths(to);
+    for (from_path, to_path) in from_paths.iter().zip(to_paths.iter()) {
+        if from_path.exists() && to_path.exists() {
+            return Err(format!(
+                "session file already exists: {}",
+                to_path.display()
+            ));
+        }
+    }
+    for (from_path, to_path) in from_paths.iter().zip(to_paths.iter()) {
+        if from_path.exists() {
+            std::fs::rename(from_path, to_path).map_err(|err| err.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn clear_session_owned_files(name: Option<&str>) -> Result<(), String> {
+    for path in session_owned_paths(name) {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.to_string()),
+        }
+    }
+    Ok(())
+}
+
+fn session_owned_paths(name: Option<&str>) -> Vec<PathBuf> {
+    let dir = data_dir_for(name);
+    SESSION_OWNED_FILES
+        .iter()
+        .map(|file_name| dir.join(file_name))
+        .collect()
 }
 
 fn send_stop_request(
@@ -1081,8 +1199,121 @@ mod tests {
     }
 
     #[test]
-    fn delete_default_session_is_rejected() {
-        assert!(delete_session(DEFAULT_SESSION_NAME).is_err());
+    fn delete_default_session_removes_only_session_owned_files() {
+        let _guard = env_lock().lock().unwrap();
+        let config_home = std::env::temp_dir().join(format!(
+            "gmux-session-delete-default-{}",
+            std::process::id()
+        ));
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let default_dir = data_dir_for(None);
+        std::fs::create_dir_all(&default_dir).unwrap();
+        std::fs::write(default_dir.join("session.json"), "{}").unwrap();
+        std::fs::write(default_dir.join("session-history.json"), "{}").unwrap();
+        std::fs::write(default_dir.join("gmux.log"), "keep").unwrap();
+        std::fs::write(default_dir.join("config.toml"), "onboarding = false\n").unwrap();
+
+        let info = delete_session(DEFAULT_SESSION_NAME).unwrap();
+
+        assert_eq!(info.name, DEFAULT_SESSION_NAME);
+        assert!(!default_dir.join("session.json").exists());
+        assert!(!default_dir.join("session-history.json").exists());
+        assert!(default_dir.join("gmux.log").exists());
+        assert!(default_dir.join("config.toml").exists());
+        std::fs::remove_dir_all(&config_home).unwrap();
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+
+    #[test]
+    fn rename_stopped_session_moves_directory() {
+        let _guard = env_lock().lock().unwrap();
+        let config_home =
+            std::env::temp_dir().join(format!("gmux-session-rename-{}", std::process::id()));
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let old_dir = data_dir_for(Some("work"));
+        std::fs::create_dir_all(&old_dir).unwrap();
+        std::fs::write(old_dir.join("state.json"), "{}").unwrap();
+
+        let info = rename_session("work", "api").unwrap();
+
+        assert_eq!(info.name, "api");
+        assert!(!old_dir.exists());
+        assert!(data_dir_for(Some("api")).join("state.json").exists());
+        std::fs::remove_dir_all(&config_home).unwrap();
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+
+    #[test]
+    fn rename_session_rejects_running_source() {
+        let _guard = env_lock().lock().unwrap();
+        let config_home = std::env::temp_dir().join(format!(
+            "gmux-session-rename-running-{}",
+            std::process::id()
+        ));
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let socket_path = api_socket_path_for(Some("work"));
+        std::fs::create_dir_all(socket_path.parent().unwrap()).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+
+        let err = rename_session("work", "api").expect_err("running source should be rejected");
+
+        assert!(err.contains("session work is running"), "{err}");
+        drop(listener);
+        std::fs::remove_dir_all(&config_home).unwrap();
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+
+    #[test]
+    fn rename_default_session_moves_only_session_owned_files() {
+        let _guard = env_lock().lock().unwrap();
+        let config_home = std::env::temp_dir().join(format!(
+            "gmux-session-rename-default-{}",
+            std::process::id()
+        ));
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let default_dir = data_dir_for(None);
+        std::fs::create_dir_all(&default_dir).unwrap();
+        std::fs::write(default_dir.join("session.json"), "{}").unwrap();
+        std::fs::write(default_dir.join("session-history.json"), "{}").unwrap();
+        std::fs::write(default_dir.join("gmux.log"), "keep").unwrap();
+        std::fs::write(default_dir.join("config.toml"), "onboarding = false\n").unwrap();
+
+        let info = rename_session(DEFAULT_SESSION_NAME, "api").unwrap();
+
+        assert_eq!(info.name, "api");
+        assert!(!default_dir.join("session.json").exists());
+        assert!(!default_dir.join("session-history.json").exists());
+        assert!(default_dir.join("gmux.log").exists());
+        assert!(default_dir.join("config.toml").exists());
+        assert!(data_dir_for(Some("api")).join("session.json").exists());
+        assert!(data_dir_for(Some("api"))
+            .join("session-history.json")
+            .exists());
+        std::fs::remove_dir_all(&config_home).unwrap();
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
+
+    #[test]
+    fn rename_named_session_to_default_moves_session_owned_files() {
+        let _guard = env_lock().lock().unwrap();
+        let config_home = std::env::temp_dir().join(format!(
+            "gmux-session-rename-to-default-{}",
+            std::process::id()
+        ));
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let old_dir = data_dir_for(Some("work"));
+        std::fs::create_dir_all(&old_dir).unwrap();
+        std::fs::write(old_dir.join("session.json"), "{}").unwrap();
+        std::fs::write(old_dir.join("session-history.json"), "{}").unwrap();
+
+        let info = rename_session("work", DEFAULT_SESSION_NAME).unwrap();
+
+        assert_eq!(info.name, DEFAULT_SESSION_NAME);
+        assert!(!old_dir.exists());
+        assert!(data_dir_for(None).join("session.json").exists());
+        assert!(data_dir_for(None).join("session-history.json").exists());
+        std::fs::remove_dir_all(&config_home).unwrap();
+        std::env::remove_var("XDG_CONFIG_HOME");
     }
 
     #[test]

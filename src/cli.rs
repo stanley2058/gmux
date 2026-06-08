@@ -993,6 +993,7 @@ fn run_session_command(args: &[String]) -> std::io::Result<i32> {
         "list" => session_list(&args[1..], "usage: gmux session list [--json]"),
         "attach" => session_attach_help(&args[1..]),
         "stop" => session_stop(&args[1..]),
+        "rename" => session_rename(&args[1..]),
         "delete" => session_delete(&args[1..]),
         "help" | "--help" | "-h" => {
             print_session_help();
@@ -1070,6 +1071,32 @@ fn session_stop(args: &[String]) -> std::io::Result<i32> {
         }
         Err(message) => {
             print_session_error("session_stop_failed", &message);
+            Ok(1)
+        }
+    }
+}
+
+fn session_rename(args: &[String]) -> std::io::Result<i32> {
+    let (old_name, new_name, json) = match parse_session_rename_args(args) {
+        Ok(parsed) => parsed,
+        Err(code) => return Ok(code),
+    };
+
+    match crate::session::rename_session(&old_name, &new_name) {
+        Ok(session) => {
+            if json {
+                _print_json(&serde_json::json!({
+                    "renamed": true,
+                    "from": old_name,
+                    "session": session,
+                }));
+            } else {
+                println!("renamed session {old_name} to {new_name}");
+            }
+            Ok(0)
+        }
+        Err(message) => {
+            print_session_error("session_rename_failed", &message);
             Ok(1)
         }
     }
@@ -1369,6 +1396,39 @@ fn parse_session_name_and_json(args: &[String], usage: &str) -> Result<(String, 
     Ok((name, json))
 }
 
+fn parse_session_rename_args(args: &[String]) -> Result<(String, String, bool), i32> {
+    let usage = "usage: gmux session rename <old> <new> [--json]";
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
+        eprintln!("{usage}");
+        return Err(0);
+    }
+
+    let mut old_name = None;
+    let mut new_name = None;
+    let mut json = false;
+    for arg in args {
+        if arg == "--json" {
+            json = true;
+        } else if old_name.is_none() {
+            old_name = Some(arg.clone());
+        } else if new_name.is_none() {
+            new_name = Some(arg.clone());
+        } else {
+            eprintln!("{usage}");
+            return Err(2);
+        }
+    }
+
+    let (Some(old_name), Some(new_name)) = (old_name, new_name) else {
+        eprintln!("{usage}");
+        return Err(2);
+    };
+    Ok((old_name, new_name, json))
+}
+
 fn print_session_table(sessions: &[crate::session::SessionInfo]) {
     println!("{:<20} {:<8} {:<48} socket", "name", "status", "directory");
     for session in sessions {
@@ -1424,8 +1484,10 @@ fn print_session_help() {
     eprintln!("  gmux session list [--json]");
     eprintln!("  gmux session attach <name>");
     eprintln!("  gmux session stop <name> [--json]");
+    eprintln!("  gmux session rename <old> <new> [--json]");
     eprintln!("  gmux session delete <name> [--json]");
-    eprintln!("  use 'default' as <name> to target the default session for stop");
+    eprintln!("  rename and delete only support stopped sessions");
+    eprintln!("  use 'default' as <name> to target the default session");
 }
 
 fn _print_json<T: Serialize>(value: &T) {

@@ -78,7 +78,8 @@ Named sessions are separate server namespaces:
 gmux new -s work
 gmux attach -t work
 gmux ls
-gmux kill-session -t work
+gmux session rename work api
+gmux kill-session -t api
 ```
 
 ## Concepts
@@ -108,8 +109,11 @@ gmux new -s <name>
 gmux attach -t <name>
 gmux ls
 gmux kill-session -t <name>
+gmux session rename <old> <new>
 gmux detach
 ```
+
+`gmux session rename` and `gmux session delete` only support stopped sessions. For the default session, they move or remove only session-owned state/socket files and leave config and logs in place.
 
 Tabs:
 

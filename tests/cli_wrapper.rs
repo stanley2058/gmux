@@ -648,6 +648,7 @@ fn help_commands_exit_successfully() {
         &["wait", "-h"],
         &["session", "-h"],
         &["session", "attach", "-h"],
+        &["session", "rename", "-h"],
         &["new", "-h"],
         &["attach", "-h"],
         &["ls", "-h"],
@@ -696,6 +697,82 @@ fn root_help_hides_explicit_client_command() {
         !stdout.contains("gmux client"),
         "root help should not advertise the internal client command: {stdout}"
     );
+}
+
+#[test]
+fn session_rename_cli_moves_stopped_named_session() {
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let old_dir = config_home
+        .join(app_dir_name())
+        .join("sessions")
+        .join("work");
+    fs::create_dir_all(&old_dir).unwrap();
+    fs::write(old_dir.join("state.json"), "{}").unwrap();
+
+    let output = run_named_cli(
+        &config_home,
+        &runtime_dir,
+        &["session", "rename", "work", "api", "--json"],
+    );
+
+    assert!(
+        output.status.success(),
+        "session rename failed: status={:?} stdout={} stderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["renamed"], true);
+    assert_eq!(json["from"], "work");
+    assert_eq!(json["session"]["name"], "api");
+    assert!(!old_dir.exists());
+    assert!(config_home
+        .join(app_dir_name())
+        .join("sessions")
+        .join("api")
+        .join("state.json")
+        .exists());
+
+    cleanup_test_base(&base);
+}
+
+#[test]
+fn session_delete_default_cli_removes_state_but_keeps_config() {
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let default_dir = config_home.join(app_dir_name());
+    fs::create_dir_all(&default_dir).unwrap();
+    fs::write(default_dir.join("session.json"), "{}").unwrap();
+    fs::write(default_dir.join("session-history.json"), "{}").unwrap();
+    fs::write(default_dir.join("config.toml"), "onboarding = false\n").unwrap();
+    fs::write(default_dir.join("gmux.log"), "keep").unwrap();
+
+    let output = run_named_cli(
+        &config_home,
+        &runtime_dir,
+        &["session", "delete", "default", "--json"],
+    );
+
+    assert!(
+        output.status.success(),
+        "session delete default failed: status={:?} stdout={} stderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["deleted"], true);
+    assert_eq!(json["session"]["name"], "default");
+    assert!(!default_dir.join("session.json").exists());
+    assert!(!default_dir.join("session-history.json").exists());
+    assert!(default_dir.join("config.toml").exists());
+    assert!(default_dir.join("gmux.log").exists());
+
+    cleanup_test_base(&base);
 }
 
 #[test]
@@ -884,14 +961,13 @@ fn named_sessions_use_separate_servers_and_tab_state() {
     let delete_default = run_named_cli(
         &config_home,
         &runtime_dir,
-        &["session", "delete", "default"],
+        &["session", "delete", "default", "--json"],
     );
-    assert_eq!(delete_default.status.code(), Some(1));
-    assert!(
-        String::from_utf8_lossy(&delete_default.stderr).contains("default session"),
-        "stderr: {}",
-        String::from_utf8_lossy(&delete_default.stderr)
-    );
+    assert!(delete_default.status.success());
+    let delete_default_json: serde_json::Value =
+        serde_json::from_slice(&delete_default.stdout).unwrap();
+    assert_eq!(delete_default_json["deleted"], true);
+    assert_eq!(delete_default_json["session"]["name"], "default");
 
     let stopped_alpha = run_named_cli_json(
         &config_home,

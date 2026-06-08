@@ -329,6 +329,7 @@ fn main() -> io::Result<()> {
         println!("       gmux --remote <ssh-target> [--session <name>]");
         println!("       gmux ls [--json]");
         println!("       gmux kill-session [-t name] [--json]");
+        println!("       gmux session rename <old> <new> [--json]");
         println!("       gmux detach");
         println!("       gmux list-tabs");
         println!("       gmux new-tab [-n name] [-c cwd]");

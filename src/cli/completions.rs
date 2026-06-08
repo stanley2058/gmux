@@ -53,7 +53,7 @@ macro_rules! top_commands {
 
 macro_rules! session_commands {
     () => {
-        "list attach stop delete help"
+        "list attach stop rename delete help"
     };
 }
 
@@ -150,7 +150,7 @@ _gmux() {
                 COMPREPLY=( $(compgen -W '"#,
     session_commands!(),
     r#"' -- "$cur") )
-            elif [[ "$sub" == "attach" || "$sub" == "stop" || "$sub" == "delete" ]]; then
+            elif [[ "$sub" == "attach" || "$sub" == "stop" || "$sub" == "rename" || "$sub" == "delete" ]]; then
                 COMPREPLY=( $(compgen -W "$(__gmux_session_names)" -- "$cur") )
             else
                 COMPREPLY=( $(compgen -W "--json" -- "$cur") )
@@ -255,7 +255,7 @@ _gmux() {
         session)
             if [[ $CURRENT -eq 3 ]]; then
                 compadd -- $session_commands
-            elif [[ "${words[3]}" == "attach" || "${words[3]}" == "stop" || "${words[3]}" == "delete" ]]; then
+            elif [[ "${words[3]}" == "attach" || "${words[3]}" == "stop" || "${words[3]}" == "rename" || "${words[3]}" == "delete" ]]; then
                 compadd -- $sessions
             else
                 compadd -- --json
@@ -349,7 +349,7 @@ mod tests {
     fn zsh_completion_includes_session_subcommands() {
         let script = render_completion(CompletionShell::Zsh);
         assert!(script.contains("#compdef gmux"));
-        assert!(script.contains("session_commands=(list attach stop delete help)"));
+        assert!(script.contains("session_commands=(list attach stop rename delete help)"));
         assert!(script.contains("compadd -- $sessions"));
     }
 
