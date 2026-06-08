@@ -14,6 +14,7 @@
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
@@ -42,7 +43,10 @@ pub fn stdin_reader_loop(event_tx: mpsc::Sender<ClientLoopEvent>, should_quit: &
             Ok(n) => {
                 for data in framer.push(&scratch[..n]) {
                     if event_tx
-                        .blocking_send(ClientLoopEvent::StdinInput(data))
+                        .blocking_send(ClientLoopEvent::StdinInput {
+                            data,
+                            received_at: Instant::now(),
+                        })
                         .is_err()
                     {
                         return;
@@ -52,7 +56,10 @@ pub fn stdin_reader_loop(event_tx: mpsc::Sender<ClientLoopEvent>, should_quit: &
                 if stdin_read_ready(&reader, 10) == Some(false) {
                     for data in framer.flush_timeout() {
                         if event_tx
-                            .blocking_send(ClientLoopEvent::StdinInput(data))
+                            .blocking_send(ClientLoopEvent::StdinInput {
+                                data,
+                                received_at: Instant::now(),
+                            })
                             .is_err()
                         {
                             return;
@@ -124,9 +131,12 @@ mod tests {
     #[test]
     fn stdin_input_event_carries_raw_bytes() {
         let data = vec![0x1b, b'[', b'A']; // Up arrow escape sequence
-        let event = ClientLoopEvent::StdinInput(data.clone());
+        let event = ClientLoopEvent::StdinInput {
+            data: data.clone(),
+            received_at: Instant::now(),
+        };
         match event {
-            ClientLoopEvent::StdinInput(d) => assert_eq!(d, data),
+            ClientLoopEvent::StdinInput { data: d, .. } => assert_eq!(d, data),
             _ => panic!("expected StdinInput event"),
         }
     }

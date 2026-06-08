@@ -370,6 +370,7 @@ impl HeadlessServer {
             // 1. Check render_dirty flag from PTY reader tasks.
             if self.app.render_dirty.load(Ordering::Acquire) {
                 needs_render = true;
+                self.record_debug_pty_dirty_for_pending_inputs(Instant::now());
                 crate::render_prof::event("render.request.pty_dirty");
             }
 
@@ -1511,24 +1512,22 @@ impl HeadlessServer {
                     "client connected"
                 );
                 let last_activity = self.allocate_activity_stamp();
-                self.clients.insert(
-                    client_id,
-                    ClientConnection::new_with_mode(
-                        ClientConnectionMode::App,
-                        keybindings,
-                        (cols, rows),
-                        crate::kitty_graphics::HostCellSize {
-                            width_px: cell_width_px,
-                            height_px: cell_height_px,
-                        },
-                        crate::terminal_theme::TerminalTheme::default(),
-                        None,
-                        last_activity,
-                        render_encoding,
-                        direct_attach_requested,
-                        Some(writer),
-                    ),
+                let connection = ClientConnection::new_with_mode(
+                    ClientConnectionMode::App,
+                    keybindings,
+                    (cols, rows),
+                    crate::kitty_graphics::HostCellSize {
+                        width_px: cell_width_px,
+                        height_px: cell_height_px,
+                    },
+                    crate::terminal_theme::TerminalTheme::default(),
+                    None,
+                    last_activity,
+                    render_encoding,
+                    direct_attach_requested,
+                    Some(writer),
                 );
+                self.clients.insert(client_id, connection);
                 if !direct_attach_requested {
                     self.foreground_client_id = Some(client_id);
                 }
@@ -1553,7 +1552,11 @@ impl HeadlessServer {
             } => self.handle_terminal_attach_scroll(
                 client_id, source, direction, lines, column, row, modifiers,
             ),
-            ServerEvent::ClientInput { client_id, data } => {
+            ServerEvent::ClientInput {
+                client_id,
+                data,
+                received_at,
+            } => {
                 if self.handoff_in_progress {
                     debug!(
                         client_id,
@@ -1563,6 +1566,9 @@ impl HeadlessServer {
                     return false;
                 }
                 debug!(client_id, len = data.len(), "client input received");
+                if let Some(client) = self.clients.get_mut(&client_id) {
+                    client.record_debug_input_received(received_at, Instant::now());
+                }
                 if let Some(ClientConnection {
                     mode: ClientConnectionMode::TerminalAttach { terminal_id },
                     ..
@@ -1761,6 +1767,12 @@ impl HeadlessServer {
                 | ServerEvent::ClientWriterDrained { .. }
                 | ServerEvent::QuitSignal
         )
+    }
+
+    fn record_debug_pty_dirty_for_pending_inputs(&mut self, dirty_at: Instant) {
+        for client in self.clients.values_mut() {
+            client.record_debug_pty_dirty(dirty_at);
+        }
     }
 
     /// Drains API requests with shutdown awareness.
@@ -2059,7 +2071,7 @@ impl HeadlessServer {
     fn send_retained_frame_to_client(
         &mut self,
         client_id: u64,
-        frame: FrameData,
+        mut frame: FrameData,
         broken_clients: &mut Vec<u64>,
     ) -> bool {
         let Some(client) = self.clients.get_mut(&client_id) else {
@@ -2070,6 +2082,7 @@ impl HeadlessServer {
             crate::render_prof::event("retained_send_fallback.writer_missing");
             return false;
         };
+        frame.debug_timing = client.take_frame_debug_timing(Instant::now());
         let prepare_started = crate::render_prof::timer();
         let Some(prepared) = client.render_state.prepare_frame(&frame) else {
             client.render_pending = false;
@@ -2107,6 +2120,7 @@ impl HeadlessServer {
         match writer.render.try_send(serialized) {
             Ok(()) => {
                 client.render_pending = false;
+                frame.debug_timing = None;
                 client.render_state.commit_sent_frame(frame, prepared);
                 crate::render_prof::event("retained_send.sent");
                 crate::render_prof::duration_since("retained_send.try_send", send_started);
@@ -2284,6 +2298,7 @@ impl HeadlessServer {
             }
 
             let prepare_started = crate::render_prof::timer();
+            frame.debug_timing = client.take_frame_debug_timing(Instant::now());
             let Some(mut prepared) = client.render_state.prepare_frame(&frame) else {
                 client.render_pending = false;
                 crate::render_prof::event("full_render.skip_identical");
@@ -2292,6 +2307,7 @@ impl HeadlessServer {
             };
             crate::render_prof::duration_since("full_render.prepare_frame", prepare_started);
             let mut frame_to_commit = frame.clone();
+            frame_to_commit.debug_timing = None;
 
             let max_frame_size = if frame.graphics.is_empty() {
                 MAX_FRAME_SIZE
@@ -2342,6 +2358,7 @@ impl HeadlessServer {
                     };
                     prepared = text_only_prepared;
                     frame_to_commit = text_only_frame;
+                    frame_to_commit.debug_timing = None;
                     commit_graphics_cache = false;
                     crate::render_prof::duration_since("full_render.serialize", serialize_started);
                     framed
@@ -2890,6 +2907,14 @@ mod tests {
         }
     }
 
+    fn test_client_input(client_id: u64, data: impl Into<Vec<u8>>) -> ServerEvent {
+        ServerEvent::ClientInput {
+            client_id,
+            data: data.into(),
+            received_at: Instant::now(),
+        }
+    }
+
     fn frame_text(frame: &FrameData) -> String {
         frame
             .cells
@@ -3174,10 +3199,7 @@ next_tab = ""
         server.app.state.settings.page = crate::app::state::SettingsPage::ToastDelivery;
         server.app.state.settings.list.selected = 1;
 
-        assert!(server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\r".to_vec(),
-        }));
+        assert!(server.handle_server_event(test_client_input(1, b"\r".to_vec())));
 
         assert_eq!(
             server.app.state.prefix_code,
@@ -3248,10 +3270,7 @@ next_tab = ""
         server.app.state.settings.page = crate::app::state::SettingsPage::ToastDelivery;
         server.app.state.settings.list.selected = 1;
 
-        assert!(server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\r".to_vec(),
-        }));
+        assert!(server.handle_server_event(test_client_input(1, b"\r".to_vec())));
 
         assert!(server.handle_server_event(ServerEvent::ClientConnected {
             client_id: 2,
@@ -3546,17 +3565,11 @@ next_tab = ""
 
         server
             .server_event_tx
-            .try_send(ServerEvent::ClientInput {
-                client_id: 1,
-                data: b"a".to_vec(),
-            })
+            .try_send(test_client_input(1, b"a".to_vec()))
             .unwrap();
         server
             .server_event_tx
-            .try_send(ServerEvent::ClientInput {
-                client_id: 1,
-                data: b"b".to_vec(),
-            })
+            .try_send(test_client_input(1, b"b".to_vec()))
             .unwrap();
 
         assert!(server.drain_server_events());
@@ -4030,10 +4043,7 @@ next_tab = ""
         server.foreground_client_id = Some(2);
         server.sync_foreground_client_state();
 
-        let changed = server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b[O".to_vec(),
-        });
+        let changed = server.handle_server_event(test_client_input(1, b"\x1b[O".to_vec()));
 
         assert!(!changed);
         assert_eq!(server.foreground_client_id, Some(2));
@@ -4072,10 +4082,7 @@ next_tab = ""
         server.foreground_client_id = Some(2);
         server.sync_foreground_client_state();
 
-        let changed = server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b[I".to_vec(),
-        });
+        let changed = server.handle_server_event(test_client_input(1, b"\x1b[I".to_vec()));
 
         assert!(changed);
         assert_eq!(server.foreground_client_id, Some(1));
@@ -4102,10 +4109,7 @@ next_tab = ""
         server.foreground_client_id = Some(1);
         server.sync_foreground_client_state();
 
-        let changed = server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b[O".to_vec(),
-        });
+        let changed = server.handle_server_event(test_client_input(1, b"\x1b[O".to_vec()));
 
         assert!(!changed);
         assert_eq!(server.clients[&1].outer_terminal_focus, Some(false));
@@ -4134,10 +4138,7 @@ next_tab = ""
         server.foreground_client_id = Some(1);
         server.sync_foreground_client_state();
 
-        assert!(server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b".to_vec(),
-        }));
+        assert!(server.handle_server_event(test_client_input(1, b"\x1b".to_vec())));
 
         assert_eq!(server.app.state.mode, crate::app::Mode::Terminal);
     }
@@ -4169,16 +4170,10 @@ next_tab = ""
         server.foreground_client_id = Some(1);
         server.sync_foreground_client_state();
 
-        let _ = server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b]".to_vec(),
-        });
+        let _ = server.handle_server_event(test_client_input(1, b"\x1b]".to_vec()));
         assert!(rx.try_recv().is_err());
 
-        assert!(server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"11;#123456\x07".to_vec(),
-        }));
+        assert!(server.handle_server_event(test_client_input(1, b"11;#123456\x07".to_vec())));
 
         assert!(rx.try_recv().is_err());
         assert_eq!(
@@ -4485,10 +4480,7 @@ next_tab = ""
             1
         );
 
-        assert!(!server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: Vec::new(),
-        }));
+        assert!(!server.handle_server_event(test_client_input(1, Vec::new())));
         server.render_and_stream();
 
         assert_eq!(
@@ -4528,10 +4520,7 @@ next_tab = ""
             .recv_timeout(Duration::from_millis(100))
             .expect("initial terminal frame");
 
-        assert!(server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b[I".to_vec(),
-        }));
+        assert!(server.handle_server_event(test_client_input(1, b"\x1b[I".to_vec())));
         server.render_and_stream();
 
         match read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()) {
@@ -4568,10 +4557,7 @@ next_tab = ""
             .recv_timeout(Duration::from_millis(100))
             .expect("initial terminal frame");
 
-        server.handle_server_event(ServerEvent::ClientInput {
-            client_id: 1,
-            data: b"\x1b[I".to_vec(),
-        });
+        server.handle_server_event(test_client_input(1, b"\x1b[I".to_vec()));
         server.render_and_stream();
 
         assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());

@@ -566,7 +566,7 @@ fn client_handshake(
 
 fn connect_raw_client(client_socket: &Path, cols: u16, rows: u16) -> UnixStream {
     let mut stream = UnixStream::connect(client_socket).expect("should connect to client socket");
-    client_handshake(&mut stream, 12, cols, rows).expect("handshake should succeed");
+    client_handshake(&mut stream, 13, cols, rows).expect("handshake should succeed");
     stream
 }
 
@@ -598,6 +598,15 @@ struct FrameWire {
     cursor: Option<CursorWire>,
     hyperlinks: Vec<String>,
     graphics: Vec<u8>,
+    debug_timing: Option<FrameDebugTimingWire>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct FrameDebugTimingWire {
+    server_input_queue_us: u64,
+    server_input_to_frame_us: u64,
+    server_pty_dirty_to_frame_us: Option<u64>,
 }
 
 #[allow(dead_code)]

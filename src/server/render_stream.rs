@@ -42,24 +42,39 @@ impl ClientRenderState {
     }
 
     pub(crate) fn prepare_frame(&mut self, frame: &FrameData) -> Option<PreparedRender> {
+        let debug_timing = frame.debug_timing;
+        let comparable_frame;
+        let frame_without_debug = if debug_timing.is_some() {
+            comparable_frame = {
+                let mut frame = frame.clone();
+                frame.debug_timing = None;
+                frame
+            };
+            &comparable_frame
+        } else {
+            frame
+        };
+
         match self {
             Self::Semantic { last_frame } => {
-                if last_frame.as_ref() == Some(frame) {
+                if last_frame.as_ref() == Some(frame_without_debug) {
                     crate::render_prof::event("prepare_frame.semantic.skip_current");
                     return None;
                 }
                 crate::render_prof::event("prepare_frame.semantic.changed");
+                let mut outgoing = frame_without_debug.clone();
+                outgoing.debug_timing = debug_timing;
                 Some(PreparedRender {
-                    message: ServerMessage::Frame(frame.clone()),
+                    message: ServerMessage::Frame(outgoing),
                     encoded: None,
                 })
             }
             Self::TerminalAnsi { blit_encoder, seq } => {
-                if blit_encoder.is_current(frame) {
+                if blit_encoder.is_current(frame_without_debug) {
                     crate::render_prof::event("prepare_frame.ansi.skip_current");
                     return None;
                 }
-                let mut encoded = blit_encoder.encode(frame, false);
+                let mut encoded = blit_encoder.encode(frame_without_debug, false);
                 crate::render_prof::event("prepare_frame.ansi.changed");
                 crate::render_prof::counter("prepare_frame.ansi.bytes", encoded.bytes.len() as u64);
                 if encoded.full {
@@ -75,10 +90,11 @@ impl ClientRenderState {
                 Some(PreparedRender {
                     message: ServerMessage::Terminal(TerminalFrame {
                         seq: *seq + 1,
-                        width: frame.width,
-                        height: frame.height,
+                        width: frame_without_debug.width,
+                        height: frame_without_debug.height,
                         full: encoded.full,
                         bytes: encoded.bytes.clone(),
+                        debug_timing,
                     }),
                     encoded: Some(encoded),
                 })

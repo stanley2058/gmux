@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 use tracing::{debug, warn};
@@ -61,7 +61,11 @@ pub(crate) enum ServerEvent {
         writer: ClientWriter,
     },
     /// A client sent an input message.
-    ClientInput { client_id: u64, data: Vec<u8> },
+    ClientInput {
+        client_id: u64,
+        data: Vec<u8>,
+        received_at: Instant,
+    },
     /// A client sent local clipboard image bytes to paste into a remote pane.
     ClientClipboardImage {
         client_id: u64,
@@ -408,7 +412,11 @@ fn client_read_loop(
                         .blocking_send(ServerEvent::ClientDisconnected { client_id });
                     break;
                 } else {
-                    ServerEvent::ClientInput { client_id, data }
+                    ServerEvent::ClientInput {
+                        client_id,
+                        data,
+                        received_at: Instant::now(),
+                    }
                 }
             }
             ClientMessage::ClipboardImage { extension, data } => {

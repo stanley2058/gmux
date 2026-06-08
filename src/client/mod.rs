@@ -12,6 +12,7 @@
 //! - Forwards OSC 52 clipboard writes from server to its own stdout
 //! - Displays toast notifications forwarded from server
 
+mod debug_overlay;
 mod input;
 
 use std::collections::HashSet;
@@ -19,7 +20,7 @@ use std::io::{self, Write as _};
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{
     DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
@@ -36,6 +37,8 @@ use crate::protocol::{
     MAX_FRAME_SIZE, MAX_GRAPHICS_FRAME_SIZE, PROTOCOL_VERSION,
 };
 use crate::server::socket_paths::client_socket_path;
+
+use self::debug_overlay::{ClientDebugOverlay, ClientFrameKind, ClientFrameMetrics};
 
 static RECEIVED_KITTY_GRAPHICS_IDS: OnceLock<Mutex<HashSet<u32>>> = OnceLock::new();
 
@@ -59,6 +62,8 @@ struct ClientState {
     mouse_scroll_lines: usize,
     /// Whether outer focus gain should force a full host-terminal redraw.
     redraw_on_focus_gained: bool,
+    /// Optional client-local frame/input HUD for latency investigations.
+    debug_overlay: ClientDebugOverlay,
 }
 
 #[derive(Debug, Default)]
@@ -482,7 +487,7 @@ fn do_handshake(
 /// Internal events for the client event loop.
 enum ClientLoopEvent {
     /// Raw input bytes from stdin.
-    StdinInput(Vec<u8>),
+    StdinInput { data: Vec<u8>, received_at: Instant },
     /// Terminal resize detected.
     Resize(u16, u16, u32, u32),
     /// Server message received.
@@ -676,6 +681,7 @@ async fn run_client_loop(
         attach_escape,
         mouse_scroll_lines,
         redraw_on_focus_gained,
+        debug_overlay: ClientDebugOverlay::from_env(negotiated_encoding),
     };
     debug!(?negotiated_encoding, "client render encoding active");
 
@@ -732,9 +738,10 @@ async fn run_client_loop(
             ev = event_rx.recv() => ev.unwrap_or(ClientLoopEvent::Timer),
             _ = tokio::time::sleep(Duration::from_millis(100)) => ClientLoopEvent::Timer,
         };
+        state.debug_overlay.record_event_queue_len(event_rx.len());
 
         match event {
-            ClientLoopEvent::StdinInput(data) => {
+            ClientLoopEvent::StdinInput { data, received_at } => {
                 let data = if let Some(attach_escape) = &mut state.attach_escape {
                     match attach_escape.filter_input(
                         data,
@@ -758,9 +765,15 @@ async fn run_client_loop(
                                 row,
                                 modifiers,
                             };
+                            let input_write_started = Instant::now();
                             if let Err(e) = write_to_server(&mut write_stream, &msg) {
                                 return Err(ClientError::ConnectionLost(e));
                             }
+                            state.debug_overlay.record_input(
+                                received_at,
+                                0,
+                                input_write_started.elapsed(),
+                            );
                             continue;
                         }
                         AttachInputAction::Detach => {
@@ -808,9 +821,19 @@ async fn run_client_loop(
                     );
                 }
                 let msg = ClientMessage::Input { data };
+                let input_bytes = match &msg {
+                    ClientMessage::Input { data } => data.len(),
+                    _ => 0,
+                };
+                let input_write_started = Instant::now();
                 if let Err(e) = write_to_server(&mut write_stream, &msg) {
                     return Err(ClientError::ConnectionLost(e));
                 }
+                state.debug_overlay.record_input(
+                    received_at,
+                    input_bytes,
+                    input_write_started.elapsed(),
+                );
             }
             ClientLoopEvent::Resize(new_cols, new_rows, cell_width_px, cell_height_px) => {
                 state.reported_size = (new_cols, new_rows);
@@ -826,25 +849,69 @@ async fn run_client_loop(
             }
             ClientLoopEvent::ServerMessage(msg) => match msg {
                 ServerMessage::Frame(frame_data) => {
+                    let frame_bytes = frame_data.cells.len();
+                    let server_timing = frame_data.debug_timing;
+                    let encode_started = Instant::now();
                     let encoded = state.blit_encoder.encode(&frame_data, false);
+                    let encode_duration = encode_started.elapsed();
+                    let encoded_bytes = encoded.bytes.len();
+                    let full = encoded.full;
                     let mut stdout = io::stdout();
                     let graphics = if state.kitty_graphics_enabled {
                         frame_data.graphics.as_slice()
                     } else {
                         &[]
                     };
+                    let write_started = Instant::now();
                     let _ =
                         write_encoded_frame_with_graphics(&mut stdout, &encoded.bytes, graphics);
                     let _ = stdout.flush();
+                    let write_duration = write_started.elapsed();
+                    state.debug_overlay.record_frame(ClientFrameMetrics {
+                        kind: ClientFrameKind::Semantic,
+                        frame_bytes,
+                        encoded_bytes,
+                        full,
+                        encode_duration: Some(encode_duration),
+                        write_duration,
+                        server_timing,
+                        now: Instant::now(),
+                    });
+                    if state.debug_overlay.enabled() {
+                        let _ = state.debug_overlay.write(&mut stdout);
+                        let _ = stdout.flush();
+                    }
                     state.blit_encoder.commit(frame_data, encoded);
                 }
                 ServerMessage::Terminal(frame) => {
                     if state.kitty_graphics_enabled && contains_kitty_graphics_bytes(&frame.bytes) {
                         record_received_kitty_graphics(&frame.bytes);
                     }
+                    let seq = frame.seq;
+                    let width = frame.width;
+                    let height = frame.height;
+                    let full = frame.full;
+                    let server_timing = frame.debug_timing;
+                    let encoded_bytes = frame.bytes.len();
                     let mut stdout = io::stdout();
+                    let write_started = Instant::now();
                     let _ = stdout.write_all(&frame.bytes);
                     let _ = stdout.flush();
+                    let write_duration = write_started.elapsed();
+                    state.debug_overlay.record_frame(ClientFrameMetrics {
+                        kind: ClientFrameKind::TerminalAnsi { seq },
+                        frame_bytes: width as usize * height as usize,
+                        encoded_bytes,
+                        full,
+                        encode_duration: None,
+                        write_duration,
+                        server_timing,
+                        now: Instant::now(),
+                    });
+                    if state.debug_overlay.enabled() {
+                        let _ = state.debug_overlay.write(&mut stdout);
+                        let _ = stdout.flush();
+                    }
                 }
                 ServerMessage::Graphics { bytes } => {
                     if state.kitty_graphics_enabled {

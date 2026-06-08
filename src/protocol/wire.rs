@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 12;
+pub const PROTOCOL_VERSION: u32 = 13;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -211,6 +211,19 @@ pub struct FrameData {
     pub hyperlinks: Vec<String>,
     /// Kitty graphics protocol bytes to apply after the text frame.
     pub graphics: Vec<u8>,
+    /// Optional timing metadata for client debug overlays.
+    pub debug_timing: Option<FrameDebugTiming>,
+}
+
+/// Server-side timing metadata attached to frames for opt-in client debug overlays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FrameDebugTiming {
+    /// Time from the server client-reader thread receiving input to the server event loop handling it.
+    pub server_input_queue_us: u64,
+    /// Time from the server event loop handling input to queuing a frame for the client writer.
+    pub server_input_to_frame_us: u64,
+    /// Time from the server first observing PTY dirty output after input to queuing the frame.
+    pub server_pty_dirty_to_frame_us: Option<u64>,
 }
 
 impl FrameData {
@@ -276,6 +289,7 @@ impl FrameData {
             cursor,
             hyperlinks: hyperlink_uris,
             graphics: Vec::new(),
+            debug_timing: None,
         }
     }
 
@@ -322,6 +336,8 @@ pub struct TerminalFrame {
     pub full: bool,
     /// Terminal escape bytes ready to write directly to stdout.
     pub bytes: Vec<u8>,
+    /// Optional timing metadata for client debug overlays.
+    pub debug_timing: Option<FrameDebugTiming>,
 }
 
 /// Notification kind forwarded from server to client.
@@ -851,6 +867,7 @@ mod tests {
             }),
             hyperlinks: vec!["https://example.com".to_owned()],
             graphics: Vec::new(),
+            debug_timing: None,
         };
         let msg = ServerMessage::Frame(frame.clone());
         let encoded = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).unwrap();
@@ -921,6 +938,7 @@ mod tests {
             height: 40,
             full: false,
             bytes: b"\x1b[1;1Hhello".to_vec(),
+            debug_timing: None,
         });
         let encoded = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).unwrap();
         let (decoded, _): (ServerMessage, _) =
@@ -1000,6 +1018,7 @@ mod tests {
             }),
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            debug_timing: None,
         };
         let msg = ServerMessage::Frame(frame);
 
@@ -1343,6 +1362,7 @@ mod tests {
             cursor: None,
             hyperlinks: Vec::new(),
             graphics: Vec::new(),
+            debug_timing: None,
         };
         assert!(frame.to_ratatui_buffer().is_none());
     }

@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+use crate::protocol::FrameDebugTiming;
 
 use crate::protocol::RenderEncoding;
 use crate::server::client_transport::ClientWriter;
@@ -47,6 +50,8 @@ pub(crate) struct ClientConnection {
     pub(crate) graphics_surface_reset_pending: bool,
     /// Whether a render was skipped because the render channel was full.
     pub(crate) render_pending: bool,
+    /// Pending server-side input timing to attach to the next frame.
+    pub(crate) debug_timing: Option<ClientDebugTiming>,
     /// Last host mouse capture mode sent to this client.
     pub(crate) host_mouse_capture_active: Option<bool>,
     /// Temporary files staged from this client's local clipboard image pastes.
@@ -106,10 +111,49 @@ impl ClientConnection {
             graphics_cache: crate::kitty_graphics::HostGraphicsCache::default(),
             graphics_surface_reset_pending: false,
             render_pending: false,
+            debug_timing: None,
             host_mouse_capture_active: None,
             staged_clipboard_files: Vec::new(),
             writer,
         }
+    }
+
+    pub(crate) fn record_debug_input_received(
+        &mut self,
+        received_at: Instant,
+        handled_at: Instant,
+    ) {
+        self.debug_timing = Some(ClientDebugTiming {
+            received_at,
+            handled_at,
+            pty_dirty_at: None,
+        });
+    }
+
+    pub(crate) fn record_debug_pty_dirty(&mut self, dirty_at: Instant) {
+        if let Some(timing) = &mut self.debug_timing {
+            timing.pty_dirty_at.get_or_insert(dirty_at);
+        }
+    }
+
+    pub(crate) fn take_frame_debug_timing(
+        &mut self,
+        queued_at: Instant,
+    ) -> Option<FrameDebugTiming> {
+        let timing = self.debug_timing.take()?;
+        Some(FrameDebugTiming {
+            server_input_queue_us: duration_us(
+                timing
+                    .handled_at
+                    .saturating_duration_since(timing.received_at),
+            ),
+            server_input_to_frame_us: duration_us(
+                queued_at.saturating_duration_since(timing.handled_at),
+            ),
+            server_pty_dirty_to_frame_us: timing
+                .pty_dirty_at
+                .map(|dirty_at| duration_us(queued_at.saturating_duration_since(dirty_at))),
+        })
     }
 
     pub(crate) fn request_full_redraw(&mut self) {
@@ -160,6 +204,16 @@ impl ClientConnection {
         self.outer_terminal_focus = Some(next_focus);
         Some(next_focus)
     }
+}
+
+pub(crate) struct ClientDebugTiming {
+    received_at: Instant,
+    handled_at: Instant,
+    pty_dirty_at: Option<Instant>,
+}
+
+fn duration_us(duration: Duration) -> u64 {
+    duration.as_micros().min(u128::from(u64::MAX)) as u64
 }
 
 pub(crate) fn events_include_interaction(events: &[crate::raw_input::RawInputEvent]) -> bool {
