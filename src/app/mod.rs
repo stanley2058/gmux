@@ -50,6 +50,12 @@ use crate::events::AppEvent;
 
 pub use state::{AppState, Mode, ToastKind, ViewState};
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ClientInputRouteResult {
+    pub(crate) visual_change: bool,
+    pub(crate) forwarded_to_pty: bool,
+}
+
 /// Full application: AppState + runtime concerns (event channels, async I/O).
 #[derive(Debug, Clone)]
 pub(crate) struct OverlayPaneState {
@@ -967,7 +973,8 @@ impl App {
         &mut self,
         events: Vec<crate::raw_input::RawInputEvent>,
         apply_host_terminal_theme: bool,
-    ) {
+    ) -> ClientInputRouteResult {
+        let mut result = ClientInputRouteResult::default();
         for event in events {
             let previous_mode = self.state.mode;
             match event {
@@ -977,17 +984,34 @@ impl App {
                         crossterm::event::KeyEventKind::Press => {
                             if self.state.mode == Mode::Terminal {
                                 self.suppressed_repeat_keys.remove(&key_id);
-                                self.handle_terminal_key_headless(key);
+                                match self.handle_terminal_key_headless(key) {
+                                    input::TerminalInputDispatch::Forwarded => {
+                                        result.forwarded_to_pty = true;
+                                    }
+                                    input::TerminalInputDispatch::HandledByApp => {
+                                        result.visual_change = true;
+                                    }
+                                    input::TerminalInputDispatch::Ignored => {}
+                                }
                             } else {
                                 self.suppressed_repeat_keys.insert(key_id);
                                 self.handle_non_terminal_key(key);
+                                result.visual_change = true;
                             }
                         }
                         crossterm::event::KeyEventKind::Repeat => {
                             if self.state.mode == Mode::Terminal
                                 && !self.suppressed_repeat_keys.contains(&key_id)
                             {
-                                self.handle_terminal_key_headless(key);
+                                match self.handle_terminal_key_headless(key) {
+                                    input::TerminalInputDispatch::Forwarded => {
+                                        result.forwarded_to_pty = true;
+                                    }
+                                    input::TerminalInputDispatch::HandledByApp => {
+                                        result.visual_change = true;
+                                    }
+                                    input::TerminalInputDispatch::Ignored => {}
+                                }
                             }
                             // Repeats in non-terminal modes are ignored
                             // (same as monolithic behavior).
@@ -1004,6 +1028,7 @@ impl App {
                         self.state
                             .handle_pane_mouse_only(&self.terminal_runtimes, mouse);
                     }
+                    result.visual_change = true;
                 }
                 crate::raw_input::RawInputEvent::Paste(text) => {
                     if self.state.mode == Mode::Terminal {
@@ -1024,6 +1049,7 @@ impl App {
                             ));
                             if sent.is_ok() {
                                 self.arm_input_render_bypass();
+                                result.forwarded_to_pty = true;
                             }
                         }
                     }
@@ -1032,13 +1058,14 @@ impl App {
                 | crate::raw_input::RawInputEvent::OuterFocusLost => {}
                 crate::raw_input::RawInputEvent::HostDefaultColor { kind, color } => {
                     if apply_host_terminal_theme {
-                        self.update_host_terminal_theme(kind, color);
+                        result.visual_change |= self.update_host_terminal_theme(kind, color);
                     }
                 }
                 crate::raw_input::RawInputEvent::Unsupported => {}
             }
             self.sync_prefix_input_source(previous_mode);
         }
+        result
     }
 
     /// Handles a key event in non-terminal mode for the headless server.

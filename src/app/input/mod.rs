@@ -39,6 +39,7 @@ pub(crate) use self::{
         handle_keybind_help_key, handle_navigator_key, handle_rename_key, handle_resize_key,
     },
     navigate::terminal_direct_navigation_action,
+    terminal::TerminalInputDispatch,
 };
 use super::state::{AppState, Mode};
 use super::App;

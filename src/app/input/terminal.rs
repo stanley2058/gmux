@@ -13,23 +13,42 @@ struct PreparedPaneInput {
     bytes: Bytes,
 }
 
+pub(crate) enum TerminalInputDispatch {
+    Forwarded,
+    HandledByApp,
+    Ignored,
+}
+
+enum PreparedTerminalInput {
+    Forward(PreparedPaneInput),
+    HandledByApp,
+    Ignored,
+}
+
 fn is_modifier_only_key(code: &KeyCode) -> bool {
     matches!(code, KeyCode::Modifier(_))
 }
 
 impl App {
-    pub(crate) fn handle_terminal_key_headless(&mut self, key: TerminalKey) {
-        let Some(input) = self.prepare_terminal_key_forward(key) else {
-            return;
+    pub(crate) fn handle_terminal_key_headless(
+        &mut self,
+        key: TerminalKey,
+    ) -> TerminalInputDispatch {
+        let input = match self.prepare_terminal_key_forward(key) {
+            PreparedTerminalInput::Forward(input) => input,
+            PreparedTerminalInput::HandledByApp => return TerminalInputDispatch::HandledByApp,
+            PreparedTerminalInput::Ignored => return TerminalInputDispatch::Ignored,
         };
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
             if runtime.try_send_bytes(input.bytes).is_ok() {
                 self.arm_input_render_bypass();
+                return TerminalInputDispatch::Forwarded;
             }
         }
+        TerminalInputDispatch::Ignored
     }
 
-    fn prepare_terminal_key_forward(&mut self, key: TerminalKey) -> Option<PreparedPaneInput> {
+    fn prepare_terminal_key_forward(&mut self, key: TerminalKey) -> PreparedTerminalInput {
         self.state.clear_selection();
         self.selection_autoscroll_deadline = None;
 
@@ -53,7 +72,7 @@ impl App {
                     super::navigate::ActionContext::Direct,
                 );
             }
-            return None;
+            return PreparedTerminalInput::HandledByApp;
         }
 
         if let Some(binding) = super::navigate::command_for_key(
@@ -69,12 +88,12 @@ impl App {
                 "intercepted terminal direct custom command before forwarding to pane"
             );
             self.launch_custom_command(binding, super::navigate::ActionContext::Direct);
-            return None;
+            return PreparedTerminalInput::HandledByApp;
         }
 
         if self.state.is_prefix_key(key) {
             self.state.mode = Mode::Prefix;
-            return None;
+            return PreparedTerminalInput::HandledByApp;
         }
 
         if is_modifier_only_key(&key_event.code) {
@@ -84,15 +103,26 @@ impl App {
                 kind = ?key_event.kind,
                 "dropping modifier-only terminal key event instead of forwarding it to pane"
             );
-            return None;
+            return PreparedTerminalInput::Ignored;
         }
 
-        let ws_idx = self.state.session_index()?;
-        let ws = self.state.session()?;
-        let pane_id = ws.focused_pane_id()?;
-        let rt =
-            self.state
-                .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)?;
+        let Some(ws_idx) = self.state.session_index() else {
+            return PreparedTerminalInput::Ignored;
+        };
+        let Some(ws) = self.state.session() else {
+            return PreparedTerminalInput::Ignored;
+        };
+        let Some(pane_id) = ws.focused_pane_id() else {
+            return PreparedTerminalInput::Ignored;
+        };
+        let rt = match self.state.runtime_for_pane_in_session_at(
+            &self.terminal_runtimes,
+            ws_idx,
+            pane_id,
+        ) {
+            Some(rt) => rt,
+            None => return PreparedTerminalInput::Ignored,
+        };
 
         // Intercept plain PageUp/PageDown presses for pane scrollback when the
         // focused pane doesn't handle its own scrolling (e.g., a plain shell
@@ -106,7 +136,7 @@ impl App {
             if let Some(input_state) = rt.input_state() {
                 if !input_state.alternate_screen && !input_state.mouse_reporting_enabled() {
                     if key_event.kind == crossterm::event::KeyEventKind::Release {
-                        return None;
+                        return PreparedTerminalInput::Ignored;
                     }
                     if matches!(
                         key_event.kind,
@@ -131,7 +161,7 @@ impl App {
                             lines,
                             "intercepted page key for pane scrollback"
                         );
-                        return None;
+                        return PreparedTerminalInput::HandledByApp;
                     }
                 }
             }
@@ -173,10 +203,10 @@ impl App {
             {
                 warn!(code = ?key_event.code, mods = ?key_event.modifiers, state = ?key_event.state, "key produced empty encoding");
             }
-            return None;
+            return PreparedTerminalInput::Ignored;
         }
 
-        Some(PreparedPaneInput {
+        PreparedTerminalInput::Forward(PreparedPaneInput {
             ws_idx,
             pane_id,
             bytes: Bytes::from(bytes),
@@ -184,8 +214,9 @@ impl App {
     }
 
     pub(super) async fn handle_terminal_key(&mut self, key: TerminalKey) {
-        let Some(input) = self.prepare_terminal_key_forward(key) else {
-            return;
+        let input = match self.prepare_terminal_key_forward(key) {
+            PreparedTerminalInput::Forward(input) => input,
+            PreparedTerminalInput::HandledByApp | PreparedTerminalInput::Ignored => return,
         };
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
             if runtime.send_bytes(input.bytes).await.is_ok() {

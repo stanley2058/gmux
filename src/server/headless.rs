@@ -1597,15 +1597,9 @@ impl HeadlessServer {
                     &events,
                     self.app.state.redraw_on_focus_gained,
                 );
-                if let Some(client) = self.clients.get_mut(&client_id) {
-                    if host_surface_redraw {
+                if host_surface_redraw {
+                    if let Some(client) = self.clients.get_mut(&client_id) {
                         client.request_full_redraw();
-                    } else {
-                        // Ensure semantic clients receive one post-input frame even if the
-                        // semantic buffer compares equal. Terminal-ANSI clients must keep their
-                        // server-side blit baseline; resetting it here forces a full redraw on
-                        // every keypress and makes remote sessions feel extremely slow.
-                        client.request_semantic_redraw_after_input();
                     }
                 }
                 self.update_client_outer_focus_from_events(client_id, &events);
@@ -1619,7 +1613,8 @@ impl HeadlessServer {
                     self.resize_shared_runtime_to_effective_size_before_input();
                 }
                 let theme_changed = self.update_client_host_theme_from_events(client_id, &events);
-                self.app
+                let route_result = self
+                    .app
                     .route_client_events(events, self.foreground_client_id == Some(client_id));
                 if self.app.take_config_reloaded_from_disk() {
                     self.reload_server_config(false);
@@ -1662,7 +1657,10 @@ impl HeadlessServer {
                     // No re-render needed for remaining clients.
                     false
                 } else {
-                    foreground_changed || theme_changed || interaction
+                    host_surface_redraw
+                        || foreground_changed
+                        || theme_changed
+                        || route_result.visual_change
                 }
             }
             ServerEvent::ClientClipboardImage {
@@ -4493,6 +4491,46 @@ next_tab = ""
                 .unwrap(),
             1
         );
+        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+    }
+
+    #[tokio::test]
+    async fn semantic_terminal_input_waits_for_pty_dirty_frame() {
+        let mut server = test_headless_server();
+        let (client_tx, _client_control_rx, client_rx) = test_client_writer();
+        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        let (runtime, mut input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_capacity(80, 24, 1);
+        workspace.tabs[0].runtimes.insert(pane_id, runtime);
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        server.app.state.mode = crate::app::Mode::Terminal;
+        server.clients.insert(
+            1,
+            ClientConnection::new(
+                (80, 24),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                Some(client_tx),
+            ),
+        );
+        server.foreground_client_id = Some(1);
+
+        server.render_and_stream();
+        let _ = client_rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("initial semantic frame");
+
+        assert!(!server.handle_server_event(test_client_input(1, b"j".to_vec())));
+        assert_eq!(input_rx.try_recv().unwrap(), Bytes::from_static(b"j"));
+        assert!(server.app.input_render_bypass_pending);
+
+        server.render_and_stream();
         assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
     }
 
