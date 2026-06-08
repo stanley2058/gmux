@@ -6,7 +6,7 @@ use crate::protocol::FrameDebugTiming;
 
 use crate::protocol::RenderEncoding;
 use crate::server::client_transport::ClientWriter;
-use crate::server::render_stream::ClientRenderState;
+use crate::server::render_actor::ClientRenderActor;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ClientConnectionMode {
@@ -42,8 +42,8 @@ pub(crate) struct ClientConnection {
     pub(crate) raw_input: crate::raw_input::RawInputFramer,
     /// Monotonic activity stamp used to choose the fallback foreground client.
     pub(crate) last_activity: u64,
-    /// Render baseline for the negotiated client encoding.
-    pub(crate) render_state: ClientRenderState,
+    /// Per-client app render encoder/baseline and latest-frame publisher.
+    pub(crate) render_actor: Option<ClientRenderActor>,
     /// Client-local host Kitty graphics cache.
     pub(crate) graphics_cache: crate::kitty_graphics::HostGraphicsCache,
     /// Whether the next graphics frame must clear and rebuild host-side Kitty state.
@@ -105,7 +105,9 @@ impl ClientConnection {
             outer_terminal_focus,
             raw_input: crate::raw_input::RawInputFramer::default(),
             last_activity,
-            render_state: ClientRenderState::new(render_encoding),
+            render_actor: writer
+                .as_ref()
+                .map(|writer| ClientRenderActor::new(render_encoding, writer.render.clone())),
             graphics_cache: crate::kitty_graphics::HostGraphicsCache::default(),
             graphics_surface_reset_pending: false,
             debug_timing: None,
@@ -162,7 +164,9 @@ impl ClientConnection {
     }
 
     pub(crate) fn request_full_redraw(&mut self) {
-        self.render_state.reset_baseline();
+        if let Some(render_actor) = &mut self.render_actor {
+            render_actor.reset_baseline();
+        }
         self.graphics_surface_reset_pending = true;
     }
 
@@ -171,7 +175,9 @@ impl ClientConnection {
     }
 
     pub(crate) fn request_semantic_redraw_after_input(&mut self) {
-        self.render_state.reset_semantic_input_baseline();
+        if let Some(render_actor) = &mut self.render_actor {
+            render_actor.reset_semantic_input_baseline();
+        }
     }
 
     pub(crate) fn update_host_theme_from_events(

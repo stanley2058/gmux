@@ -42,13 +42,14 @@ use crate::protocol::{
 use crate::server::client_accept::{
     accept_pending_client_connections, reject_pending_client_connections,
 };
-use crate::server::client_transport::{LatestRenderDisconnected, ServerEvent};
+use crate::server::client_transport::ServerEvent;
 use crate::server::clients::{
     events_include_interaction, latest_app_client, render_targets, terminal_attach_client_ids,
     ClientConnection, ClientConnectionMode,
 };
 use crate::server::keybindings::{app_keybindings, apply_keybindings};
 use crate::server::notifications::{should_forward_toast_to_clients, toast_notify_kind};
+use crate::server::render_actor::{ClientRenderDebugContext, ClientRenderPublish};
 use crate::server::render_snapshot::{
     fit_frame_to_client_size, AppFrameSnapshot, ServerRenderDebug,
 };
@@ -1525,7 +1526,9 @@ impl HeadlessServer {
             terminal_id: terminal_id.clone(),
         };
         client.pending_terminal_attach = false;
-        client.render_state.reset_baseline();
+        if let Some(render_actor) = &mut client.render_actor {
+            render_actor.reset_baseline();
+        }
         client.last_activity = stamp;
         let was_foreground = self.foreground_client_id == Some(client_id);
         if was_foreground {
@@ -1780,7 +1783,7 @@ impl HeadlessServer {
                     mode: ClientConnectionMode::TerminalAttach { terminal_id },
                     terminal_size,
                     cell_size,
-                    render_state,
+                    render_actor,
                     ..
                 }) = self.clients.get_mut(&client_id)
                 {
@@ -1789,7 +1792,9 @@ impl HeadlessServer {
                         width_px: cell_width_px,
                         height_px: cell_height_px,
                     };
-                    render_state.reset_baseline();
+                    if let Some(render_actor) = render_actor {
+                        render_actor.reset_baseline();
+                    }
                     Some(terminal_id.clone())
                 } else {
                     None
@@ -2090,7 +2095,11 @@ impl HeadlessServer {
             {
                 retained_fallback!("visible_kitty_graphics");
             }
-            let Some(frame) = client.render_state.last_frame() else {
+            let Some(frame) = client
+                .render_actor
+                .as_ref()
+                .and_then(|render_actor| render_actor.last_frame())
+            else {
                 retained_fallback!("no_last_frame");
             };
             if frame.width != *cols || frame.height != *rows {
@@ -2110,7 +2119,11 @@ impl HeadlessServer {
             let Some(client) = self.clients.get(client_id) else {
                 retained_fallback!("client_missing");
             };
-            let Some(frame) = client.render_state.last_frame() else {
+            let Some(frame) = client
+                .render_actor
+                .as_ref()
+                .and_then(|render_actor| render_actor.last_frame())
+            else {
                 retained_fallback!("no_last_frame");
             };
             for info in &pane_infos {
@@ -2143,7 +2156,11 @@ impl HeadlessServer {
                         let Some(client) = self.clients.get(client_id) else {
                             retained_fallback!("client_missing");
                         };
-                        let Some(frame) = client.render_state.last_frame() else {
+                        let Some(frame) = client
+                            .render_actor
+                            .as_ref()
+                            .and_then(|render_actor| render_actor.last_frame())
+                        else {
                             retained_fallback!("no_last_frame");
                         };
                         if dirty_patch_intersects_hyperlinks(frame, info.inner_rect, &patch) {
@@ -2168,7 +2185,12 @@ impl HeadlessServer {
             let Some(client) = self.clients.get(&client_id) else {
                 retained_fallback!("client_missing");
             };
-            let Some(mut frame) = client.render_state.last_frame().cloned() else {
+            let Some(mut frame) = client
+                .render_actor
+                .as_ref()
+                .and_then(|render_actor| render_actor.last_frame())
+                .cloned()
+            else {
                 retained_fallback!("no_last_frame");
             };
             frame.graphics.clear();
@@ -2224,64 +2246,45 @@ impl HeadlessServer {
     fn send_retained_frame_to_client(
         &mut self,
         client_id: u64,
-        mut frame: FrameData,
+        frame: FrameData,
         broken_clients: &mut Vec<u64>,
     ) -> bool {
         let Some(client) = self.clients.get_mut(&client_id) else {
             crate::render_prof::event("retained_send_fallback.client_missing");
             return false;
         };
-        let Some(writer) = client.writer.as_ref().cloned() else {
+        let debug_timing = client.take_frame_debug_timing(Instant::now());
+        let Some(render_actor) = client.render_actor.as_mut() else {
             crate::render_prof::event("retained_send_fallback.writer_missing");
             return false;
         };
-        frame.debug_timing = client.take_frame_debug_timing(Instant::now());
-        let prepare_started = crate::render_prof::timer();
-        let Some(prepared) = client.render_state.prepare_frame(&frame) else {
-            crate::render_prof::event("retained_send.skip_identical");
-            crate::render_prof::duration_since("retained_send.prepare_frame", prepare_started);
-            return true;
-        };
-        crate::render_prof::duration_since("retained_send.prepare_frame", prepare_started);
-        let serialize_started = crate::render_prof::timer();
-        let serialized = match Self::frame_server_message(prepared.message()) {
-            Ok(framed) => {
-                crate::render_prof::duration_since("retained_send.serialize", serialize_started);
-                framed
-            }
-            Err(protocol::FramingError::Oversized { claimed, max }) => {
-                warn!(
-                    client_id,
-                    claimed, max, "skipping oversized retained frame for client"
-                );
-                crate::render_prof::event("retained_send_fallback.serialize_oversized");
-                crate::render_prof::duration_since("retained_send.serialize", serialize_started);
-                return false;
-            }
-            Err(err) => {
-                warn!(client_id, err = %err, "failed to serialize retained frame for client");
-                broken_clients.push(client_id);
-                crate::render_prof::event("retained_send_fallback.serialize_error");
-                crate::render_prof::duration_since("retained_send.serialize", serialize_started);
-                return false;
-            }
-        };
-        crate::render_prof::counter("retained_send.bytes", serialized.len() as u64);
-
-        let send_started = crate::render_prof::timer();
-        match writer.render.send(serialized) {
-            Ok(()) => {
-                frame.debug_timing = None;
-                client.render_state.commit_sent_frame(frame, prepared);
+        match render_actor.publish_frame(
+            client_id,
+            frame,
+            debug_timing,
+            ClientRenderDebugContext::default(),
+        ) {
+            ClientRenderPublish::Sent => {
                 crate::render_prof::event("retained_send.sent");
-                crate::render_prof::duration_since("retained_send.try_send", send_started);
                 true
             }
-            Err(LatestRenderDisconnected) => {
+            ClientRenderPublish::SkippedUnchanged => {
+                crate::render_prof::event("retained_send.skip_identical");
+                true
+            }
+            ClientRenderPublish::Disconnected => {
                 debug!(client_id, "client writer channel closed, marking as broken");
                 broken_clients.push(client_id);
                 crate::render_prof::event("retained_send_fallback.writer_disconnected");
-                crate::render_prof::duration_since("retained_send.try_send", send_started);
+                false
+            }
+            ClientRenderPublish::Oversized => {
+                crate::render_prof::event("retained_send_fallback.serialize_oversized");
+                false
+            }
+            ClientRenderPublish::SerializeError => {
+                broken_clients.push(client_id);
+                crate::render_prof::event("retained_send_fallback.serialize_error");
                 false
             }
         }
@@ -2353,15 +2356,25 @@ impl HeadlessServer {
             let Some(client) = self.clients.get(&client_id) else {
                 continue;
             };
-            if client.render_state.is_semantic() {
-                if client.render_state.semantic_frame_is_current(&frame) {
+            if client
+                .render_actor
+                .as_ref()
+                .is_some_and(|render_actor| render_actor.is_semantic())
+            {
+                if client
+                    .render_actor
+                    .as_ref()
+                    .is_some_and(|render_actor| render_actor.is_semantic_frame_current(&frame))
+                {
                     continue;
                 }
                 let Some(writer) = client.writer.as_ref().cloned() else {
                     continue;
                 };
                 if let Some(client) = self.clients.get_mut(&client_id) {
-                    client.render_state.commit_semantic_frame(frame.clone());
+                    if let Some(render_actor) = &mut client.render_actor {
+                        render_actor.commit_semantic_frame(frame.clone());
+                    }
                 }
                 std::thread::spawn(move || {
                     if let Ok(serialized) =
@@ -2404,10 +2417,6 @@ impl HeadlessServer {
         let Some(client) = self.clients.get(&client_id) else {
             return false;
         };
-        let Some(writer) = client.writer.as_ref().cloned() else {
-            crate::render_prof::event("full_render.writer_missing");
-            return false;
-        };
         let mut next_graphics_cache = client.graphics_cache.clone();
         let graphics_surface_reset_pending = client.graphics_surface_reset_pending;
 
@@ -2447,115 +2456,48 @@ impl HeadlessServer {
             commit_graphics_cache = false;
         }
 
-        let prepare_started = crate::render_prof::timer();
         let mut debug_timing = client.take_frame_debug_timing(Instant::now());
         if let Some(timing) = &mut debug_timing {
             debug_context.apply_to(timing);
-            timing.server_graphics_us = graphics_us;
         }
-        frame.debug_timing = debug_timing;
-        let debug_prepare_started = Instant::now();
-        let Some(mut prepared) = client.render_state.prepare_frame(&frame) else {
-            crate::render_prof::event("full_render.skip_identical");
-            crate::render_prof::duration_since("full_render.prepare_frame", prepare_started);
-            return true;
+        let Some(render_actor) = client.render_actor.as_mut() else {
+            crate::render_prof::event("full_render.writer_missing");
+            return false;
         };
-        let prepare_us = debug_duration_us(debug_prepare_started.elapsed());
-        if let Some(mut timing) = frame.debug_timing {
-            timing.server_prepare_us = Some(prepare_us);
-            prepared.set_debug_timing(Some(timing));
-        }
-        crate::render_prof::duration_since("full_render.prepare_frame", prepare_started);
-        let mut frame_to_commit = frame.clone();
-        frame_to_commit.debug_timing = None;
-
-        let max_frame_size = if frame.graphics.is_empty() {
-            MAX_FRAME_SIZE
-        } else {
-            MAX_GRAPHICS_FRAME_SIZE
-        };
-        let serialize_started = crate::render_prof::timer();
-        let serialized = match Self::frame_server_message_with_max(
-            prepared.message(),
-            max_frame_size,
+        match render_actor.publish_frame(
+            client_id,
+            frame,
+            debug_timing,
+            ClientRenderDebugContext {
+                graphics_us,
+                prepare_us: None,
+            },
         ) {
-            Ok(framed) => {
-                crate::render_prof::duration_since("full_render.serialize", serialize_started);
-                framed
+            ClientRenderPublish::SkippedUnchanged => {
+                crate::render_prof::event("full_render.skip_identical");
+                true
             }
-            Err(protocol::FramingError::Oversized { claimed, max })
-                if !frame.graphics.is_empty() =>
-            {
-                warn!(
-                    client_id,
-                    claimed, max, "dropping graphics from oversized frame for client"
-                );
-                let mut text_only_frame = frame.clone();
-                text_only_frame.graphics.clear();
-                let Some(text_only_prepared) = client.render_state.prepare_frame(&text_only_frame)
-                else {
-                    crate::render_prof::event("full_render.skip_identical_text_only");
-                    crate::render_prof::duration_since("full_render.serialize", serialize_started);
-                    return true;
-                };
-                let framed = match Self::frame_server_message(text_only_prepared.message()) {
-                    Ok(framed) => framed,
-                    Err(err) => {
-                        warn!(client_id, err = %err, "failed to serialize text-only frame for client");
-                        broken_clients.push(client_id);
-                        crate::render_prof::event("full_render.serialize_error");
-                        crate::render_prof::duration_since(
-                            "full_render.serialize",
-                            serialize_started,
-                        );
-                        return false;
-                    }
-                };
-                prepared = text_only_prepared;
-                frame_to_commit = text_only_frame;
-                frame_to_commit.debug_timing = None;
-                commit_graphics_cache = false;
-                crate::render_prof::duration_since("full_render.serialize", serialize_started);
-                framed
-            }
-            Err(protocol::FramingError::Oversized { claimed, max }) => {
-                warn!(
-                    client_id,
-                    claimed, max, "skipping oversized frame for client"
-                );
+            ClientRenderPublish::Oversized => {
                 crate::render_prof::event("full_render.serialize_oversized");
-                crate::render_prof::duration_since("full_render.serialize", serialize_started);
-                return false;
+                false
             }
-            Err(err) => {
-                warn!(client_id, err = %err, "failed to serialize frame for client");
+            ClientRenderPublish::SerializeError => {
                 broken_clients.push(client_id);
                 crate::render_prof::event("full_render.serialize_error");
-                crate::render_prof::duration_since("full_render.serialize", serialize_started);
-                return false;
+                false
             }
-        };
-        crate::render_prof::counter("full_render.bytes", serialized.len() as u64);
-
-        let send_started = crate::render_prof::timer();
-        match writer.render.send(serialized) {
-            Ok(()) => {
+            ClientRenderPublish::Sent => {
                 if commit_graphics_cache {
                     client.graphics_cache = next_graphics_cache;
                     client.graphics_surface_reset_pending = false;
                 }
-                client
-                    .render_state
-                    .commit_sent_frame(frame_to_commit, prepared);
                 crate::render_prof::event("full_render.sent");
-                crate::render_prof::duration_since("full_render.try_send", send_started);
                 true
             }
-            Err(LatestRenderDisconnected) => {
+            ClientRenderPublish::Disconnected => {
                 debug!(client_id, "client writer channel closed, marking as broken");
                 broken_clients.push(client_id);
                 crate::render_prof::event("full_render.writer_disconnected");
-                crate::render_prof::duration_since("full_render.try_send", send_started);
                 false
             }
         }
@@ -5137,7 +5079,9 @@ next_tab = ""
                 .clients
                 .get(&1)
                 .unwrap()
-                .render_state
+                .render_actor
+                .as_ref()
+                .unwrap()
                 .terminal_seq()
                 .unwrap(),
             1
@@ -5172,7 +5116,9 @@ next_tab = ""
                 .clients
                 .get(&1)
                 .unwrap()
-                .render_state
+                .render_actor
+                .as_ref()
+                .unwrap()
                 .terminal_seq()
                 .unwrap(),
             1
@@ -5186,7 +5132,9 @@ next_tab = ""
                 .clients
                 .get(&1)
                 .unwrap()
-                .render_state
+                .render_actor
+                .as_ref()
+                .unwrap()
                 .terminal_seq()
                 .unwrap(),
             1
@@ -5362,7 +5310,9 @@ next_tab = ""
                 .clients
                 .get(&1)
                 .unwrap()
-                .render_state
+                .render_actor
+                .as_ref()
+                .unwrap()
                 .terminal_seq()
                 .unwrap(),
             1
@@ -5405,7 +5355,9 @@ next_tab = ""
                 .clients
                 .get(&1)
                 .unwrap()
-                .render_state
+                .render_actor
+                .as_ref()
+                .unwrap()
                 .terminal_seq()
                 .unwrap(),
             1
@@ -5778,16 +5730,28 @@ next_tab = ""
             .expect("initial frame");
         let inner_rect = server.app.state.view.pane_infos[0].inner_rect;
         let client = server.clients.get_mut(&1).unwrap();
-        let mut frame = client.render_state.last_frame().unwrap().clone();
+        let mut frame = client
+            .render_actor
+            .as_ref()
+            .and_then(|render_actor| render_actor.last_frame())
+            .unwrap()
+            .clone();
         frame.hyperlinks = vec!["https://example.com".to_owned()];
         let hyperlink_idx =
             usize::from(inner_rect.y) * usize::from(frame.width) + usize::from(inner_rect.x);
         frame.cells[hyperlink_idx].hyperlink = Some(0);
-        let prepared = client
-            .render_state
-            .prepare_frame(&frame)
-            .expect("hyperlink frame differs");
-        client.render_state.commit_sent_frame(frame, prepared);
+        assert_eq!(
+            client.render_actor.as_mut().unwrap().publish_frame(
+                1,
+                frame,
+                None,
+                ClientRenderDebugContext::default()
+            ),
+            ClientRenderPublish::Sent
+        );
+        let _ = client_rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("seed hyperlink frame");
 
         let runtime = server
             .app
