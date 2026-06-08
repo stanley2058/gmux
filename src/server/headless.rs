@@ -1591,11 +1591,15 @@ impl HeadlessServer {
                     Some(writer),
                 );
                 self.clients.insert(client_id, connection);
-                if !direct_attach_requested {
+                let became_foreground =
+                    !direct_attach_requested && self.foreground_client_id.is_none();
+                if became_foreground {
                     self.foreground_client_id = Some(client_id);
                 }
-                self.sync_foreground_client_state();
-                self.resize_shared_runtime_to_effective_size();
+                if became_foreground {
+                    self.sync_foreground_client_state();
+                    self.resize_shared_runtime_to_effective_size();
+                }
                 self.nudge_handoff_panes_on_first_client_attach();
                 true
             }
@@ -2165,6 +2169,7 @@ impl HeadlessServer {
         let mut broken_clients = Vec::new();
         let mut attempted_send = false;
         let mut sent_any = false;
+        let mut mirror_frame = None;
         for (client_id, _size, _cell_size, _is_foreground, _mode) in retained_targets {
             let Some(client) = self.clients.get(&client_id) else {
                 retained_fallback!("client_missing");
@@ -2190,9 +2195,22 @@ impl HeadlessServer {
             }
 
             attempted_send = true;
+            let is_latency_critical = latency_critical_retained_client_id == Some(client_id);
+            if is_latency_critical {
+                mirror_frame = Some((frame.clone(), client_id));
+            }
             let sent = self.send_retained_frame_to_client(client_id, frame, &mut broken_clients);
             if sent {
                 sent_any = true;
+            }
+        }
+        if sent_any {
+            if let Some((frame, active_client_id)) = mirror_frame {
+                self.publish_retained_frame_to_mirrors(
+                    frame,
+                    active_client_id,
+                    &mut broken_clients,
+                );
             }
         }
         for broken_client in broken_clients {
@@ -2206,6 +2224,34 @@ impl HeadlessServer {
             retained_success!("sent");
         }
         retained_fallback!("send_failed");
+    }
+
+    fn publish_retained_frame_to_mirrors(
+        &mut self,
+        frame: FrameData,
+        active_client_id: u64,
+        broken_clients: &mut Vec<u64>,
+    ) {
+        let render_targets = render_targets(&self.clients, self.foreground_client_id);
+        let target_count = render_targets.len().min(usize::from(u16::MAX)) as u16;
+        for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
+            if client_id == active_client_id || !matches!(mode, ClientConnectionMode::App) {
+                continue;
+            }
+            let frame = fit_frame_to_client_size(&frame, cols, rows);
+            let _ = self.stream_frame_to_client(
+                client_id,
+                frame,
+                true,
+                cell_size,
+                false,
+                ServerFrameDebugContext {
+                    target_count,
+                    ..Default::default()
+                },
+                broken_clients,
+            );
+        }
     }
 
     fn retained_pty_update_allowed_by_app_state(&self) -> bool {
@@ -3243,6 +3289,13 @@ new_tab = "prefix+t"
             direct_attach_requested: false,
             writer: writer_b,
         }));
+        assert_eq!(server.foreground_client_id, Some(1));
+        assert_eq!(
+            server.app.state.prefix_code,
+            crossterm::event::KeyCode::Char('a')
+        );
+
+        assert!(server.promote_client_to_foreground(2));
         assert_eq!(
             server.app.state.prefix_code,
             crossterm::event::KeyCode::Char('b')
@@ -3296,6 +3349,8 @@ new_tab = "prefix+t"
             direct_attach_requested: false,
             writer: writer_b,
         }));
+        assert_eq!(server.app.state.config_diagnostic, without_keybindings);
+        assert!(server.promote_client_to_foreground(2));
         assert_eq!(
             server.app.state.config_diagnostic,
             server.server_config_diagnostic
@@ -4301,6 +4356,45 @@ next_tab = ""
         assert_eq!(server.foreground_client_id, Some(1));
         assert_eq!(server.effective_size, (120, 40));
         assert_eq!(server.clients[&2].terminal_size, (100, 30));
+        assert_eq!(server.clients[&2].cell_size.width_px, 9);
+        assert_eq!(server.clients[&2].cell_size.height_px, 18);
+    }
+
+    #[test]
+    fn background_client_attach_does_not_change_effective_size() {
+        let mut server = test_headless_server();
+        let (active_writer, _active_control, _active_render) = test_client_writer();
+        let (mirror_writer, _mirror_control, _mirror_render) = test_client_writer();
+
+        assert!(server.handle_server_event(ServerEvent::ClientConnected {
+            client_id: 1,
+            cols: 120,
+            rows: 40,
+            cell_width_px: 0,
+            cell_height_px: 0,
+            render_encoding: RenderEncoding::SemanticFrame,
+            keybindings: None,
+            direct_attach_requested: false,
+            writer: active_writer,
+        }));
+        assert_eq!(server.foreground_client_id, Some(1));
+        assert_eq!(server.effective_size, (120, 40));
+
+        assert!(server.handle_server_event(ServerEvent::ClientConnected {
+            client_id: 2,
+            cols: 80,
+            rows: 24,
+            cell_width_px: 9,
+            cell_height_px: 18,
+            render_encoding: RenderEncoding::SemanticFrame,
+            keybindings: None,
+            direct_attach_requested: false,
+            writer: mirror_writer,
+        }));
+
+        assert_eq!(server.foreground_client_id, Some(1));
+        assert_eq!(server.effective_size, (120, 40));
+        assert_eq!(server.clients[&2].terminal_size, (80, 24));
         assert_eq!(server.clients[&2].cell_size.width_px, 9);
         assert_eq!(server.clients[&2].cell_size.height_px, 18);
     }
@@ -5414,7 +5508,12 @@ next_tab = ""
                 .expect("active retained frame"),
         );
         assert!(first_frame.cells.iter().any(|cell| cell.symbol == "Z"));
-        assert!(second_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        let second_frame = read_server_frame(
+            second_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("mirror retained frame"),
+        );
+        assert!(second_frame.cells.iter().any(|cell| cell.symbol == "Z"));
         assert!(server.latency_critical_client_id.is_none());
     }
 
