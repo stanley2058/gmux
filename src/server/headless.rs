@@ -5750,10 +5750,8 @@ next_tab = ""
         server.render_and_stream();
 
         assert!(!server.app.full_redraw_pending);
-        assert!(matches!(
-            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::Frame(_)
-        ));
+        let _ =
+            recv_server_frame_within(&client_rx, Duration::from_millis(100), "full redraw frame");
 
         let runtime = server
             .app

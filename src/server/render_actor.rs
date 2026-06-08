@@ -41,13 +41,7 @@ impl ClientRenderActor {
         }));
         let worker_shared = shared.clone();
         std::thread::spawn(move || {
-            client_render_worker_loop(
-                render_encoding,
-                writer,
-                control_rx,
-                frame_rx,
-                worker_shared,
-            );
+            client_render_worker_loop(render_encoding, writer, control_rx, frame_rx, worker_shared);
         });
         Self {
             control_tx,
