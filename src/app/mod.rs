@@ -601,7 +601,7 @@ impl App {
             if needs_render && (self.can_render_now(now) || input_bypass) {
                 let pty_dirty = self.render_dirty.swap(false, Ordering::AcqRel);
                 if pty_dirty {
-                    self.input_render_bypass_pending = false;
+                    self.clear_input_render_bypass_after_pty_dirty();
                 }
                 let _sync_output = SyncOutputGuard::begin()?;
                 let kitty_graphics_enabled = self.state.kitty_graphics_enabled;
@@ -1023,7 +1023,7 @@ impl App {
                                 },
                             ));
                             if sent.is_ok() {
-                                self.input_render_bypass_pending = true;
+                                self.arm_input_render_bypass();
                             }
                         }
                     }
@@ -3028,6 +3028,45 @@ last_pane = "prefix+tab"
         assert_eq!(rx.recv().await.unwrap(), bytes::Bytes::from_static(b"a"));
         assert_eq!(rx.recv().await.unwrap(), bytes::Bytes::from_static(b"b"));
         assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn raw_input_batch_drains_queued_terminal_input_without_waiting_for_render() {
+        let mut app = test_app();
+        let mut workspace = Workspace::test_new("test");
+        let focused = workspace.focused_pane_id().unwrap();
+        let (runtime, mut pane_rx) = TerminalRuntime::test_with_channel_capacity(80, 24, 2);
+        workspace.tabs[0].runtimes.insert(focused, runtime);
+        app.state.sessions = vec![workspace];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+
+        let (input_tx, input_rx) = tokio::sync::mpsc::channel(4);
+        input_tx
+            .send(raw_key(
+                KeyCode::Char('b'),
+                KeyModifiers::empty(),
+                KeyEventKind::Press,
+            ))
+            .await
+            .unwrap();
+        app.input_rx = Some(input_rx);
+
+        let changed = app
+            .handle_raw_input_batch(raw_key(
+                KeyCode::Char('a'),
+                KeyModifiers::empty(),
+                KeyEventKind::Press,
+            ))
+            .await;
+
+        assert!(changed);
+        assert!(app.input_render_bypass_pending);
+        assert_eq!(pane_rx.try_recv().unwrap(), bytes::Bytes::from_static(b"a"));
+        assert_eq!(pane_rx.try_recv().unwrap(), bytes::Bytes::from_static(b"b"));
+        assert!(pane_rx.try_recv().is_err());
+        assert!(app.input_rx.as_mut().unwrap().try_recv().is_err());
     }
 
     #[tokio::test]

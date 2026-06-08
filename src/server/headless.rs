@@ -452,7 +452,7 @@ impl HeadlessServer {
                 crate::render_prof::event("render.attempt");
                 let pty_dirty = self.app.render_dirty.swap(false, Ordering::AcqRel);
                 if pty_dirty {
-                    self.app.input_render_bypass_pending = false;
+                    self.app.clear_input_render_bypass_after_pty_dirty();
                 }
                 if pty_dirty {
                     crate::render_prof::event("render.attempt.pty_dirty");
@@ -1126,7 +1126,7 @@ impl HeadlessServer {
                 if let Err(err) = runtime.try_send_bytes(Bytes::from(payload)) {
                     warn!(client_id, terminal_id = %terminal_id, err = %err, "terminal attach clipboard image paste failed");
                 } else {
-                    self.app.input_render_bypass_pending = true;
+                    self.app.arm_input_render_bypass();
                 }
             }
             return true;
@@ -1170,7 +1170,7 @@ impl HeadlessServer {
         match apply_terminal_attach_scroll(
             runtime, source, direction, lines, column, row, modifiers,
         ) {
-            Ok(()) => self.app.input_render_bypass_pending = true,
+            Ok(()) => self.app.arm_input_render_bypass(),
             Err(err) => {
                 warn!(client_id, terminal_id = %terminal_id, err = %err, "terminal attach scroll failed");
             }
@@ -1572,7 +1572,7 @@ impl HeadlessServer {
                         if let Err(err) = apply_terminal_attach_input(runtime, data) {
                             warn!(client_id, terminal_id = %terminal_id, err = %err);
                         } else {
-                            self.app.input_render_bypass_pending = true;
+                            self.app.arm_input_render_bypass();
                         }
                     }
                     return true;
@@ -3504,6 +3504,68 @@ next_tab = ""
         );
 
         drop(runtime);
+        drop(_runtime_guard);
+        rt.shutdown_timeout(Duration::from_millis(100));
+    }
+
+    #[test]
+    fn drain_server_events_drains_terminal_attach_input_without_waiting_for_render() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        let _runtime_guard = rt.enter();
+        let mut server = test_headless_server();
+        let terminal_id = crate::terminal::TerminalId::alloc();
+        let terminal_id_string = terminal_id.to_string();
+        let (runtime, mut input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_capacity(80, 24, 2);
+
+        server.app.state.terminals.insert(
+            terminal_id.clone(),
+            crate::terminal::TerminalState::new(terminal_id.clone(), "/tmp".into()),
+        );
+        server.app.terminal_runtimes.insert(terminal_id, runtime);
+        server.clients.insert(
+            1,
+            ClientConnection::new_with_mode(
+                ClientConnectionMode::TerminalAttach {
+                    terminal_id: terminal_id_string,
+                },
+                None,
+                (80, 24),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::TerminalAnsi,
+                false,
+                None,
+            ),
+        );
+
+        server
+            .server_event_tx
+            .try_send(ServerEvent::ClientInput {
+                client_id: 1,
+                data: b"a".to_vec(),
+            })
+            .unwrap();
+        server
+            .server_event_tx
+            .try_send(ServerEvent::ClientInput {
+                client_id: 1,
+                data: b"b".to_vec(),
+            })
+            .unwrap();
+
+        assert!(server.drain_server_events());
+        assert!(server.app.input_render_bypass_pending);
+        assert_eq!(input_rx.try_recv().unwrap(), Bytes::from_static(b"a"));
+        assert_eq!(input_rx.try_recv().unwrap(), Bytes::from_static(b"b"));
+        assert!(input_rx.try_recv().is_err());
+        assert!(server.server_event_rx.try_recv().is_err());
+        drop(server);
         drop(_runtime_guard);
         rt.shutdown_timeout(Duration::from_millis(100));
     }

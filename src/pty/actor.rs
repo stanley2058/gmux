@@ -17,6 +17,8 @@ const ACTOR_POLL_MS: i32 = 50;
 #[cfg(test)]
 const ACTOR_POLL_MS: i32 = 1000;
 const ACTOR_COMMAND_BUFFER: usize = 1024;
+const ACTOR_WRITE_CHUNK_BUDGET_PER_TURN: usize = 8;
+const ACTOR_WRITE_BYTE_BUDGET_PER_TURN: usize = 64 * 1024;
 const HANDOFF_DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,7 +441,11 @@ impl PtyIoActorRunner {
                             debug!(pane = self.pane_id, err = %err, "PTY actor wake drain failed");
                             break;
                         }
-                        continue;
+                        should_exit = self.drain_commands();
+                        if should_exit || self.state == ActorState::Released {
+                            break;
+                        }
+                        self.apply_pending_controls();
                     }
                     if readiness.pty_write_ready && !self.pending_writes.is_empty() {
                         self.flush_pending_writes_once();
@@ -643,7 +649,15 @@ impl PtyIoActorRunner {
     }
 
     fn flush_pending_writes_once(&mut self) {
+        let mut completed_chunks = 0usize;
+        let mut written_bytes = 0usize;
         while let Some(bytes) = self.pending_writes.front() {
+            if completed_chunks >= ACTOR_WRITE_CHUNK_BUDGET_PER_TURN
+                || written_bytes >= ACTOR_WRITE_BYTE_BUDGET_PER_TURN
+            {
+                return;
+            }
+
             let chunk = &bytes[self.current_write_offset..];
             match self.file.write(chunk) {
                 Ok(0) => {
@@ -651,10 +665,12 @@ impl PtyIoActorRunner {
                     return;
                 }
                 Ok(written) => {
+                    written_bytes = written_bytes.saturating_add(written);
                     self.current_write_offset += written;
                     if self.current_write_offset >= bytes.len() {
                         self.pending_writes.pop_front();
                         self.current_write_offset = 0;
+                        completed_chunks += 1;
                     }
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
@@ -864,6 +880,44 @@ mod tests {
             .expect("actor read callback");
         assert_eq!(read, Bytes::from_static(b"from-peer"));
         handle.shutdown();
+    }
+
+    #[test]
+    fn flush_pending_writes_uses_bounded_quantum() {
+        let (actor_socket, mut peer) = UnixStream::pair().expect("socket pair");
+        actor_socket
+            .set_nonblocking(true)
+            .expect("actor socket nonblocking");
+        peer.set_read_timeout(Some(Duration::from_secs(1)))
+            .expect("peer timeout");
+        let (_data_tx, data_rx) = mpsc::channel(ACTOR_COMMAND_BUFFER);
+        let (_control_tx, control_rx) = std_mpsc::channel();
+        let mut runner = PtyIoActorRunner {
+            pane_id: 1,
+            file: std::fs::File::from(unsafe { OwnedFd::from_raw_fd(actor_socket.into_raw_fd()) }),
+            data_rx,
+            control_rx,
+            state: ActorState::Running,
+            pending_writes: VecDeque::new(),
+            current_write_offset: 0,
+            wake_read_fd: fd::create_wake_pipe().expect("wake pipe").read_fd,
+            controls: Arc::new(Mutex::new(SharedPtyControls::default())),
+            on_read: Box::new(|_| PtyReadResult::empty()),
+            on_reader_exit: None,
+            poll_observer: None,
+        };
+        for _ in 0..=ACTOR_WRITE_CHUNK_BUDGET_PER_TURN {
+            runner.pending_writes.push_back(Bytes::from_static(b"x"));
+        }
+
+        runner.flush_pending_writes_once();
+
+        let mut buf = vec![0; ACTOR_WRITE_CHUNK_BUDGET_PER_TURN];
+        peer.read_exact(&mut buf)
+            .expect("peer receives write quantum");
+        assert_eq!(buf, vec![b'x'; ACTOR_WRITE_CHUNK_BUDGET_PER_TURN]);
+        assert_eq!(runner.pending_writes.len(), 1);
+        assert_eq!(runner.current_write_offset, 0);
     }
 
     #[test]

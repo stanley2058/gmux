@@ -24,7 +24,7 @@ impl App {
         };
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
             if runtime.try_send_bytes(input.bytes).is_ok() {
-                self.input_render_bypass_pending = true;
+                self.arm_input_render_bypass();
             }
         }
     }
@@ -189,7 +189,7 @@ impl App {
         };
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
             if runtime.send_bytes(input.bytes).await.is_ok() {
-                self.input_render_bypass_pending = true;
+                self.arm_input_render_bypass();
             }
         }
     }

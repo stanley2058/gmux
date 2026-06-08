@@ -7,6 +7,14 @@ use super::{
     SELECTION_AUTOSCROLL_INTERVAL,
 };
 impl App {
+    pub(crate) fn arm_input_render_bypass(&mut self) {
+        self.input_render_bypass_pending = true;
+    }
+
+    pub(crate) fn clear_input_render_bypass_after_pty_dirty(&mut self) {
+        self.input_render_bypass_pending = false;
+    }
+
     pub(crate) fn shutdown_detached_terminal_runtimes(&mut self) {
         let terminal_ids = std::mem::take(&mut self.state.terminal_runtime_shutdowns);
         for terminal_id in terminal_ids {

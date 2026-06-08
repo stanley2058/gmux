@@ -92,7 +92,7 @@ impl App {
             .focused_runtime_in_session(&self.terminal_runtimes)
         {
             if rt.send_paste(text).await.is_ok() {
-                self.input_render_bypass_pending = true;
+                self.arm_input_render_bypass();
             }
         }
     }
