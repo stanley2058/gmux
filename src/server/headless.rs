@@ -3484,6 +3484,12 @@ next_tab = ""
         }));
         assert_eq!(
             server.app.state.prefix_code,
+            crossterm::event::KeyCode::Char('a')
+        );
+
+        assert!(server.promote_client_to_foreground(2));
+        assert_eq!(
+            server.app.state.prefix_code,
             crossterm::event::KeyCode::Char('c')
         );
         assert!(server
@@ -5663,6 +5669,15 @@ next_tab = ""
         let _ = client_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial frame");
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_millis(100))
+            .expect("initial baseline");
 
         let runtime = server
             .app
