@@ -75,6 +75,22 @@ install -m 0755 "$tmp_dir/$binary" "$install_dir/$binary"
 printf 'installed %s to %s\n' "$binary" "$install_dir/$binary"
 "$install_dir/$binary" --version
 
+if [ "${GMUX_INSTALL_COMPLETIONS:-1}" != "0" ]; then
+    bash_dir="${GMUX_BASH_COMPLETION_DIR:-$HOME/.local/share/bash-completion/completions}"
+    zsh_dir="${GMUX_ZSH_COMPLETION_DIR:-$HOME/.local/share/zsh/site-functions}"
+    fish_dir="${GMUX_FISH_COMPLETION_DIR:-$HOME/.config/fish/completions}"
+
+    mkdir -p "$bash_dir" "$zsh_dir" "$fish_dir"
+    "$install_dir/$binary" completions bash > "$bash_dir/gmux"
+    "$install_dir/$binary" completions zsh > "$zsh_dir/_gmux"
+    "$install_dir/$binary" completions fish > "$fish_dir/gmux.fish"
+
+    printf 'installed bash completion to %s\n' "$bash_dir/gmux"
+    printf 'installed zsh completion to %s\n' "$zsh_dir/_gmux"
+    printf 'installed fish completion to %s\n' "$fish_dir/gmux.fish"
+    printf 'zsh users may need to add this before compinit: fpath=(%s $fpath)\n' "$zsh_dir"
+fi
+
 case ":$PATH:" in
     *":$install_dir:"*) ;;
     *)

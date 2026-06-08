@@ -19,6 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/stanley2058/gmux/main/install.sh | 
 ```
 
 By default, the installer writes to `~/.local/bin`. Set `GMUX_INSTALL_DIR` to use another directory.
+Shell completions are installed for bash, zsh, and fish by default. Set `GMUX_INSTALL_COMPLETIONS=0` to skip them.
 
 ## Build
 
@@ -44,7 +45,15 @@ just check
 Install locally if desired:
 
 ```bash
-cargo install --path . --locked
+just install
+```
+
+Print shell completions manually:
+
+```bash
+gmux completions bash
+gmux completions zsh
+gmux completions fish
 ```
 
 ## Quick Start

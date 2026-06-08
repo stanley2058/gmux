@@ -344,6 +344,7 @@ fn main() -> io::Result<()> {
         println!("       gmux kill-pane [-t pane]");
         println!("       gmux server stop");
         println!("       gmux server reload-config");
+        println!("       gmux completions <bash|zsh|fish>");
         println!("       gmux config <subcommand> ...");
         println!("       gmux tab <subcommand> ...");
         println!("       gmux pane <subcommand> ...");
@@ -383,6 +384,10 @@ fn main() -> io::Result<()> {
             (
                 "gmux config reset-keys",
                 "Back up config.toml and remove custom keybindings",
+            ),
+            (
+                "gmux completions <shell>",
+                "Print shell completions for bash, zsh, or fish",
             ),
             (
                 "gmux session <subcommand>",

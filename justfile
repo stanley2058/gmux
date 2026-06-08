@@ -33,6 +33,18 @@ install-hooks:
 build:
     cargo build --release --locked
 
+# Build release binary and install it locally
+install:
+    cargo build --release --locked
+    mkdir -p "${GMUX_INSTALL_DIR:-$HOME/.local/bin}"
+    install -m 0755 target/release/gmux "${GMUX_INSTALL_DIR:-$HOME/.local/bin}/gmux"
+    scripts/install_completions.sh "${GMUX_INSTALL_DIR:-$HOME/.local/bin}/gmux"
+    "${GMUX_INSTALL_DIR:-$HOME/.local/bin}/gmux" --version
+
+# Install shell completions for the current gmux binary
+install-completions:
+    scripts/install_completions.sh "${GMUX_INSTALL_DIR:-$HOME/.local/bin}/gmux"
+
 # Build the vendored libghostty-vt source dist
 build-libghostty-vt:
     scripts/build_vendored_libghostty_vt.sh
