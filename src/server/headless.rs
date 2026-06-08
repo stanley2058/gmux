@@ -2238,7 +2238,6 @@ impl HeadlessServer {
         frame.debug_timing = client.take_frame_debug_timing(Instant::now());
         let prepare_started = crate::render_prof::timer();
         let Some(prepared) = client.render_state.prepare_frame(&frame) else {
-            client.render_pending = false;
             crate::render_prof::event("retained_send.skip_identical");
             crate::render_prof::duration_since("retained_send.prepare_frame", prepare_started);
             return true;
@@ -2272,7 +2271,6 @@ impl HeadlessServer {
         let send_started = crate::render_prof::timer();
         match writer.render.send(serialized) {
             Ok(()) => {
-                client.render_pending = false;
                 frame.debug_timing = None;
                 client.render_state.commit_sent_frame(frame, prepared);
                 crate::render_prof::event("retained_send.sent");
@@ -2458,7 +2456,6 @@ impl HeadlessServer {
         frame.debug_timing = debug_timing;
         let debug_prepare_started = Instant::now();
         let Some(mut prepared) = client.render_state.prepare_frame(&frame) else {
-            client.render_pending = false;
             crate::render_prof::event("full_render.skip_identical");
             crate::render_prof::duration_since("full_render.prepare_frame", prepare_started);
             return true;
@@ -2497,7 +2494,6 @@ impl HeadlessServer {
                 text_only_frame.graphics.clear();
                 let Some(text_only_prepared) = client.render_state.prepare_frame(&text_only_frame)
                 else {
-                    client.render_pending = false;
                     crate::render_prof::event("full_render.skip_identical_text_only");
                     crate::render_prof::duration_since("full_render.serialize", serialize_started);
                     return true;
@@ -2544,7 +2540,6 @@ impl HeadlessServer {
         let send_started = crate::render_prof::timer();
         match writer.render.send(serialized) {
             Ok(()) => {
-                client.render_pending = false;
                 if commit_graphics_cache {
                     client.graphics_cache = next_graphics_cache;
                     client.graphics_surface_reset_pending = false;
@@ -4849,8 +4844,6 @@ next_tab = ""
 
         server.render_and_stream();
 
-        assert!(!server.clients.get(&2).unwrap().render_pending);
-
         let background_frame = recv_server_frame_within(
             &background_rx,
             Duration::from_millis(100),
@@ -5413,7 +5406,6 @@ next_tab = ""
                 .unwrap(),
             1
         );
-        assert!(!server.clients.get(&1).unwrap().render_pending);
     }
 
     #[test]
@@ -5903,7 +5895,6 @@ next_tab = ""
         server.render_and_stream();
 
         assert!(!server.app.full_redraw_pending);
-        assert!(!server.clients.get(&1).unwrap().render_pending);
         assert!(matches!(
             read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
             ServerMessage::Frame(_)

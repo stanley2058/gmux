@@ -48,8 +48,6 @@ pub(crate) struct ClientConnection {
     pub(crate) graphics_cache: crate::kitty_graphics::HostGraphicsCache,
     /// Whether the next graphics frame must clear and rebuild host-side Kitty state.
     pub(crate) graphics_surface_reset_pending: bool,
-    /// Whether a render was skipped because the render channel was full.
-    pub(crate) render_pending: bool,
     /// Pending server-side input timing to attach to the next frame.
     pub(crate) debug_timing: Option<ClientDebugTiming>,
     /// Last host mouse capture mode sent to this client.
@@ -110,7 +108,6 @@ impl ClientConnection {
             render_state: ClientRenderState::new(render_encoding),
             graphics_cache: crate::kitty_graphics::HostGraphicsCache::default(),
             graphics_surface_reset_pending: false,
-            render_pending: false,
             debug_timing: None,
             host_mouse_capture_active: None,
             staged_clipboard_files: Vec::new(),
