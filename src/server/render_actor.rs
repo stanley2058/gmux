@@ -8,11 +8,15 @@ use crate::protocol::{
     MAX_GRAPHICS_FRAME_SIZE,
 };
 use crate::server::client_transport::{LatestRenderDisconnected, LatestRenderSender};
+use crate::server::render_snapshot::{fit_frame_to_client_size, AppFrameSnapshot};
 use crate::server::render_stream::ClientRenderState;
 
 pub(crate) struct ClientRenderActor {
     control_tx: std::sync::mpsc::Sender<ClientRenderControl>,
     frame_tx: LatestClientFrameSender,
+    // The server no longer reads actor baselines for render decisions, but tests
+    // still inspect them to wait for the worker handoff to commit.
+    #[cfg_attr(not(test), allow(dead_code))]
     shared: Arc<Mutex<ClientRenderSharedState>>,
 }
 
@@ -60,6 +64,7 @@ impl ClientRenderActor {
             .send(ClientRenderControl::ResetSemanticInputBaseline);
     }
 
+    #[cfg(test)]
     pub(crate) fn last_frame(&self) -> Option<FrameData> {
         self.shared
             .lock()
@@ -72,12 +77,34 @@ impl ClientRenderActor {
         &mut self,
         client_id: u64,
         frame: FrameData,
+        target_size: (u16, u16),
         debug_timing: Option<FrameDebugTiming>,
         debug_context: ClientRenderDebugContext,
     ) -> ClientRenderPublish {
         match self.frame_tx.send(ClientRenderJob {
             client_id,
-            frame,
+            source: ClientRenderSource::Frame(frame),
+            target_size,
+            debug_timing,
+            debug_context,
+        }) {
+            Ok(()) => ClientRenderPublish::Sent,
+            Err(LatestClientFrameDisconnected) => ClientRenderPublish::Disconnected,
+        }
+    }
+
+    pub(crate) fn publish_snapshot(
+        &mut self,
+        client_id: u64,
+        snapshot: Arc<AppFrameSnapshot>,
+        target_size: (u16, u16),
+        debug_timing: Option<FrameDebugTiming>,
+        debug_context: ClientRenderDebugContext,
+    ) -> ClientRenderPublish {
+        match self.frame_tx.send(ClientRenderJob {
+            client_id,
+            source: ClientRenderSource::Snapshot(snapshot),
+            target_size,
             debug_timing,
             debug_context,
         }) {
@@ -121,26 +148,6 @@ impl ClientRenderActor {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn wait_for_last_frame_matching(
-        &self,
-        timeout: std::time::Duration,
-        matches_frame: impl Fn(&FrameData) -> bool,
-    ) -> Option<FrameData> {
-        let started = Instant::now();
-        loop {
-            if let Some(frame) = self.last_frame() {
-                if matches_frame(&frame) {
-                    return Some(frame);
-                }
-            }
-            if started.elapsed() >= timeout {
-                return None;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -152,9 +159,16 @@ enum ClientRenderControl {
 #[derive(Debug)]
 struct ClientRenderJob {
     client_id: u64,
-    frame: FrameData,
+    source: ClientRenderSource,
+    target_size: (u16, u16),
     debug_timing: Option<FrameDebugTiming>,
     debug_context: ClientRenderDebugContext,
+}
+
+#[derive(Debug)]
+enum ClientRenderSource {
+    Frame(FrameData),
+    Snapshot(Arc<AppFrameSnapshot>),
 }
 
 #[derive(Debug, Default)]
@@ -283,7 +297,8 @@ fn client_render_worker_loop(
             &mut render_state,
             &writer,
             job.client_id,
-            job.frame,
+            job.source,
+            job.target_size,
             job.debug_timing,
             job.debug_context,
         ) {
@@ -316,10 +331,28 @@ fn publish_frame_now(
     render_state: &mut ClientRenderState,
     writer: &LatestRenderSender,
     client_id: u64,
-    mut frame: FrameData,
+    source: ClientRenderSource,
+    target_size: (u16, u16),
     debug_timing: Option<FrameDebugTiming>,
     debug_context: ClientRenderDebugContext,
 ) -> ClientRenderPublish {
+    let (cols, rows) = target_size;
+    let mut frame = match source {
+        ClientRenderSource::Frame(frame) => {
+            let mut fitted = fit_frame_to_client_size(&frame, cols, rows);
+            if !frame.graphics.is_empty() {
+                fitted.graphics = frame.graphics;
+            }
+            fitted
+        }
+        ClientRenderSource::Snapshot(snapshot) => {
+            if snapshot.active_size == target_size {
+                snapshot.frame.as_ref().clone()
+            } else {
+                fit_frame_to_client_size(snapshot.frame.as_ref(), cols, rows)
+            }
+        }
+    };
     frame.debug_timing = debug_timing;
     let prepare_started = Instant::now();
     let Some(mut prepared) = render_state.prepare_frame(&frame) else {
@@ -460,7 +493,13 @@ mod tests {
         let mut actor = ClientRenderActor::new(RenderEncoding::SemanticFrame, tx);
 
         assert_eq!(
-            actor.publish_frame(1, frame("a"), None, ClientRenderDebugContext::default()),
+            actor.publish_frame(
+                1,
+                frame("a"),
+                (1, 1),
+                None,
+                ClientRenderDebugContext::default()
+            ),
             ClientRenderPublish::Sent
         );
         assert!(matches!(
@@ -468,7 +507,13 @@ mod tests {
             ServerMessage::Frame(_)
         ));
         assert_eq!(
-            actor.publish_frame(1, frame("a"), None, ClientRenderDebugContext::default()),
+            actor.publish_frame(
+                1,
+                frame("a"),
+                (1, 1),
+                None,
+                ClientRenderDebugContext::default()
+            ),
             ClientRenderPublish::Sent
         );
         assert_eq!(
@@ -483,7 +528,13 @@ mod tests {
         let mut actor = ClientRenderActor::new(RenderEncoding::TerminalAnsi, tx);
 
         assert_eq!(
-            actor.publish_frame(1, frame("a"), None, ClientRenderDebugContext::default()),
+            actor.publish_frame(
+                1,
+                frame("a"),
+                (1, 1),
+                None,
+                ClientRenderDebugContext::default()
+            ),
             ClientRenderPublish::Sent
         );
 
@@ -492,5 +543,78 @@ mod tests {
             other => panic!("expected terminal frame, got {other:?}"),
         }
         assert_eq!(actor.terminal_seq(), Some(1));
+    }
+
+    #[test]
+    fn actor_fits_app_snapshot_to_target_size() {
+        let (tx, rx) = LatestRenderSender::channel();
+        let mut actor = ClientRenderActor::new(RenderEncoding::SemanticFrame, tx);
+        let frame = FrameData {
+            cells: vec![
+                CellData {
+                    symbol: "a".to_owned(),
+                    fg: 0,
+                    bg: 0,
+                    modifier: 0,
+                    skip: false,
+                    hyperlink: None,
+                },
+                CellData {
+                    symbol: "b".to_owned(),
+                    fg: 0,
+                    bg: 0,
+                    modifier: 0,
+                    skip: false,
+                    hyperlink: None,
+                },
+                CellData {
+                    symbol: "c".to_owned(),
+                    fg: 0,
+                    bg: 0,
+                    modifier: 0,
+                    skip: false,
+                    hyperlink: None,
+                },
+                CellData {
+                    symbol: "d".to_owned(),
+                    fg: 0,
+                    bg: 0,
+                    modifier: 0,
+                    skip: false,
+                    hyperlink: None,
+                },
+            ],
+            width: 2,
+            height: 2,
+            cursor: None,
+            hyperlinks: Vec::new(),
+            graphics: Vec::new(),
+            debug_timing: None,
+        };
+        let snapshot = Arc::new(AppFrameSnapshot::new(
+            1,
+            1,
+            frame,
+            crate::server::render_snapshot::ServerRenderDebug::default(),
+        ));
+
+        assert_eq!(
+            actor.publish_snapshot(
+                1,
+                snapshot,
+                (1, 1),
+                None,
+                ClientRenderDebugContext::default()
+            ),
+            ClientRenderPublish::Sent
+        );
+
+        match read_server_message(rx.recv().expect("clipped frame")) {
+            ServerMessage::Frame(frame) => {
+                assert_eq!((frame.width, frame.height), (1, 1));
+                assert_eq!(frame.cells[0].symbol, "a");
+            }
+            other => panic!("expected semantic frame, got {other:?}"),
+        }
     }
 }

@@ -50,9 +50,7 @@ use crate::server::clients::{
 use crate::server::keybindings::{app_keybindings, apply_keybindings};
 use crate::server::notifications::{should_forward_toast_to_clients, toast_notify_kind};
 use crate::server::render_actor::{ClientRenderDebugContext, ClientRenderPublish};
-use crate::server::render_snapshot::{
-    fit_frame_to_client_size, AppFrameSnapshot, ServerRenderDebug,
-};
+use crate::server::render_snapshot::{AppFrameSnapshot, ServerRenderDebug};
 use crate::server::socket_paths::{
     client_socket_path, prepare_socket_path, restrict_socket_permissions,
 };
@@ -208,6 +206,9 @@ pub struct HeadlessServer {
     latency_critical_client_id: Option<u64>,
     /// Monotonic generation for active-sized app render snapshots.
     next_app_snapshot_generation: u64,
+    /// Last active-sized app frame. Retained PTY updates patch this canonical
+    /// geometry; actor-local fitted mirror baselines must not drive server decisions.
+    last_app_frame: Option<Arc<AppFrameSnapshot>>,
     /// Flag set when shutdown is initiated.
     shutting_down: bool,
     /// Flag set while exporting live PTYs to a replacement server.
@@ -350,6 +351,7 @@ impl HeadlessServer {
             effective_size: (MIN_COLS, MIN_ROWS),
             latency_critical_client_id: None,
             next_app_snapshot_generation: 1,
+            last_app_frame: None,
             shutting_down: false,
             handoff_in_progress: false,
             pending_handoff_repaint_nudge: false,
@@ -2036,6 +2038,9 @@ impl HeadlessServer {
             .iter()
             .filter(|(_, _, _, _, mode)| matches!(mode, ClientConnectionMode::App))
             .count();
+        if app_target_count == 0 {
+            retained_fallback!("no_app_target");
+        }
         let latency_critical_retained_client_id =
             self.latency_critical_client_id.filter(|client_id| {
                 app_target_count > 1
@@ -2050,50 +2055,36 @@ impl HeadlessServer {
                                 && matches!(mode, ClientConnectionMode::App)
                         })
             });
-        let retained_targets = if let Some(latency_client_id) = latency_critical_retained_client_id
-        {
-            render_targets
-                .iter()
-                .filter(|(client_id, _, _, _, _)| *client_id == latency_client_id)
-                .cloned()
-                .collect::<Vec<_>>()
-        } else {
-            render_targets.clone()
+        let Some(canonical_snapshot) = self.last_app_frame.clone() else {
+            retained_fallback!("no_last_frame");
         };
+        if canonical_snapshot.active_size != self.effective_size {
+            retained_fallback!("frame_size_mismatch");
+        }
+        if self.foreground_client_id != Some(canonical_snapshot.active_client_id) {
+            retained_fallback!("active_client_mismatch");
+        }
 
-        for (client_id, (cols, rows), cell_size, _is_foreground, mode) in &retained_targets {
-            if !matches!(mode, ClientConnectionMode::App) {
-                retained_fallback!("not_app_client");
-            }
-            let Some(client) = self.clients.get(client_id) else {
-                retained_fallback!("client_missing");
-            };
-            if self.app.state.kitty_graphics_enabled && !client.graphics_cache.is_empty() {
-                retained_fallback!("graphics_cache_active");
-            }
-            if client.graphics_surface_reset_pending {
-                retained_fallback!("graphics_surface_reset");
-            }
-            if self.app.state.kitty_graphics_enabled
-                && cell_size.is_known()
-                && crate::kitty_graphics::has_visible_pane_graphics(
-                    &self.app.state,
-                    &self.app.terminal_runtimes,
-                    *cell_size,
-                )
-            {
-                retained_fallback!("visible_kitty_graphics");
-            }
-            let Some(frame) = client
-                .render_actor
-                .as_ref()
-                .and_then(|render_actor| render_actor.last_frame())
-            else {
-                retained_fallback!("no_last_frame");
-            };
-            if frame.width != *cols || frame.height != *rows {
-                retained_fallback!("frame_size_mismatch");
-            }
+        let active_client_id = canonical_snapshot.active_client_id;
+        let Some(active_client) = self.clients.get(&active_client_id) else {
+            retained_fallback!("client_missing");
+        };
+        let active_cell_size = active_client.cell_size;
+        if self.app.state.kitty_graphics_enabled && !active_client.graphics_cache.is_empty() {
+            retained_fallback!("graphics_cache_active");
+        }
+        if active_client.graphics_surface_reset_pending {
+            retained_fallback!("graphics_surface_reset");
+        }
+        if self.app.state.kitty_graphics_enabled
+            && active_cell_size.is_known()
+            && crate::kitty_graphics::has_visible_pane_graphics(
+                &self.app.state,
+                &self.app.terminal_runtimes,
+                active_cell_size,
+            )
+        {
+            retained_fallback!("visible_kitty_graphics");
         }
 
         let Some(ws_idx) = self.app.state.session_index() else {
@@ -2104,21 +2095,10 @@ impl HeadlessServer {
             retained_fallback!("no_pane_info");
         }
 
-        for (client_id, _size, _cell_size, _is_foreground, _mode) in &retained_targets {
-            let Some(client) = self.clients.get(client_id) else {
-                retained_fallback!("client_missing");
-            };
-            let Some(frame) = client
-                .render_actor
-                .as_ref()
-                .and_then(|render_actor| render_actor.last_frame())
-            else {
-                retained_fallback!("no_last_frame");
-            };
-            for info in &pane_infos {
-                if !rect_fits_frame(info.inner_rect, &frame) {
-                    retained_fallback!("pane_rect_outside_frame");
-                }
+        let canonical_frame = canonical_snapshot.frame.as_ref();
+        for info in &pane_infos {
+            if !rect_fits_frame(info.inner_rect, canonical_frame) {
+                retained_fallback!("pane_rect_outside_frame");
             }
         }
 
@@ -2141,20 +2121,8 @@ impl HeadlessServer {
                 crate::pane::TerminalDirtyPatchOutcome::Patch(patch) => {
                     crate::render_prof::event("retained.pane_patch");
                     crate::render_prof::counter("retained.patch_rows", patch.rows.len() as u64);
-                    for (client_id, _size, _cell_size, _is_foreground, _mode) in &retained_targets {
-                        let Some(client) = self.clients.get(client_id) else {
-                            retained_fallback!("client_missing");
-                        };
-                        let Some(frame) = client
-                            .render_actor
-                            .as_ref()
-                            .and_then(|render_actor| render_actor.last_frame())
-                        else {
-                            retained_fallback!("no_last_frame");
-                        };
-                        if dirty_patch_intersects_hyperlinks(&frame, info.inner_rect, &patch) {
-                            retained_fallback!("hyperlink_intersection");
-                        }
+                    if dirty_patch_intersects_hyperlinks(canonical_frame, info.inner_rect, &patch) {
+                        retained_fallback!("hyperlink_intersection");
                     }
                     patches.push((info.inner_rect, patch));
                 }
@@ -2169,48 +2137,50 @@ impl HeadlessServer {
         let mut broken_clients = Vec::new();
         let mut attempted_send = false;
         let mut sent_any = false;
-        let mut mirror_frame = None;
-        for (client_id, _size, _cell_size, _is_foreground, _mode) in retained_targets {
-            let Some(client) = self.clients.get(&client_id) else {
-                retained_fallback!("client_missing");
-            };
-            let Some(mut frame) = client
-                .render_actor
-                .as_ref()
-                .and_then(|render_actor| render_actor.last_frame())
-            else {
-                retained_fallback!("no_last_frame");
-            };
-            frame.graphics.clear();
-            for (inner_rect, patch) in &patches {
-                if !apply_terminal_dirty_patch(&mut frame, *inner_rect, patch.clone()) {
-                    retained_fallback!("patch_apply_failed");
-                }
-            }
-            let cursor_changed = frame.cursor != next_cursor;
-            frame.cursor = next_cursor.clone();
-
-            if patches.is_empty() && !cursor_changed {
-                continue;
-            }
-
-            attempted_send = true;
-            let is_latency_critical = latency_critical_retained_client_id == Some(client_id);
-            if is_latency_critical {
-                mirror_frame = Some((frame.clone(), client_id));
-            }
-            let sent = self.send_retained_frame_to_client(client_id, frame, &mut broken_clients);
-            if sent {
-                sent_any = true;
+        let mut frame = canonical_snapshot.frame.as_ref().clone();
+        frame.graphics.clear();
+        for (inner_rect, patch) in &patches {
+            if !apply_terminal_dirty_patch(&mut frame, *inner_rect, patch.clone()) {
+                retained_fallback!("patch_apply_failed");
             }
         }
-        if sent_any {
-            if let Some((frame, active_client_id)) = mirror_frame {
-                self.publish_retained_frame_to_mirrors(
-                    frame,
-                    active_client_id,
-                    &mut broken_clients,
-                );
+        let cursor_changed = frame.cursor != next_cursor;
+        frame.cursor = next_cursor;
+
+        if patches.is_empty() && !cursor_changed {
+            retained_success!("clean_no_cursor_change");
+        }
+
+        let snapshot = self.store_app_frame_snapshot(frame, ServerRenderDebug::default());
+        let mut retained_targets = render_targets
+            .into_iter()
+            .filter(|(_, _, _, _, mode)| matches!(mode, ClientConnectionMode::App))
+            .collect::<Vec<_>>();
+        if let Some(latency_client_id) = latency_critical_retained_client_id {
+            retained_targets.sort_by_key(|(client_id, _, _, is_foreground, _)| {
+                if *client_id == latency_client_id {
+                    0
+                } else if *is_foreground {
+                    1
+                } else {
+                    2
+                }
+            });
+        }
+        let target_count = retained_targets.len().min(usize::from(u16::MAX)) as u16;
+        for (client_id, size, cell_size, is_foreground, _mode) in retained_targets {
+            attempted_send = true;
+            let sent = self.send_retained_snapshot_to_client(
+                client_id,
+                snapshot.clone(),
+                size,
+                cell_size,
+                is_foreground,
+                target_count,
+                &mut broken_clients,
+            );
+            if sent {
+                sent_any = true;
             }
         }
         for broken_client in broken_clients {
@@ -2226,34 +2196,6 @@ impl HeadlessServer {
         retained_fallback!("send_failed");
     }
 
-    fn publish_retained_frame_to_mirrors(
-        &mut self,
-        frame: FrameData,
-        active_client_id: u64,
-        broken_clients: &mut Vec<u64>,
-    ) {
-        let render_targets = render_targets(&self.clients, self.foreground_client_id);
-        let target_count = render_targets.len().min(usize::from(u16::MAX)) as u16;
-        for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
-            if client_id == active_client_id || !matches!(mode, ClientConnectionMode::App) {
-                continue;
-            }
-            let frame = fit_frame_to_client_size(&frame, cols, rows);
-            let _ = self.stream_frame_to_client(
-                client_id,
-                frame,
-                true,
-                cell_size,
-                false,
-                ServerFrameDebugContext {
-                    target_count,
-                    ..Default::default()
-                },
-                broken_clients,
-            );
-        }
-    }
-
     fn retained_pty_update_allowed_by_app_state(&self) -> bool {
         self.app.state.mode == app::Mode::Terminal
             && self.app.state.selection.is_none()
@@ -2263,54 +2205,112 @@ impl HeadlessServer {
             && !self.app.full_redraw_pending
     }
 
-    fn send_retained_frame_to_client(
+    fn send_retained_snapshot_to_client(
         &mut self,
         client_id: u64,
-        frame: FrameData,
+        snapshot: Arc<AppFrameSnapshot>,
+        target_size: (u16, u16),
+        cell_size: crate::kitty_graphics::HostCellSize,
+        is_foreground: bool,
+        target_count: u16,
         broken_clients: &mut Vec<u64>,
     ) -> bool {
-        let Some(client) = self.clients.get_mut(&client_id) else {
-            crate::render_prof::event("retained_send_fallback.client_missing");
-            return false;
-        };
-        let debug_timing = client.take_frame_debug_timing(Instant::now());
-        let Some(render_actor) = client.render_actor.as_mut() else {
-            crate::render_prof::event("retained_send_fallback.writer_missing");
-            return false;
-        };
-        match render_actor.publish_frame(
+        self.stream_app_snapshot_to_client(
             client_id,
-            frame,
-            debug_timing,
-            ClientRenderDebugContext::default(),
-        ) {
+            snapshot,
+            target_size,
+            cell_size,
+            is_foreground,
+            ServerFrameDebugContext {
+                target_count,
+                ..Default::default()
+            },
+            broken_clients,
+            "retained_send",
+        )
+    }
+
+    fn handle_client_render_publish(
+        &mut self,
+        client_id: u64,
+        publish: ClientRenderPublish,
+        commit_graphics_cache: bool,
+        next_graphics_cache: crate::kitty_graphics::HostGraphicsCache,
+        event_prefix: &str,
+        broken_clients: &mut Vec<u64>,
+    ) -> bool {
+        match publish {
             ClientRenderPublish::Sent => {
-                crate::render_prof::event("retained_send.sent");
+                if commit_graphics_cache {
+                    if let Some(client) = self.clients.get_mut(&client_id) {
+                        client.graphics_cache = next_graphics_cache;
+                        client.graphics_surface_reset_pending = false;
+                    }
+                }
+                match event_prefix {
+                    "retained_send" => crate::render_prof::event("retained_send.sent"),
+                    _ => crate::render_prof::event("full_render.sent"),
+                }
                 true
             }
             ClientRenderPublish::SkippedUnchanged => {
-                crate::render_prof::event("retained_send.skip_identical");
+                match event_prefix {
+                    "retained_send" => crate::render_prof::event("retained_send.skip_identical"),
+                    _ => crate::render_prof::event("full_render.skip_identical"),
+                }
                 true
             }
             ClientRenderPublish::Disconnected => {
                 debug!(client_id, "client writer channel closed, marking as broken");
                 broken_clients.push(client_id);
-                crate::render_prof::event("retained_send_fallback.writer_disconnected");
+                match event_prefix {
+                    "retained_send" => {
+                        crate::render_prof::event("retained_send_fallback.writer_disconnected")
+                    }
+                    _ => crate::render_prof::event("full_render.writer_disconnected"),
+                }
                 false
             }
             ClientRenderPublish::Oversized => {
-                crate::render_prof::event("retained_send_fallback.serialize_oversized");
+                match event_prefix {
+                    "retained_send" => {
+                        crate::render_prof::event("retained_send_fallback.serialize_oversized")
+                    }
+                    _ => crate::render_prof::event("full_render.serialize_oversized"),
+                }
                 false
             }
             ClientRenderPublish::SerializeError => {
                 broken_clients.push(client_id);
-                crate::render_prof::event("retained_send_fallback.serialize_error");
+                match event_prefix {
+                    "retained_send" => {
+                        crate::render_prof::event("retained_send_fallback.serialize_error")
+                    }
+                    _ => crate::render_prof::event("full_render.serialize_error"),
+                }
                 false
             }
         }
     }
 
-    fn render_shared_app_snapshot(&mut self) -> AppFrameSnapshot {
+    fn store_app_frame_snapshot(
+        &mut self,
+        frame: FrameData,
+        debug: ServerRenderDebug,
+    ) -> Arc<AppFrameSnapshot> {
+        let generation = self.next_app_snapshot_generation;
+        self.next_app_snapshot_generation = self.next_app_snapshot_generation.saturating_add(1);
+        let snapshot = Arc::new(AppFrameSnapshot::new(
+            generation,
+            self.foreground_client_id.unwrap_or_default(),
+            frame,
+            debug,
+        ));
+        self.last_app_frame = Some(snapshot.clone());
+        snapshot
+    }
+
+    fn render_shared_app_snapshot(&mut self) -> Arc<AppFrameSnapshot> {
         let (cols, rows) = self.effective_size;
         let area = Rect::new(0, 0, cols, rows);
         let active_client_id = self.foreground_client_id.unwrap_or_default();
@@ -2346,16 +2346,130 @@ impl HeadlessServer {
         let frame = FrameData::from_ratatui_buffer_with_hyperlinks(&buffer, cursor, &hyperlinks);
         crate::render_prof::duration_since("full_render.frame_build", frame_started);
         let frame_build_duration = debug_frame_build_started.elapsed();
-        let generation = self.next_app_snapshot_generation;
-        self.next_app_snapshot_generation = self.next_app_snapshot_generation.saturating_add(1);
-        AppFrameSnapshot::new(
-            generation,
-            active_client_id,
+        self.store_app_frame_snapshot(
             frame,
             ServerRenderDebug {
                 render_us: Some(debug_duration_us(render_duration)),
                 frame_build_us: Some(debug_duration_us(frame_build_duration)),
             },
+        )
+    }
+
+    fn stream_app_snapshot_to_client(
+        &mut self,
+        client_id: u64,
+        snapshot: Arc<AppFrameSnapshot>,
+        target_size: (u16, u16),
+        cell_size: crate::kitty_graphics::HostCellSize,
+        allow_graphics: bool,
+        debug_context: ServerFrameDebugContext,
+        broken_clients: &mut Vec<u64>,
+        event_prefix: &str,
+    ) -> bool {
+        let Some(client) = self.clients.get(&client_id) else {
+            match event_prefix {
+                "retained_send" => {
+                    crate::render_prof::event("retained_send_fallback.client_missing")
+                }
+                _ => crate::render_prof::event("full_render.client_missing"),
+            }
+            return false;
+        };
+        let mut next_graphics_cache = client.graphics_cache.clone();
+        let graphics_surface_reset_pending = client.graphics_surface_reset_pending;
+
+        let mut graphics_us = None;
+        let mut direct_frame = None;
+        if allow_graphics && self.app.state.kitty_graphics_enabled && cell_size.is_known() {
+            let mut frame = snapshot.frame.as_ref().clone();
+            if graphics_surface_reset_pending {
+                frame.graphics = next_graphics_cache.clear_bytes();
+            }
+            let debug_graphics_started = Instant::now();
+            let graphics_started = crate::render_prof::timer();
+            frame
+                .graphics
+                .extend(crate::kitty_graphics::encode_local_pane_graphics(
+                    &self.app.state,
+                    &self.app.terminal_runtimes,
+                    cell_size,
+                    &mut next_graphics_cache,
+                ));
+            graphics_us = Some(debug_duration_us(debug_graphics_started.elapsed()));
+            crate::render_prof::duration_since("full_render.graphics_encode", graphics_started);
+            direct_frame = Some(frame);
+        } else if graphics_surface_reset_pending || !next_graphics_cache.is_empty() {
+            let mut frame = snapshot.frame.as_ref().clone();
+            frame.graphics = next_graphics_cache.clear_bytes();
+            direct_frame = Some(frame);
+        }
+
+        let mut commit_graphics_cache = direct_frame.is_some();
+        if let Some(frame) = direct_frame.as_mut() {
+            if frame.graphics.len() > MAX_GRAPHICS_FRAME_SIZE {
+                warn!(
+                    client_id,
+                    graphics_bytes = frame.graphics.len(),
+                    max = MAX_GRAPHICS_FRAME_SIZE,
+                    "dropping oversized graphics payload for client frame"
+                );
+                frame.graphics.clear();
+                commit_graphics_cache = false;
+            }
+        }
+
+        let Some(client) = self.clients.get_mut(&client_id) else {
+            match event_prefix {
+                "retained_send" => {
+                    crate::render_prof::event("retained_send_fallback.client_missing")
+                }
+                _ => crate::render_prof::event("full_render.client_missing"),
+            }
+            return false;
+        };
+        let mut debug_timing = client.take_frame_debug_timing(Instant::now());
+        if let Some(timing) = &mut debug_timing {
+            debug_context.apply_to(timing);
+        }
+        let Some(render_actor) = client.render_actor.as_mut() else {
+            match event_prefix {
+                "retained_send" => {
+                    crate::render_prof::event("retained_send_fallback.writer_missing")
+                }
+                _ => crate::render_prof::event("full_render.writer_missing"),
+            }
+            return false;
+        };
+        let publish = if let Some(frame) = direct_frame {
+            render_actor.publish_frame(
+                client_id,
+                frame,
+                target_size,
+                debug_timing,
+                ClientRenderDebugContext {
+                    graphics_us,
+                    prepare_us: None,
+                },
+            )
+        } else {
+            render_actor.publish_snapshot(
+                client_id,
+                snapshot,
+                target_size,
+                debug_timing,
+                ClientRenderDebugContext {
+                    graphics_us,
+                    prepare_us: None,
+                },
+            )
+        };
+        self.handle_client_render_publish(
+            client_id,
+            publish,
+            commit_graphics_cache,
+            next_graphics_cache,
+            event_prefix,
+            broken_clients,
         )
     }
 
@@ -2426,6 +2540,7 @@ impl HeadlessServer {
         match render_actor.publish_frame(
             client_id,
             frame,
+            client.terminal_size,
             debug_timing,
             ClientRenderDebugContext {
                 graphics_us,
@@ -2501,7 +2616,6 @@ impl HeadlessServer {
 
         let mut broken_clients: Vec<u64> = Vec::new();
         for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
-            let is_app_client = matches!(mode, ClientConnectionMode::App);
             let mut debug_context = ServerFrameDebugContext {
                 target_count,
                 ..Default::default()
@@ -2523,7 +2637,17 @@ impl HeadlessServer {
                     let _snapshot_age = snapshot.created_at.elapsed();
                     crate::render_prof::counter("app_snapshot.generation", snapshot.generation);
                     debug_context.render = snapshot.debug;
-                    fit_frame_to_client_size(snapshot.frame.as_ref(), cols, rows)
+                    self.stream_app_snapshot_to_client(
+                        client_id,
+                        snapshot.clone(),
+                        (cols, rows),
+                        cell_size,
+                        Some(client_id) == self.foreground_client_id,
+                        debug_context,
+                        &mut broken_clients,
+                        "full_render",
+                    );
+                    continue;
                 }
                 ClientConnectionMode::TerminalAttach { terminal_id } => {
                     let Some(runtime) = self.runtime_for_terminal_id_string(&terminal_id) else {
@@ -2574,9 +2698,9 @@ impl HeadlessServer {
             self.stream_frame_to_client(
                 client_id,
                 frame,
-                is_app_client,
+                false,
                 cell_size,
-                is_app_client && Some(client_id) == self.foreground_client_id,
+                false,
                 debug_context,
                 &mut broken_clients,
             );
@@ -3060,6 +3184,7 @@ mod tests {
             effective_size: (MIN_COLS, MIN_ROWS),
             latency_critical_client_id: None,
             next_app_snapshot_generation: 1,
+            last_app_frame: None,
             shutting_down: false,
             handoff_in_progress: false,
             pending_handoff_repaint_nudge: false,
@@ -3181,12 +3306,23 @@ mod tests {
     fn retained_test_server(
         initial_screen: &[u8],
     ) -> (HeadlessServer, LatestRenderReceiver, crate::layout::PaneId) {
+        retained_test_server_with_size(initial_screen, (80, 24))
+    }
+
+    fn retained_test_server_with_size(
+        initial_screen: &[u8],
+        size: (u16, u16),
+    ) -> (HeadlessServer, LatestRenderReceiver, crate::layout::PaneId) {
         let mut server = test_headless_server();
         let mut workspace = crate::workspace::Workspace::test_new("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         workspace.insert_test_runtime(
             pane_id,
-            crate::terminal::TerminalRuntime::test_with_screen_bytes(80, 24, initial_screen),
+            crate::terminal::TerminalRuntime::test_with_screen_bytes(
+                size.0,
+                size.1,
+                initial_screen,
+            ),
         );
         server.app.state.sessions = vec![workspace];
         server.app.state.active_session = Some(0);
@@ -3207,6 +3343,7 @@ mod tests {
             ),
         );
         server.foreground_client_id = Some(1);
+        server.clients.get_mut(&1).unwrap().terminal_size = size;
         server.sync_foreground_client_state();
         server.resize_shared_runtime_to_effective_size();
 
@@ -5475,6 +5612,65 @@ next_tab = ""
     }
 
     #[tokio::test]
+    async fn retained_pty_update_survives_clipped_mirror_client() {
+        let (mut server, active_rx, pane_id) = retained_test_server_with_size(b"aaaa", (120, 40));
+        let (mirror_tx, _mirror_control_rx, mirror_rx) = test_client_writer();
+        server.clients.insert(
+            2,
+            ClientConnection::new(
+                (80, 24),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                2,
+                RenderEncoding::SemanticFrame,
+                Some(mirror_tx),
+            ),
+        );
+
+        server.render_and_stream();
+        let active_initial = read_server_frame(
+            active_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("initial active frame"),
+        );
+        let mirror_initial = read_server_frame(
+            mirror_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("initial mirror frame"),
+        );
+        assert_eq!((active_initial.width, active_initial.height), (120, 40));
+        assert_eq!((mirror_initial.width, mirror_initial.height), (80, 24));
+
+        let runtime = server
+            .app
+            .state
+            .runtime_for_pane_in_session_at(&server.app.terminal_runtimes, 0, pane_id)
+            .expect("runtime");
+        runtime.test_process_pty_bytes(b"\rZ");
+
+        assert!(
+            server.render_retained_pty_update_and_stream(),
+            "clipped mirror baseline must not force retained fallback"
+        );
+        let active_patched = read_server_frame(
+            active_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("active retained frame"),
+        );
+        let mirror_patched = read_server_frame(
+            mirror_rx
+                .recv_timeout(Duration::from_millis(100))
+                .expect("mirror retained frame"),
+        );
+
+        assert_eq!((active_patched.width, active_patched.height), (120, 40));
+        assert_eq!((mirror_patched.width, mirror_patched.height), (80, 24));
+        assert!(active_patched.cells.iter().any(|cell| cell.symbol == "Z"));
+        assert!(mirror_patched.cells.iter().any(|cell| cell.symbol == "Z"));
+    }
+
+    #[tokio::test]
     async fn retained_pty_update_sends_active_first_for_latency_critical_client() {
         let (mut server, first_rx, pane_id) = retained_test_server(b"aaaa");
         let (second_tx, _second_control_rx, second_rx) = test_client_writer();
@@ -5766,26 +5962,7 @@ next_tab = ""
         let hyperlink_idx =
             usize::from(inner_rect.y) * usize::from(frame.width) + usize::from(inner_rect.x);
         frame.cells[hyperlink_idx].hyperlink = Some(0);
-        assert_eq!(
-            client.render_actor.as_mut().unwrap().publish_frame(
-                1,
-                frame,
-                None,
-                ClientRenderDebugContext::default()
-            ),
-            ClientRenderPublish::Sent
-        );
-        let _ = client_rx
-            .recv_timeout(Duration::from_millis(100))
-            .expect("seed hyperlink frame");
-        client
-            .render_actor
-            .as_ref()
-            .unwrap()
-            .wait_for_last_frame_matching(Duration::from_millis(100), |frame| {
-                !frame.hyperlinks.is_empty()
-            })
-            .expect("seed hyperlink baseline");
+        server.store_app_frame_snapshot(frame, ServerRenderDebug::default());
 
         let runtime = server
             .app
