@@ -1805,9 +1805,7 @@ impl HeadlessServer {
                 }
                 let should_resize_shared = self.foreground_client_id == Some(client_id)
                     || self.foreground_client_id.is_none();
-                let terminal_grid_changed;
                 if let Some(client) = self.clients.get_mut(&client_id) {
-                    terminal_grid_changed = client.terminal_size != (cols, rows);
                     client.terminal_size = (cols, rows);
                     client.cell_size = crate::kitty_graphics::HostCellSize {
                         width_px: cell_width_px,
@@ -1821,7 +1819,7 @@ impl HeadlessServer {
                     self.promote_client_to_foreground(client_id);
                     self.resize_shared_runtime_to_effective_size();
                 }
-                should_resize_shared || terminal_grid_changed
+                should_resize_shared
             }
             ServerEvent::ClientDetach { client_id } => {
                 info!(client_id, "client detached");
@@ -4525,7 +4523,7 @@ next_tab = ""
         server.foreground_client_id = Some(1);
         server.sync_foreground_client_state();
 
-        assert!(server.handle_server_event(ServerEvent::ClientResize {
+        assert!(!server.handle_server_event(ServerEvent::ClientResize {
             client_id: 2,
             cols: 100,
             rows: 30,
