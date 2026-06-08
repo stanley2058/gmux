@@ -42,7 +42,7 @@ use crate::protocol::{
 use crate::server::client_accept::{
     accept_pending_client_connections, reject_pending_client_connections,
 };
-use crate::server::client_transport::ServerEvent;
+use crate::server::client_transport::{LatestRenderDisconnected, ServerEvent};
 use crate::server::clients::{
     events_include_interaction, latest_app_client, render_targets, terminal_attach_client_ids,
     ClientConnection, ClientConnectionMode,
@@ -60,7 +60,7 @@ use crate::server::terminal_attach::paste_payload_for_runtime;
 #[cfg(test)]
 use crate::protocol::RenderEncoding;
 #[cfg(test)]
-use crate::server::client_transport::ClientWriter;
+use crate::server::client_transport::{ClientWriter, LatestRenderReceiver, LatestRenderSender};
 #[cfg(test)]
 use std::fs;
 
@@ -1833,17 +1833,6 @@ impl HeadlessServer {
                 self.remove_client_and_resize_if_needed(client_id);
                 true
             }
-            ServerEvent::ClientWriterDrained { client_id } => {
-                let Some(client) = self.clients.get_mut(&client_id) else {
-                    return false;
-                };
-                if client.render_pending {
-                    client.render_pending = false;
-                    true
-                } else {
-                    false
-                }
-            }
             ServerEvent::MirrorFrameReady {
                 client_id,
                 generation,
@@ -1859,22 +1848,14 @@ impl HeadlessServer {
                 let Some(writer) = client.writer.as_ref().cloned() else {
                     return false;
                 };
-                match writer.render.try_send(serialized) {
+                match writer.render.send(serialized) {
                     Ok(()) => {
                         if let Some(client) = self.clients.get_mut(&client_id) {
                             client.render_pending = false;
                             client.render_state.commit_semantic_frame(frame);
                         }
                     }
-                    Err(std::sync::mpsc::TrySendError::Full(_)) => {
-                        if let Some(client) = self.clients.get_mut(&client_id) {
-                            client.request_full_redraw();
-                            client.render_pending = true;
-                            writer.render_drain_requested.store(true, Ordering::Release);
-                        }
-                        crate::render_prof::event("mirror.background.queue_full_drop");
-                    }
-                    Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                    Err(LatestRenderDisconnected) => {
                         self.remove_client_and_resize_if_needed(client_id);
                     }
                 }
@@ -1904,7 +1885,6 @@ impl HeadlessServer {
             ev,
             ServerEvent::ClientConnected { .. }
                 | ServerEvent::ClientDisconnected { .. }
-                | ServerEvent::ClientWriterDrained { .. }
                 | ServerEvent::QuitSignal
         )
     }
@@ -2138,9 +2118,6 @@ impl HeadlessServer {
             let Some(client) = self.clients.get(client_id) else {
                 retained_fallback!("client_missing");
             };
-            if client.render_pending {
-                retained_fallback!("render_pending");
-            }
             if self.app.state.kitty_graphics_enabled && !client.graphics_cache.is_empty() {
                 retained_fallback!("graphics_cache_active");
             }
@@ -2337,7 +2314,7 @@ impl HeadlessServer {
         crate::render_prof::counter("retained_send.bytes", serialized.len() as u64);
 
         let send_started = crate::render_prof::timer();
-        match writer.render.try_send(serialized) {
+        match writer.render.send(serialized) {
             Ok(()) => {
                 client.render_pending = false;
                 frame.debug_timing = None;
@@ -2346,18 +2323,7 @@ impl HeadlessServer {
                 crate::render_prof::duration_since("retained_send.try_send", send_started);
                 true
             }
-            Err(std::sync::mpsc::TrySendError::Full(_)) => {
-                client.render_pending = true;
-                writer.render_drain_requested.store(true, Ordering::Release);
-                crate::render_prof::event("retained_send_fallback.queue_full");
-                crate::render_prof::duration_since("retained_send.try_send", send_started);
-                debug!(
-                    client_id,
-                    "render queue full, deferring latest retained frame"
-                );
-                false
-            }
-            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+            Err(LatestRenderDisconnected) => {
                 debug!(client_id, "client writer channel closed, marking as broken");
                 broken_clients.push(client_id);
                 crate::render_prof::event("retained_send_fallback.writer_disconnected");
@@ -2424,7 +2390,6 @@ impl HeadlessServer {
         let render_targets = render_targets(&self.clients, self.foreground_client_id);
         let target_count = render_targets.len().min(usize::from(u16::MAX)) as u16;
         let mut broken_clients = Vec::new();
-        let mut deferred_frame = false;
         let mut sent_any = false;
         for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
             if client_id == skip_client_id || !matches!(mode, ClientConnectionMode::App) {
@@ -2470,14 +2435,12 @@ impl HeadlessServer {
                 frame,
                 true,
                 cell_size,
-                false,
                 ServerFrameDebugContext {
                     target_count,
                     mirror_flush: true,
                     ..Default::default()
                 },
                 &mut broken_clients,
-                &mut deferred_frame,
             );
         }
         for client_id in broken_clients {
@@ -2492,10 +2455,8 @@ impl HeadlessServer {
         mut frame: FrameData,
         is_app_client: bool,
         cell_size: crate::kitty_graphics::HostCellSize,
-        allow_defer: bool,
         debug_context: ServerFrameDebugContext,
         broken_clients: &mut Vec<u64>,
-        deferred_frame: &mut bool,
     ) -> bool {
         let Some(client) = self.clients.get(&client_id) else {
             return false;
@@ -2636,7 +2597,7 @@ impl HeadlessServer {
         crate::render_prof::counter("full_render.bytes", serialized.len() as u64);
 
         let send_started = crate::render_prof::timer();
-        match writer.render.try_send(serialized) {
+        match writer.render.send(serialized) {
             Ok(()) => {
                 client.render_pending = false;
                 if commit_graphics_cache {
@@ -2650,21 +2611,7 @@ impl HeadlessServer {
                 crate::render_prof::duration_since("full_render.try_send", send_started);
                 true
             }
-            Err(std::sync::mpsc::TrySendError::Full(_)) if allow_defer => {
-                client.render_pending = true;
-                writer.render_drain_requested.store(true, Ordering::Release);
-                *deferred_frame = true;
-                crate::render_prof::event("full_render.queue_full");
-                crate::render_prof::duration_since("full_render.try_send", send_started);
-                debug!(client_id, "render queue full, deferring latest frame");
-                false
-            }
-            Err(std::sync::mpsc::TrySendError::Full(_)) => {
-                crate::render_prof::event("mirror.queue_full_drop");
-                crate::render_prof::duration_since("full_render.try_send", send_started);
-                false
-            }
-            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+            Err(LatestRenderDisconnected) => {
                 debug!(client_id, "client writer channel closed, marking as broken");
                 broken_clients.push(client_id);
                 crate::render_prof::event("full_render.writer_disconnected");
@@ -2727,7 +2674,6 @@ impl HeadlessServer {
         };
 
         let mut broken_clients: Vec<u64> = Vec::new();
-        let mut deferred_frame = false;
         for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
             if latency_client_id.is_some()
                 && matches!(mode, ClientConnectionMode::App)
@@ -2812,10 +2758,8 @@ impl HeadlessServer {
                 frame,
                 is_app_client,
                 cell_size,
-                true,
                 debug_context,
                 &mut broken_clients,
-                &mut deferred_frame,
             );
         }
 
@@ -2834,9 +2778,7 @@ impl HeadlessServer {
         self.compute_foreground_view_geometry();
 
         let (cols, rows) = self.effective_size;
-        if !deferred_frame {
-            self.app.full_redraw_pending = false;
-        }
+        self.app.full_redraw_pending = false;
         crate::render_prof::duration_since("full_render.total", full_started);
         debug!(cols, rows, foreground_client_id = ?self.foreground_client_id, "rendered virtual frame(s)");
     }
@@ -3411,15 +3353,14 @@ mod tests {
     fn test_client_writer() -> (
         ClientWriter,
         std::sync::mpsc::Receiver<Vec<u8>>,
-        std::sync::mpsc::Receiver<Vec<u8>>,
+        LatestRenderReceiver,
     ) {
         let (control_tx, control_rx) = std::sync::mpsc::channel();
-        let (render_tx, render_rx) = std::sync::mpsc::sync_channel(1);
+        let (render_tx, render_rx) = LatestRenderSender::channel();
         (
             ClientWriter {
                 control: control_tx,
                 render: render_tx,
-                render_drain_requested: Arc::new(AtomicBool::new(false)),
             },
             control_rx,
             render_rx,
@@ -3428,11 +3369,7 @@ mod tests {
 
     fn retained_test_server(
         initial_screen: &[u8],
-    ) -> (
-        HeadlessServer,
-        std::sync::mpsc::Receiver<Vec<u8>>,
-        crate::layout::PaneId,
-    ) {
+    ) -> (HeadlessServer, LatestRenderReceiver, crate::layout::PaneId) {
         let mut server = test_headless_server();
         let mut workspace = crate::workspace::Workspace::test_new("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
@@ -4916,7 +4853,7 @@ next_tab = ""
     }
 
     #[test]
-    fn full_background_mirror_queue_retries_after_writer_drain() {
+    fn full_background_mirror_slot_keeps_latest_frame_without_drain_event() {
         let mut server = test_headless_server();
         server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
         server.app.state.active_session = Some(0);
@@ -4973,33 +4910,14 @@ next_tab = ""
         server.render_and_stream();
         drain_next_server_event(&mut server);
 
-        let background_client = server.clients.get(&2).expect("background client");
-        assert!(background_client.render_pending);
-        assert!(background_client
-            .writer
-            .as_ref()
-            .expect("background writer")
-            .render_drain_requested
-            .load(Ordering::Acquire));
-
-        assert!(matches!(
-            read_server_message(
-                background_rx
-                    .recv_timeout(Duration::from_millis(100))
-                    .expect("queued background frame")
-            ),
-            ServerMessage::ReloadClientConfig
-        ));
-        assert!(server.handle_server_event(ServerEvent::ClientWriterDrained { client_id: 2 }));
-        server.render_and_stream();
+        assert!(!server.clients.get(&2).unwrap().render_pending);
 
         let background_frame = read_server_frame(
             background_rx
                 .recv_timeout(Duration::from_millis(100))
-                .expect("retried background frame"),
+                .expect("latest background frame"),
         );
         assert_eq!((background_frame.width, background_frame.height), (80, 24));
-        assert!(!server.clients.get(&2).unwrap().render_pending);
     }
 
     #[test]
@@ -5516,7 +5434,7 @@ next_tab = ""
     }
 
     #[test]
-    fn full_render_queue_does_not_advance_terminal_ansi_baseline() {
+    fn full_render_latest_slot_advances_terminal_ansi_baseline() {
         let mut server = test_headless_server();
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();
         let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadClientConfig)
@@ -5540,58 +5458,6 @@ next_tab = ""
         );
         server.foreground_client_id = Some(1);
 
-        server.render_and_stream();
-
-        assert_eq!(
-            server
-                .clients
-                .get(&1)
-                .unwrap()
-                .render_state
-                .terminal_seq()
-                .unwrap(),
-            0
-        );
-        assert!(matches!(
-            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::ReloadClientConfig
-        ));
-        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
-    }
-
-    #[test]
-    fn writer_drained_retries_pending_terminal_ansi_render() {
-        let mut server = test_headless_server();
-        let (client_tx, _client_control_rx, client_rx) = test_client_writer();
-        let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadClientConfig)
-            .expect("serialize dummy message");
-        client_tx
-            .render
-            .send(queued)
-            .expect("pre-fill render queue");
-
-        server.clients.insert(
-            1,
-            ClientConnection::new(
-                (80, 24),
-                crate::kitty_graphics::HostCellSize::default(),
-                crate::terminal_theme::TerminalTheme::default(),
-                None,
-                1,
-                RenderEncoding::TerminalAnsi,
-                Some(client_tx),
-            ),
-        );
-        server.foreground_client_id = Some(1);
-
-        server.render_and_stream();
-        assert!(server.clients.get(&1).unwrap().render_pending);
-        assert!(matches!(
-            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::ReloadClientConfig
-        ));
-
-        assert!(server.handle_server_event(ServerEvent::ClientWriterDrained { client_id: 1 }));
         server.render_and_stream();
 
         match read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()) {
@@ -5935,8 +5801,11 @@ next_tab = ""
         runtime.test_process_pty_bytes(b"\rZ");
 
         server.app.state.mode = crate::app::Mode::Navigate;
-        assert!(!server.render_retained_pty_update_and_stream());
-        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        assert!(server.render_retained_pty_update_and_stream());
+        assert!(matches!(
+            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
+            ServerMessage::Frame(_)
+        ));
 
         server.app.state.mode = crate::app::Mode::Terminal;
         assert!(server.render_retained_pty_update_and_stream());
@@ -6069,12 +5938,15 @@ next_tab = ""
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
-        assert!(!server.render_retained_pty_update_and_stream());
-        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        assert!(server.render_retained_pty_update_and_stream());
+        assert!(matches!(
+            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
+            ServerMessage::Frame(_)
+        ));
     }
 
     #[tokio::test]
-    async fn full_redraw_pending_survives_full_render_queue_full() {
+    async fn full_redraw_pending_clears_after_latest_slot_publish() {
         let (mut server, client_rx, pane_id) = retained_test_server(b"aaaa");
         let queued = HeadlessServer::frame_server_message(&ServerMessage::ReloadClientConfig)
             .expect("serialize dummy message");
@@ -6092,11 +5964,11 @@ next_tab = ""
 
         server.render_and_stream();
 
-        assert!(server.app.full_redraw_pending);
-        assert!(server.clients.get(&1).unwrap().render_pending);
+        assert!(!server.app.full_redraw_pending);
+        assert!(!server.clients.get(&1).unwrap().render_pending);
         assert!(matches!(
             read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::ReloadClientConfig
+            ServerMessage::Frame(_)
         ));
 
         let runtime = server
@@ -6106,8 +5978,11 @@ next_tab = ""
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
-        assert!(!server.render_retained_pty_update_and_stream());
-        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        assert!(server.render_retained_pty_update_and_stream());
+        assert!(matches!(
+            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
+            ServerMessage::Frame(_)
+        ));
     }
 
     #[test]

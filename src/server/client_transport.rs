@@ -6,8 +6,8 @@
 
 use std::io::{self, Write};
 use std::os::unix::net::UnixStream;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
@@ -41,12 +41,135 @@ const MAX_INPUT_PAYLOAD: usize = 1024 * 1024; // 1 MB
 pub(crate) struct ClientWriter {
     /// Reliable control messages such as shutdown, notifications, and clipboard writes.
     pub(crate) control: std::sync::mpsc::Sender<Vec<u8>>,
-    /// Droppable render messages. Capacity is one so slow clients cannot build lag.
-    pub(crate) render: std::sync::mpsc::SyncSender<Vec<u8>>,
-    /// Set by the server after a render send finds the channel full. The writer
-    /// notifies the server only for requested drains so normal frame delivery
-    /// does not flood the shared server-event queue.
-    pub(crate) render_drain_requested: Arc<AtomicBool>,
+    /// Latest-only render messages. Slow clients observe the newest frame
+    /// available to the writer without feeding drain events back to the server.
+    pub(crate) render: LatestRenderSender,
+}
+
+#[derive(Debug)]
+pub(crate) struct LatestRenderSender {
+    shared: Arc<LatestRenderShared>,
+}
+
+#[derive(Debug)]
+pub(crate) struct LatestRenderReceiver {
+    shared: Arc<LatestRenderShared>,
+}
+
+#[derive(Debug)]
+struct LatestRenderShared {
+    state: Mutex<LatestRenderState>,
+    available: Condvar,
+    sender_count: AtomicUsize,
+}
+
+#[derive(Debug, Default)]
+struct LatestRenderState {
+    frame: Option<Vec<u8>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct LatestRenderDisconnected;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LatestRenderRecvError {
+    Timeout,
+    Disconnected,
+}
+
+impl LatestRenderSender {
+    pub(crate) fn channel() -> (Self, LatestRenderReceiver) {
+        let shared = Arc::new(LatestRenderShared {
+            state: Mutex::new(LatestRenderState::default()),
+            available: Condvar::new(),
+            sender_count: AtomicUsize::new(1),
+        });
+        (
+            Self {
+                shared: shared.clone(),
+            },
+            LatestRenderReceiver { shared },
+        )
+    }
+
+    pub(crate) fn send(&self, frame: Vec<u8>) -> Result<(), LatestRenderDisconnected> {
+        if self.shared.sender_count.load(Ordering::Acquire) == 0 {
+            return Err(LatestRenderDisconnected);
+        }
+        let mut state = self.shared.state.lock().expect("render slot lock poisoned");
+        state.frame = Some(frame);
+        self.shared.available.notify_one();
+        Ok(())
+    }
+}
+
+impl Clone for LatestRenderSender {
+    fn clone(&self) -> Self {
+        self.shared.sender_count.fetch_add(1, Ordering::AcqRel);
+        Self {
+            shared: self.shared.clone(),
+        }
+    }
+}
+
+impl Drop for LatestRenderSender {
+    fn drop(&mut self) {
+        if self.shared.sender_count.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.shared.available.notify_one();
+        }
+    }
+}
+
+impl LatestRenderReceiver {
+    pub(crate) fn try_recv(&self) -> Result<Vec<u8>, LatestRenderRecvError> {
+        let mut state = self.shared.state.lock().expect("render slot lock poisoned");
+        if let Some(frame) = state.frame.take() {
+            return Ok(frame);
+        }
+        if self.shared.sender_count.load(Ordering::Acquire) == 0 {
+            return Err(LatestRenderRecvError::Disconnected);
+        }
+        Err(LatestRenderRecvError::Timeout)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn recv(&self) -> Result<Vec<u8>, LatestRenderRecvError> {
+        let mut state = self.shared.state.lock().expect("render slot lock poisoned");
+        loop {
+            if let Some(frame) = state.frame.take() {
+                return Ok(frame);
+            }
+            if self.shared.sender_count.load(Ordering::Acquire) == 0 {
+                return Err(LatestRenderRecvError::Disconnected);
+            }
+            state = self
+                .shared
+                .available
+                .wait(state)
+                .expect("render slot condvar poisoned");
+        }
+    }
+
+    pub(crate) fn recv_timeout(&self, timeout: Duration) -> Result<Vec<u8>, LatestRenderRecvError> {
+        let mut state = self.shared.state.lock().expect("render slot lock poisoned");
+        loop {
+            if let Some(frame) = state.frame.take() {
+                return Ok(frame);
+            }
+            if self.shared.sender_count.load(Ordering::Acquire) == 0 {
+                return Err(LatestRenderRecvError::Disconnected);
+            }
+            let (next_state, wait) = self
+                .shared
+                .available
+                .wait_timeout(state, timeout)
+                .expect("render slot condvar poisoned");
+            state = next_state;
+            if wait.timed_out() {
+                return Err(LatestRenderRecvError::Timeout);
+            }
+        }
+    }
 }
 
 /// Internal event sent from client transport threads to the main event loop.
@@ -104,8 +227,6 @@ pub(crate) enum ServerEvent {
     ClientDetach { client_id: u64 },
     /// A client connection was lost.
     ClientDisconnected { client_id: u64 },
-    /// A client writer drained its render slot and can accept another render.
-    ClientWriterDrained { client_id: u64 },
     /// A background mirror serialization job produced a frame ready to enqueue.
     MirrorFrameReady {
         client_id: u64,
@@ -263,12 +384,10 @@ pub(crate) fn handle_client_handshake(
 
     // Create separate channels for reliable control messages and droppable renders.
     let (control_tx, control_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    let (render_tx, render_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(1);
-    let render_drain_requested = Arc::new(AtomicBool::new(false));
+    let (render_tx, render_rx) = LatestRenderSender::channel();
     let writer = ClientWriter {
         control: control_tx,
         render: render_tx,
-        render_drain_requested: render_drain_requested.clone(),
     };
 
     // Notify the main loop about the new client.
@@ -286,16 +405,8 @@ pub(crate) fn handle_client_handshake(
 
     // Spawn a writer thread that forwards messages from the channels to the stream.
     let write_stream = stream.try_clone()?;
-    let writer_event_tx = server_event_tx.clone();
     std::thread::spawn(move || {
-        client_writer_loop(
-            write_stream,
-            client_id,
-            control_rx,
-            render_rx,
-            render_drain_requested,
-            writer_event_tx,
-        );
+        client_writer_loop(write_stream, client_id, control_rx, render_rx);
     });
 
     // Enter read loop — read client messages and forward to main loop.
@@ -313,9 +424,7 @@ fn client_writer_loop(
     mut stream: UnixStream,
     client_id: u64,
     control_rx: std::sync::mpsc::Receiver<Vec<u8>>,
-    render_rx: std::sync::mpsc::Receiver<Vec<u8>>,
-    render_drain_requested: Arc<AtomicBool>,
-    server_event_tx: mpsc::Sender<ServerEvent>,
+    render_rx: LatestRenderReceiver,
 ) {
     let mut control_closed = false;
     let mut render_closed = false;
@@ -334,51 +443,42 @@ fn client_writer_loop(
 
         match render_rx.try_recv() {
             Ok(data) => {
-                if render_drain_requested.swap(false, Ordering::AcqRel) {
-                    let _ = server_event_tx
-                        .blocking_send(ServerEvent::ClientWriterDrained { client_id });
-                }
                 if !write_framed_bytes(&mut stream, &data) {
                     break;
                 }
                 continue;
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => render_closed = true,
+            Err(LatestRenderRecvError::Timeout) => {}
+            Err(LatestRenderRecvError::Disconnected) => render_closed = true,
         }
 
         if control_closed && render_closed {
             break;
         }
 
-        if control_closed {
-            match render_rx.recv_timeout(Duration::from_millis(5)) {
+        if render_closed {
+            match control_rx.recv_timeout(Duration::from_millis(5)) {
                 Ok(data) => {
-                    if render_drain_requested.swap(false, Ordering::AcqRel) {
-                        let _ = server_event_tx
-                            .blocking_send(ServerEvent::ClientWriterDrained { client_id });
-                    }
                     if !write_framed_bytes(&mut stream, &data) {
                         break;
                     }
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => render_closed = true,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => control_closed = true,
             }
-            continue;
-        }
-
-        match control_rx.recv_timeout(Duration::from_millis(5)) {
-            Ok(data) => {
-                if !write_framed_bytes(&mut stream, &data) {
-                    break;
+        } else {
+            match render_rx.recv_timeout(Duration::from_millis(1)) {
+                Ok(data) => {
+                    if !write_framed_bytes(&mut stream, &data) {
+                        break;
+                    }
                 }
+                Err(LatestRenderRecvError::Timeout) => continue,
+                Err(LatestRenderRecvError::Disconnected) => render_closed = true,
             }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => control_closed = true,
         }
     }
-    debug!("client writer thread exiting");
+    debug!(client_id, "client writer thread exiting");
 }
 
 fn write_framed_bytes(stream: &mut UnixStream, data: &[u8]) -> bool {
