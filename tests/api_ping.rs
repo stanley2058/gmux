@@ -10,7 +10,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use support::{
-    cleanup_test_base, register_runtime_dir, register_spawned_gmux_pid, unregister_spawned_gmux_pid,
+    cleanup_test_base, register_runtime_dir, register_spawned_gmux_pid,
+    unregister_spawned_gmux_pid, TEST_PROTOCOL_VERSION,
 };
 
 fn unique_test_dir() -> PathBuf {
@@ -251,9 +252,7 @@ fn ping_over_socket_returns_version() {
     assert_eq!(value["id"], "req_1");
     assert_eq!(value["result"]["type"], "pong");
     assert_eq!(value["result"]["version"], env!("CARGO_PKG_VERSION"));
-    // Intentionally hardcoded so wire protocol bumps require updating this test.
-    // Changing this value means old clients/servers are no longer compatible.
-    assert_eq!(value["result"]["protocol"], 13);
+    assert_eq!(value["result"]["protocol"], TEST_PROTOCOL_VERSION);
 
     cleanup_spawned_gmux(child, base);
 }

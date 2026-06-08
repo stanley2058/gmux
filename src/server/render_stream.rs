@@ -6,7 +6,9 @@ use ratatui::layout::{Position, Rect, Size};
 use crate::app::state::AppState;
 use crate::app::Mode;
 use crate::protocol::render_ansi::{BlitEncoder, EncodedBlit};
-use crate::protocol::{CursorState, FrameData, RenderEncoding, ServerMessage, TerminalFrame};
+use crate::protocol::{
+    CursorState, FrameData, FrameDebugTiming, RenderEncoding, ServerMessage, TerminalFrame,
+};
 use crate::terminal::TerminalRuntimeRegistry;
 
 /// Per-client render baseline for the negotiated render encoding.
@@ -109,6 +111,22 @@ impl ClientRenderState {
         }
     }
 
+    pub(crate) fn is_semantic(&self) -> bool {
+        matches!(self, Self::Semantic { .. })
+    }
+
+    pub(crate) fn semantic_frame_is_current(&self, frame: &FrameData) -> bool {
+        matches!(self, Self::Semantic { last_frame } if last_frame.as_ref() == Some(frame))
+    }
+
+    pub(crate) fn commit_semantic_frame(&mut self, frame: FrameData) -> bool {
+        let Self::Semantic { last_frame } = self else {
+            return false;
+        };
+        *last_frame = Some(frame);
+        true
+    }
+
     pub(crate) fn commit_sent_frame(&mut self, frame: FrameData, prepared: PreparedRender) {
         match (self, prepared.encoded) {
             (Self::Semantic { last_frame }, None) => *last_frame = Some(frame),
@@ -162,6 +180,14 @@ pub(crate) struct PreparedRender {
 impl PreparedRender {
     pub(crate) fn message(&self) -> &ServerMessage {
         &self.message
+    }
+
+    pub(crate) fn set_debug_timing(&mut self, timing: Option<FrameDebugTiming>) {
+        match &mut self.message {
+            ServerMessage::Frame(frame) => frame.debug_timing = timing,
+            ServerMessage::Terminal(frame) => frame.debug_timing = timing,
+            _ => {}
+        }
     }
 }
 

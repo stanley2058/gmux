@@ -15,7 +15,8 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::Deserialize;
 use serde_json::Value;
 use support::{
-    cleanup_test_base, register_runtime_dir, register_spawned_gmux_pid, unregister_spawned_gmux_pid,
+    cleanup_test_base, register_runtime_dir, register_spawned_gmux_pid,
+    unregister_spawned_gmux_pid, TEST_PROTOCOL_VERSION,
 };
 
 fn unique_test_dir() -> PathBuf {
@@ -566,7 +567,8 @@ fn client_handshake(
 
 fn connect_raw_client(client_socket: &Path, cols: u16, rows: u16) -> UnixStream {
     let mut stream = UnixStream::connect(client_socket).expect("should connect to client socket");
-    client_handshake(&mut stream, 13, cols, rows).expect("handshake should succeed");
+    client_handshake(&mut stream, TEST_PROTOCOL_VERSION, cols, rows)
+        .expect("handshake should succeed");
     stream
 }
 
@@ -607,6 +609,14 @@ struct FrameDebugTimingWire {
     server_input_queue_us: u64,
     server_input_to_frame_us: u64,
     server_pty_dirty_to_frame_us: Option<u64>,
+    server_render_us: Option<u64>,
+    server_frame_build_us: Option<u64>,
+    server_graphics_us: Option<u64>,
+    server_prepare_us: Option<u64>,
+    server_target_count: u16,
+    server_active_only: bool,
+    server_mirror_flush: bool,
+    server_pending_mirror: bool,
 }
 
 #[allow(dead_code)]

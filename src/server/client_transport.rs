@@ -43,6 +43,10 @@ pub(crate) struct ClientWriter {
     pub(crate) control: std::sync::mpsc::Sender<Vec<u8>>,
     /// Droppable render messages. Capacity is one so slow clients cannot build lag.
     pub(crate) render: std::sync::mpsc::SyncSender<Vec<u8>>,
+    /// Set by the server after a render send finds the channel full. The writer
+    /// notifies the server only for requested drains so normal frame delivery
+    /// does not flood the shared server-event queue.
+    pub(crate) render_drain_requested: Arc<AtomicBool>,
 }
 
 /// Internal event sent from client transport threads to the main event loop.
@@ -102,6 +106,15 @@ pub(crate) enum ServerEvent {
     ClientDisconnected { client_id: u64 },
     /// A client writer drained its render slot and can accept another render.
     ClientWriterDrained { client_id: u64 },
+    /// A background mirror serialization job produced a frame ready to enqueue.
+    MirrorFrameReady {
+        client_id: u64,
+        generation: u64,
+        frame: crate::protocol::FrameData,
+        serialized: Vec<u8>,
+    },
+    /// A background mirror serialization job failed or was dropped.
+    MirrorFrameDropped { client_id: u64, generation: u64 },
     /// Ctrl+C or external shutdown signal received.
     QuitSignal,
 }
@@ -138,6 +151,7 @@ pub(crate) fn handle_client_handshake(
     mut stream: UnixStream,
     client_id: u64,
     server_event_tx: &mpsc::Sender<ServerEvent>,
+    server_input_tx: &mpsc::UnboundedSender<ServerEvent>,
     should_quit: &Arc<AtomicBool>,
 ) -> io::Result<()> {
     // Reset to blocking mode — the accept loop sets nonblocking but
@@ -250,9 +264,11 @@ pub(crate) fn handle_client_handshake(
     // Create separate channels for reliable control messages and droppable renders.
     let (control_tx, control_rx) = std::sync::mpsc::channel::<Vec<u8>>();
     let (render_tx, render_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(1);
+    let render_drain_requested = Arc::new(AtomicBool::new(false));
     let writer = ClientWriter {
         control: control_tx,
         render: render_tx,
+        render_drain_requested: render_drain_requested.clone(),
     };
 
     // Notify the main loop about the new client.
@@ -277,12 +293,19 @@ pub(crate) fn handle_client_handshake(
             client_id,
             control_rx,
             render_rx,
+            render_drain_requested,
             writer_event_tx,
         );
     });
 
     // Enter read loop — read client messages and forward to main loop.
-    client_read_loop(stream, client_id, server_event_tx, should_quit)
+    client_read_loop(
+        stream,
+        client_id,
+        server_event_tx,
+        server_input_tx,
+        should_quit,
+    )
 }
 
 /// The client writer loop — prioritizes control messages over render frames.
@@ -291,6 +314,7 @@ fn client_writer_loop(
     client_id: u64,
     control_rx: std::sync::mpsc::Receiver<Vec<u8>>,
     render_rx: std::sync::mpsc::Receiver<Vec<u8>>,
+    render_drain_requested: Arc<AtomicBool>,
     server_event_tx: mpsc::Sender<ServerEvent>,
 ) {
     let mut control_closed = false;
@@ -310,8 +334,10 @@ fn client_writer_loop(
 
         match render_rx.try_recv() {
             Ok(data) => {
-                let _ =
-                    server_event_tx.blocking_send(ServerEvent::ClientWriterDrained { client_id });
+                if render_drain_requested.swap(false, Ordering::AcqRel) {
+                    let _ = server_event_tx
+                        .blocking_send(ServerEvent::ClientWriterDrained { client_id });
+                }
                 if !write_framed_bytes(&mut stream, &data) {
                     break;
                 }
@@ -328,8 +354,10 @@ fn client_writer_loop(
         if control_closed {
             match render_rx.recv_timeout(Duration::from_millis(5)) {
                 Ok(data) => {
-                    let _ = server_event_tx
-                        .blocking_send(ServerEvent::ClientWriterDrained { client_id });
+                    if render_drain_requested.swap(false, Ordering::AcqRel) {
+                        let _ = server_event_tx
+                            .blocking_send(ServerEvent::ClientWriterDrained { client_id });
+                    }
                     if !write_framed_bytes(&mut stream, &data) {
                         break;
                     }
@@ -370,6 +398,7 @@ fn client_read_loop(
     mut stream: UnixStream,
     client_id: u64,
     server_event_tx: &mpsc::Sender<ServerEvent>,
+    server_input_tx: &mpsc::UnboundedSender<ServerEvent>,
     should_quit: &Arc<AtomicBool>,
 ) -> io::Result<()> {
     while !should_quit.load(Ordering::Acquire) {
@@ -483,13 +512,24 @@ fn client_read_loop(
             }
         };
 
-        if server_event_tx.blocking_send(event).is_err() {
+        if is_priority_input_event(&event) {
+            if server_input_tx.send(event).is_err() {
+                break; // Main loop gone.
+            }
+        } else if server_event_tx.blocking_send(event).is_err() {
             break; // Main loop gone.
         }
     }
 
     debug!(client_id, "client read thread exiting");
     Ok(())
+}
+
+fn is_priority_input_event(event: &ServerEvent) -> bool {
+    matches!(
+        event,
+        ServerEvent::ClientInput { .. } | ServerEvent::ClientAttachScroll { .. }
+    )
 }
 
 #[cfg(test)]
@@ -579,10 +619,17 @@ new_tab = "ctrl+notakey"
     fn handshake_negotiates_terminal_ansi_encoding() {
         let (mut client_stream, server_stream) = UnixStream::pair().expect("socket pair");
         let (server_event_tx, mut server_event_rx) = mpsc::channel(4);
+        let (server_input_tx, _server_input_rx) = mpsc::unbounded_channel();
         let should_quit = Arc::new(AtomicBool::new(false));
         let handshake_quit = should_quit.clone();
         let handle = std::thread::spawn(move || {
-            handle_client_handshake(server_stream, 42, &server_event_tx, &handshake_quit)
+            handle_client_handshake(
+                server_stream,
+                42,
+                &server_event_tx,
+                &server_input_tx,
+                &handshake_quit,
+            )
         });
 
         protocol::write_message(
@@ -653,10 +700,17 @@ new_tab = "ctrl+notakey"
     fn handshake_marks_terminal_attach_launch_mode() {
         let (mut client_stream, server_stream) = UnixStream::pair().expect("socket pair");
         let (server_event_tx, mut server_event_rx) = mpsc::channel(4);
+        let (server_input_tx, _server_input_rx) = mpsc::unbounded_channel();
         let should_quit = Arc::new(AtomicBool::new(false));
         let handshake_quit = should_quit.clone();
         let handle = std::thread::spawn(move || {
-            handle_client_handshake(server_stream, 42, &server_event_tx, &handshake_quit)
+            handle_client_handshake(
+                server_stream,
+                42,
+                &server_event_tx,
+                &server_input_tx,
+                &handshake_quit,
+            )
         });
 
         protocol::write_message(
@@ -716,10 +770,17 @@ new_tab = "ctrl+notakey"
     fn client_read_loop_rejects_oversized_input() {
         let (mut client_stream, server_stream) = UnixStream::pair().expect("socket pair");
         let (server_event_tx, mut server_event_rx) = mpsc::channel(4);
+        let (server_input_tx, _server_input_rx) = mpsc::unbounded_channel();
         let should_quit = Arc::new(AtomicBool::new(false));
         let read_quit = should_quit.clone();
         let handle = std::thread::spawn(move || {
-            client_read_loop(server_stream, 7, &server_event_tx, &read_quit)
+            client_read_loop(
+                server_stream,
+                7,
+                &server_event_tx,
+                &server_input_tx,
+                &read_quit,
+            )
         });
 
         protocol::write_message(

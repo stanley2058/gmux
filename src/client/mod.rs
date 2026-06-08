@@ -685,12 +685,14 @@ async fn run_client_loop(
     };
     debug!(?negotiated_encoding, "client render encoding active");
 
-    // Channel for events from the stdin, resize, and server reader threads.
+    // Separate stdin from frame/control events so queued server frames cannot
+    // sit ahead of keyboard/mouse bytes waiting to be forwarded.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<ClientLoopEvent>(256);
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::channel::<ClientLoopEvent>(256);
 
     // Spawn the stdin reader thread.
     let stdin_quit = should_quit.clone();
-    let stdin_tx = event_tx.clone();
+    let stdin_tx = input_tx.clone();
     std::thread::spawn(move || {
         input::stdin_reader_loop(stdin_tx, &stdin_quit);
     });
@@ -735,10 +737,14 @@ async fn run_client_loop(
     // Main event loop.
     while !should_quit.load(Ordering::Acquire) {
         let event = tokio::select! {
+            biased;
+            ev = input_rx.recv() => ev.unwrap_or(ClientLoopEvent::Timer),
             ev = event_rx.recv() => ev.unwrap_or(ClientLoopEvent::Timer),
             _ = tokio::time::sleep(Duration::from_millis(100)) => ClientLoopEvent::Timer,
         };
-        state.debug_overlay.record_event_queue_len(event_rx.len());
+        state
+            .debug_overlay
+            .record_event_queue_len(event_rx.len() + input_rx.len());
 
         match event {
             ClientLoopEvent::StdinInput { data, received_at } => {

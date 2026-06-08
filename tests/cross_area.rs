@@ -14,7 +14,8 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::Deserialize;
 use serde_json::{json, Value};
 use support::{
-    cleanup_test_base, register_runtime_dir, register_spawned_gmux_pid, unregister_spawned_gmux_pid,
+    cleanup_test_base, register_runtime_dir, register_spawned_gmux_pid,
+    unregister_spawned_gmux_pid, TEST_PROTOCOL_VERSION,
 };
 
 fn unique_test_dir() -> PathBuf {
@@ -559,6 +560,14 @@ struct FrameDebugTimingWire {
     server_input_queue_us: u64,
     server_input_to_frame_us: u64,
     server_pty_dirty_to_frame_us: Option<u64>,
+    server_render_us: Option<u64>,
+    server_frame_build_us: Option<u64>,
+    server_graphics_us: Option<u64>,
+    server_prepare_us: Option<u64>,
+    server_target_count: u16,
+    server_active_only: bool,
+    server_mirror_flush: bool,
+    server_pending_mirror: bool,
 }
 
 #[allow(dead_code)]
@@ -737,7 +746,7 @@ fn cross_area_detach_and_reattach_preserves_state() {
 
     // Local attach (client A).
     let mut client_a = UnixStream::connect(&client_socket).expect("client A should connect");
-    client_handshake(&mut client_a, 13, 100, 30);
+    client_handshake(&mut client_a, TEST_PROTOCOL_VERSION, 100, 30);
     assert!(wait_for_frame(&mut client_a, Duration::from_secs(2)));
 
     // Use gmux: create a tab and write output into its pane.
@@ -774,7 +783,7 @@ fn cross_area_detach_and_reattach_preserves_state() {
 
     // Reattach from another terminal/session (client B).
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
-    client_handshake(&mut client_b, 13, 80, 24);
+    client_handshake(&mut client_b, TEST_PROTOCOL_VERSION, 80, 24);
     assert!(
         wait_for_frame(&mut client_b, Duration::from_secs(5)),
         "reattached client should receive frame"
@@ -810,7 +819,7 @@ fn cross_area_removed_agent_report_survives_detach_and_reattach() {
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
     let mut client_a = UnixStream::connect(&client_socket).expect("client A should connect");
-    client_handshake(&mut client_a, 13, 100, 30);
+    client_handshake(&mut client_a, TEST_PROTOCOL_VERSION, 100, 30);
     assert!(wait_for_frame(&mut client_a, Duration::from_secs(2)));
 
     let created = tab_create(&api_socket, "agent-persist");
@@ -839,7 +848,7 @@ fn cross_area_removed_agent_report_survives_detach_and_reattach() {
     );
 
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
-    client_handshake(&mut client_b, 13, 80, 24);
+    client_handshake(&mut client_b, TEST_PROTOCOL_VERSION, 80, 24);
     let saw_session_on_client =
         wait_for_frame_matching(&mut client_b, Duration::from_secs(5), |frame| {
             frame_contains_text(frame, "agent-persist")
@@ -873,7 +882,7 @@ fn cross_area_client_and_api_tab_views_are_consistent() {
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
     let mut client = UnixStream::connect(&client_socket).expect("client should connect");
-    client_handshake(&mut client, 13, 100, 30);
+    client_handshake(&mut client, TEST_PROTOCOL_VERSION, 100, 30);
     assert!(wait_for_frame(&mut client, Duration::from_secs(2)));
     drain_server_messages(&mut client, Duration::from_millis(300));
 
@@ -932,9 +941,9 @@ fn cross_area_two_clients_shared_view_and_single_detach_stability() {
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
     let mut client_a = UnixStream::connect(&client_socket).expect("client A should connect");
-    client_handshake(&mut client_a, 13, 110, 30);
+    client_handshake(&mut client_a, TEST_PROTOCOL_VERSION, 110, 30);
     let mut client_b = UnixStream::connect(&client_socket).expect("client B should connect");
-    client_handshake(&mut client_b, 13, 100, 30);
+    client_handshake(&mut client_b, TEST_PROTOCOL_VERSION, 100, 30);
 
     assert!(wait_for_frame(&mut client_a, Duration::from_secs(2)));
     assert!(wait_for_frame(&mut client_b, Duration::from_secs(2)));
@@ -1066,7 +1075,7 @@ fn cross_area_server_kill_then_restart_and_reconnect() {
 
     let mut reconnect_client =
         UnixStream::connect(&client_socket).expect("new client should connect after restart");
-    client_handshake(&mut reconnect_client, 13, 80, 24);
+    client_handshake(&mut reconnect_client, TEST_PROTOCOL_VERSION, 80, 24);
     assert!(
         wait_for_frame(&mut reconnect_client, Duration::from_secs(5)),
         "new client should receive frame after restart"

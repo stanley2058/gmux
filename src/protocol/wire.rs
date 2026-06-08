@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 13;
+pub const PROTOCOL_VERSION: u32 = 14;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -224,6 +224,22 @@ pub struct FrameDebugTiming {
     pub server_input_to_frame_us: u64,
     /// Time from the server first observing PTY dirty output after input to queuing the frame.
     pub server_pty_dirty_to_frame_us: Option<u64>,
+    /// Time spent rendering the shared app view or terminal view for this frame.
+    pub server_render_us: Option<u64>,
+    /// Time spent collecting visible hyperlinks and building the wire frame.
+    pub server_frame_build_us: Option<u64>,
+    /// Time spent encoding host Kitty graphics for this client.
+    pub server_graphics_us: Option<u64>,
+    /// Time spent preparing the client diff/full frame.
+    pub server_prepare_us: Option<u64>,
+    /// Number of clients considered by this server render pass.
+    pub server_target_count: u16,
+    /// Whether this frame was sent in the latency-critical active-client path.
+    pub server_active_only: bool,
+    /// Whether this frame was sent while flushing a deferred mirror frame.
+    pub server_mirror_flush: bool,
+    /// Whether a deferred mirror frame remained after this frame was queued.
+    pub server_pending_mirror: bool,
 }
 
 impl FrameData {

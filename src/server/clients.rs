@@ -52,6 +52,8 @@ pub(crate) struct ClientConnection {
     pub(crate) render_pending: bool,
     /// Pending server-side input timing to attach to the next frame.
     pub(crate) debug_timing: Option<ClientDebugTiming>,
+    /// Latest background mirror serialization generation accepted for this client.
+    pub(crate) mirror_frame_generation: u64,
     /// Last host mouse capture mode sent to this client.
     pub(crate) host_mouse_capture_active: Option<bool>,
     /// Temporary files staged from this client's local clipboard image pastes.
@@ -112,6 +114,7 @@ impl ClientConnection {
             graphics_surface_reset_pending: false,
             render_pending: false,
             debug_timing: None,
+            mirror_frame_generation: 0,
             host_mouse_capture_active: None,
             staged_clipboard_files: Vec::new(),
             writer,
@@ -153,6 +156,14 @@ impl ClientConnection {
             server_pty_dirty_to_frame_us: timing
                 .pty_dirty_at
                 .map(|dirty_at| duration_us(queued_at.saturating_duration_since(dirty_at))),
+            server_render_us: None,
+            server_frame_build_us: None,
+            server_graphics_us: None,
+            server_prepare_us: None,
+            server_target_count: 0,
+            server_active_only: false,
+            server_mirror_flush: false,
+            server_pending_mirror: false,
         })
     }
 
@@ -273,6 +284,6 @@ pub(crate) fn render_targets(
         })
         .collect();
 
-    targets.sort_by_key(|(client_id, _, _, is_foreground, _)| (*is_foreground, *client_id));
+    targets.sort_by_key(|(client_id, _, _, is_foreground, _)| (!*is_foreground, *client_id));
     targets
 }

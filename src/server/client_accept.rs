@@ -13,6 +13,7 @@ pub(crate) fn accept_pending_client_connections(
     next_client_id: &mut u64,
     should_quit: &Arc<AtomicBool>,
     server_event_tx: &mpsc::Sender<ServerEvent>,
+    server_input_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) -> io::Result<()> {
     loop {
         match listener.accept() {
@@ -27,11 +28,13 @@ pub(crate) fn accept_pending_client_connections(
 
                 let should_quit = should_quit.clone();
                 let server_event_tx = server_event_tx.clone();
+                let server_input_tx = server_input_tx.clone();
                 std::thread::spawn(move || {
                     if let Err(err) = client_transport::handle_client_handshake(
                         stream,
                         client_id,
                         &server_event_tx,
+                        &server_input_tx,
                         &should_quit,
                     ) {
                         debug!(client_id, err = %err, "client handshake failed");

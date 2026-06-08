@@ -286,6 +286,37 @@ impl ClientDebugOverlay {
                 )
             ),
             format!(
+                "srv render {} build {} gfx {} prep {}",
+                fmt_server_us(
+                    self.last_server_timing
+                        .and_then(|timing| timing.server_render_us)
+                ),
+                fmt_server_us(
+                    self.last_server_timing
+                        .and_then(|timing| timing.server_frame_build_us)
+                ),
+                fmt_server_us(
+                    self.last_server_timing
+                        .and_then(|timing| timing.server_graphics_us)
+                ),
+                fmt_server_us(
+                    self.last_server_timing
+                        .and_then(|timing| timing.server_prepare_us)
+                ),
+            ),
+            format!(
+                "srv targets {} role {} mirror-pending {}",
+                self.last_server_timing
+                    .map(|timing| timing.server_target_count)
+                    .unwrap_or(0),
+                server_role_label(self.last_server_timing),
+                yes_no(
+                    self.last_server_timing
+                        .map(|timing| timing.server_pending_mirror)
+                        .unwrap_or(false)
+                )
+            ),
+            format!(
                 "{} frame {}B encoded {}B full {} in {}B",
                 self.frame_kind_label(),
                 self.last_frame_bytes,
@@ -308,6 +339,15 @@ impl ClientDebugOverlay {
             Some(ClientFrameKind::TerminalAnsi { seq }) => format!("terminal seq {seq}"),
             None => "frame none".to_string(),
         }
+    }
+}
+
+fn server_role_label(timing: Option<FrameDebugTiming>) -> &'static str {
+    match timing {
+        Some(timing) if timing.server_active_only => "active",
+        Some(timing) if timing.server_mirror_flush => "mirror",
+        Some(_) => "normal",
+        None => "--",
     }
 }
 
