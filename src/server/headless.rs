@@ -49,6 +49,9 @@ use crate::server::clients::{
 };
 use crate::server::keybindings::{app_keybindings, apply_keybindings};
 use crate::server::notifications::{should_forward_toast_to_clients, toast_notify_kind};
+use crate::server::render_snapshot::{
+    fit_frame_to_client_size, AppFrameSnapshot, ServerRenderDebug,
+};
 use crate::server::socket_paths::{
     client_socket_path, prepare_socket_path, restrict_socket_permissions,
 };
@@ -132,39 +135,8 @@ fn dirty_patch_intersects_hyperlinks(
     false
 }
 
-fn clip_frame_to_size(frame: &FrameData, max_width: u16, max_height: u16) -> FrameData {
-    let width = frame.width.min(max_width);
-    let height = frame.height.min(max_height);
-    if width == frame.width && height == frame.height {
-        return frame.clone();
-    }
-
-    let source_width = usize::from(frame.width);
-    let clipped_width = usize::from(width);
-    let mut cells = Vec::with_capacity(clipped_width * usize::from(height));
-    for y in 0..usize::from(height) {
-        let start = y * source_width;
-        cells.extend_from_slice(&frame.cells[start..start + clipped_width]);
-    }
-
-    let mut clipped = frame.clone();
-    clipped.width = width;
-    clipped.height = height;
-    clipped.cells = cells;
-    clipped.cursor = clipped
-        .cursor
-        .filter(|cursor| cursor.x < width && cursor.y < height);
-    clipped
-}
-
 fn debug_duration_us(duration: Duration) -> u64 {
     duration.as_micros().min(u128::from(u64::MAX)) as u64
-}
-
-#[derive(Clone, Copy, Default)]
-struct ServerRenderDebug {
-    render_us: Option<u64>,
-    frame_build_us: Option<u64>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -243,6 +215,8 @@ pub struct HeadlessServer {
     pending_mirror_app_frame: Option<(FrameData, u64)>,
     /// Monotonic generation for background mirror serialization jobs.
     next_mirror_frame_generation: u64,
+    /// Monotonic generation for active-sized app render snapshots.
+    next_app_snapshot_generation: u64,
     /// Flag set when shutdown is initiated.
     shutting_down: bool,
     /// Flag set while exporting live PTYs to a replacement server.
@@ -386,6 +360,7 @@ impl HeadlessServer {
             latency_critical_client_id: None,
             pending_mirror_app_frame: None,
             next_mirror_frame_generation: 1,
+            next_app_snapshot_generation: 1,
             shutting_down: false,
             handoff_in_progress: false,
             pending_handoff_repaint_nudge: false,
@@ -2392,12 +2367,13 @@ impl HeadlessServer {
         }
     }
 
-    fn render_shared_app_frame(&mut self) -> (FrameData, ServerRenderDebug) {
+    fn render_shared_app_snapshot(&mut self) -> AppFrameSnapshot {
         let (cols, rows) = self.effective_size;
         let area = Rect::new(0, 0, cols, rows);
+        let active_client_id = self.foreground_client_id.unwrap_or_default();
         let cell_size = self
-            .foreground_client_id
-            .and_then(|client_id| self.clients.get(&client_id))
+            .clients
+            .get(&active_client_id)
             .map(|client| client.cell_size)
             .unwrap_or_default();
         let render_cell_size = if self.app.state.kitty_graphics_enabled && cell_size.is_known() {
@@ -2427,7 +2403,11 @@ impl HeadlessServer {
         let frame = FrameData::from_ratatui_buffer_with_hyperlinks(&buffer, cursor, &hyperlinks);
         crate::render_prof::duration_since("full_render.frame_build", frame_started);
         let frame_build_duration = debug_frame_build_started.elapsed();
-        (
+        let generation = self.next_app_snapshot_generation;
+        self.next_app_snapshot_generation = self.next_app_snapshot_generation.saturating_add(1);
+        AppFrameSnapshot::new(
+            generation,
+            active_client_id,
             frame,
             ServerRenderDebug {
                 render_us: Some(debug_duration_us(render_duration)),
@@ -2450,7 +2430,7 @@ impl HeadlessServer {
             if client_id == skip_client_id || !matches!(mode, ClientConnectionMode::App) {
                 continue;
             }
-            let frame = clip_frame_to_size(&frame, cols, rows);
+            let frame = fit_frame_to_client_size(&frame, cols, rows);
             let Some(client) = self.clients.get(&client_id) else {
                 continue;
             };
@@ -2741,7 +2721,7 @@ impl HeadlessServer {
                 matches!(mode, ClientConnectionMode::App) && Some(*client_id) != latency_client_id
             });
         let shared_app_render = if has_app_targets {
-            Some(self.render_shared_app_frame())
+            Some(self.render_shared_app_snapshot())
         } else {
             None
         };
@@ -2764,12 +2744,22 @@ impl HeadlessServer {
             };
             let frame = match mode {
                 ClientConnectionMode::App => {
-                    let (shared_frame, render_debug) = match shared_app_render.as_ref() {
-                        Some(render) => render,
+                    let snapshot = match shared_app_render.as_ref() {
+                        Some(snapshot) => snapshot,
                         None => continue,
                     };
-                    debug_context.render = *render_debug;
-                    clip_frame_to_size(shared_frame, cols, rows)
+                    debug_assert_eq!(
+                        snapshot.active_size,
+                        (snapshot.frame.width, snapshot.frame.height)
+                    );
+                    debug_assert_eq!(
+                        Some(snapshot.active_client_id),
+                        self.foreground_client_id.or(Some(0))
+                    );
+                    let _snapshot_age = snapshot.created_at.elapsed();
+                    crate::render_prof::counter("app_snapshot.generation", snapshot.generation);
+                    debug_context.render = snapshot.debug;
+                    fit_frame_to_client_size(snapshot.frame.as_ref(), cols, rows)
                 }
                 ClientConnectionMode::TerminalAttach { terminal_id } => {
                     let Some(runtime) = self.runtime_for_terminal_id_string(&terminal_id) else {
@@ -2830,10 +2820,9 @@ impl HeadlessServer {
         }
 
         if has_mirror_targets {
-            if let (Some((frame, _render_debug)), Some(skip_client_id)) =
-                (shared_app_render, latency_client_id)
-            {
-                self.pending_mirror_app_frame = Some((frame, skip_client_id));
+            if let (Some(snapshot), Some(skip_client_id)) = (shared_app_render, latency_client_id) {
+                self.pending_mirror_app_frame =
+                    Some((snapshot.frame.as_ref().clone(), skip_client_id));
             }
         }
 
@@ -3314,6 +3303,7 @@ mod tests {
             latency_critical_client_id: None,
             pending_mirror_app_frame: None,
             next_mirror_frame_generation: 1,
+            next_app_snapshot_generation: 1,
             shutting_down: false,
             handoff_in_progress: false,
             pending_handoff_repaint_nudge: false,
