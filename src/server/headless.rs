@@ -4534,6 +4534,62 @@ next_tab = ""
         assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
     }
 
+    #[tokio::test]
+    async fn semantic_mouse_report_waits_for_pty_dirty_frame() {
+        let mut server = test_headless_server();
+        let (client_tx, _client_control_rx, client_rx) = test_client_writer();
+        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        let (runtime, mut input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
+                80,
+                24,
+                0,
+                b"\x1b[?1002h\x1b[?1006h",
+                1,
+            );
+        workspace.tabs[0].runtimes.insert(pane_id, runtime);
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        server.app.state.mode = crate::app::Mode::Terminal;
+        server.clients.insert(
+            1,
+            ClientConnection::new(
+                (80, 24),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                Some(client_tx),
+            ),
+        );
+        server.foreground_client_id = Some(1);
+
+        server.render_and_stream();
+        let _ = client_rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("initial semantic frame");
+        let pane = server
+            .app
+            .state
+            .view
+            .pane_infos
+            .first()
+            .expect("pane geometry");
+        let mouse_column = pane.inner_rect.x + 1;
+        let mouse_row = pane.inner_rect.y + 1;
+        let mouse_input = format!("\x1b[<0;{};{}M", mouse_column + 1, mouse_row + 1);
+
+        assert!(!server.handle_server_event(test_client_input(1, mouse_input.into_bytes())));
+        assert!(!input_rx.try_recv().unwrap().is_empty());
+        assert!(server.app.input_render_bypass_pending);
+
+        server.render_and_stream();
+        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+    }
+
     #[test]
     fn outer_focus_gained_forces_terminal_ansi_full_redraw() {
         let mut server = test_headless_server();

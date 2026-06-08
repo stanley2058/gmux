@@ -1022,13 +1022,20 @@ impl App {
                     }
                 }
                 crate::raw_input::RawInputEvent::Mouse(mouse) => {
-                    if self.state.mouse_capture {
+                    let forwarded_to_pty = if self.state.mouse_capture {
+                        let forwarded_to_pty = self.mouse_event_would_forward_to_pty(mouse);
                         self.handle_mouse_event_headless(mouse);
+                        forwarded_to_pty
                     } else {
                         self.state
-                            .handle_pane_mouse_only(&self.terminal_runtimes, mouse);
+                            .handle_pane_mouse_only(&self.terminal_runtimes, mouse)
+                    };
+                    if forwarded_to_pty {
+                        self.arm_input_render_bypass();
+                        result.forwarded_to_pty = true;
+                    } else {
+                        result.visual_change = true;
                     }
-                    result.visual_change = true;
                 }
                 crate::raw_input::RawInputEvent::Paste(text) => {
                     if self.state.mode == Mode::Terminal {
@@ -1128,6 +1135,64 @@ impl App {
     /// the server's AppState maintains view geometry from virtual rendering.
     fn handle_mouse_event_headless(&mut self, mouse: crossterm::event::MouseEvent) {
         self.handle_mouse(mouse);
+    }
+
+    fn mouse_event_would_forward_to_pty(&self, mouse: crossterm::event::MouseEvent) -> bool {
+        use crossterm::event::{MouseButton, MouseEventKind};
+
+        if self.state.mode != Mode::Terminal {
+            return false;
+        }
+
+        if self.state.selection.is_some()
+            && matches!(
+                mouse.kind,
+                MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
+            )
+        {
+            return false;
+        }
+
+        let Some(info) = self.state.view.pane_infos.iter().find(|pane| {
+            mouse.column >= pane.inner_rect.x
+                && mouse.column < pane.inner_rect.x + pane.inner_rect.width
+                && mouse.row >= pane.inner_rect.y
+                && mouse.row < pane.inner_rect.y + pane.inner_rect.height
+        }) else {
+            return false;
+        };
+        let Some(ws_idx) = self.state.session_index() else {
+            return false;
+        };
+        let Some(runtime) =
+            self.state
+                .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, info.id)
+        else {
+            return false;
+        };
+        let column = mouse.column.saturating_sub(info.inner_rect.x);
+        let row = mouse.row.saturating_sub(info.inner_rect.y);
+
+        match mouse.kind {
+            MouseEventKind::ScrollUp
+            | MouseEventKind::ScrollDown
+            | MouseEventKind::ScrollLeft
+            | MouseEventKind::ScrollRight => match runtime.wheel_routing() {
+                Some(crate::pane::WheelRouting::MouseReport) => runtime
+                    .encode_mouse_wheel(mouse.kind, column, row, mouse.modifiers)
+                    .is_some(),
+                Some(crate::pane::WheelRouting::AlternateScroll) => {
+                    runtime.encode_alternate_scroll(mouse.kind).is_some()
+                }
+                Some(crate::pane::WheelRouting::HostScroll) | None => false,
+            },
+            MouseEventKind::Down(_) | MouseEventKind::Up(_) | MouseEventKind::Drag(_) => runtime
+                .encode_mouse_button(mouse.kind, column, row, mouse.modifiers)
+                .is_some(),
+            MouseEventKind::Moved => runtime
+                .encode_mouse_motion(mouse.kind, column, row, mouse.modifiers)
+                .is_some(),
+        }
     }
 }
 

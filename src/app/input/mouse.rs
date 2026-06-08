@@ -30,12 +30,12 @@ impl AppState {
         &mut self,
         terminal_runtimes: &TerminalRuntimeRegistry,
         mouse: MouseEvent,
-    ) {
+    ) -> bool {
         if self.mode != Mode::Terminal {
-            return;
+            return false;
         }
         let Some(info) = self.pane_at(mouse.column, mouse.row).cloned() else {
-            return;
+            return false;
         };
 
         match mouse.kind {
@@ -43,13 +43,13 @@ impl AppState {
             | MouseEventKind::ScrollDown
             | MouseEventKind::ScrollLeft
             | MouseEventKind::ScrollRight => {
-                self.forward_pane_reported_wheel(terminal_runtimes, &info, mouse);
+                self.forward_pane_reported_wheel(terminal_runtimes, &info, mouse)
             }
             MouseEventKind::Down(_) | MouseEventKind::Up(_) | MouseEventKind::Drag(_) => {
-                self.forward_pane_mouse_button(terminal_runtimes, &info, mouse);
+                self.forward_pane_mouse_button(terminal_runtimes, &info, mouse)
             }
             MouseEventKind::Moved => {
-                self.forward_pane_mouse_motion(terminal_runtimes, &info, mouse);
+                self.forward_pane_mouse_motion(terminal_runtimes, &info, mouse)
             }
         }
     }
