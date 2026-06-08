@@ -4,6 +4,22 @@
 
 This is a fork of [herdr](https://github.com/ogulcancelik/herdr) with all agent integrations removed. Modified to focus on becoming a tmux replacement.
 
+## Install
+
+Install the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/stanley2058/gmux/main/install.sh | bash
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/stanley2058/gmux/main/install.sh | GMUX_VERSION=v0.1.0 bash
+```
+
+By default, the installer writes to `~/.local/bin`. Set `GMUX_INSTALL_DIR` to use another directory.
+
 ## Build
 
 Requirements:

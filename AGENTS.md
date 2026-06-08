@@ -2,8 +2,6 @@
 
 Terminal multiplexer and session manager. Rust + ratatui.
 
-This is a personal fork. Treat it as source-built local software: no public website, hosted installers, package-manager releases, update manifests, or in-app update channels are maintained here.
-
 ## Principles
 
 - **State is separated from runtime.** `AppState` is pure data, testable without PTYs or async. `PaneState` is separate from `PaneRuntime`. Workspace logic should not need real terminals.
@@ -43,7 +41,7 @@ When updating libghostty-vt, check every active patch in `vendor/libghostty-vt.p
 - Rust: no `unwrap()` in production code. Use `tracing` for logging. Use `#[allow]` only with a comment explaining why.
 - Do not add dependencies without a reason. Check whether existing dependencies cover the need first.
 - When changing the server/client wire protocol, update `src/protocol/wire.rs::PROTOCOL_VERSION` only if the current source protocol is not already greater than the latest compatible protocol. Update hardcoded protocol expectations and manual protocol fixtures in tests.
-- Keep documentation local and source-oriented. Do not reintroduce public release, update-channel, website, Homebrew, mise, or Nix instructions unless those paths are intentionally restored.
+- Keep documentation local and source-oriented. Prefer instructions that match the workflows maintained in this repository.
 
 ## Commit Style
 
