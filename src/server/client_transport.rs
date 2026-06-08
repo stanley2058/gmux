@@ -227,15 +227,6 @@ pub(crate) enum ServerEvent {
     ClientDetach { client_id: u64 },
     /// A client connection was lost.
     ClientDisconnected { client_id: u64 },
-    /// A background mirror serialization job produced a frame ready to enqueue.
-    MirrorFrameReady {
-        client_id: u64,
-        generation: u64,
-        frame: crate::protocol::FrameData,
-        serialized: Vec<u8>,
-    },
-    /// A background mirror serialization job failed or was dropped.
-    MirrorFrameDropped { client_id: u64, generation: u64 },
     /// Ctrl+C or external shutdown signal received.
     QuitSignal,
 }

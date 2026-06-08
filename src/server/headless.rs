@@ -213,8 +213,6 @@ pub struct HeadlessServer {
     latency_critical_client_id: Option<u64>,
     /// Latest shared app frame waiting to be mirrored to non-active clients.
     pending_mirror_app_frame: Option<(FrameData, u64)>,
-    /// Monotonic generation for background mirror serialization jobs.
-    next_mirror_frame_generation: u64,
     /// Monotonic generation for active-sized app render snapshots.
     next_app_snapshot_generation: u64,
     /// Flag set when shutdown is initiated.
@@ -359,7 +357,6 @@ impl HeadlessServer {
             effective_size: (MIN_COLS, MIN_ROWS),
             latency_critical_client_id: None,
             pending_mirror_app_frame: None,
-            next_mirror_frame_generation: 1,
             next_app_snapshot_generation: 1,
             shutting_down: false,
             handoff_in_progress: false,
@@ -1831,45 +1828,6 @@ impl HeadlessServer {
                 self.remove_client_and_resize_if_needed(client_id);
                 true
             }
-            ServerEvent::MirrorFrameReady {
-                client_id,
-                generation,
-                frame,
-                serialized,
-            } => {
-                let Some(client) = self.clients.get(&client_id) else {
-                    return false;
-                };
-                if client.mirror_frame_generation != generation {
-                    return false;
-                }
-                let Some(writer) = client.writer.as_ref().cloned() else {
-                    return false;
-                };
-                match writer.render.send(serialized) {
-                    Ok(()) => {
-                        if let Some(client) = self.clients.get_mut(&client_id) {
-                            client.render_pending = false;
-                            client.render_state.commit_semantic_frame(frame);
-                        }
-                    }
-                    Err(LatestRenderDisconnected) => {
-                        self.remove_client_and_resize_if_needed(client_id);
-                    }
-                }
-                false
-            }
-            ServerEvent::MirrorFrameDropped {
-                client_id,
-                generation,
-            } => {
-                if let Some(client) = self.clients.get_mut(&client_id) {
-                    if client.mirror_frame_generation == generation {
-                        client.request_full_redraw();
-                    }
-                }
-                false
-            }
             ServerEvent::QuitSignal => {
                 // The quit check at the top of the loop handles this.
                 // No render needed — the next iteration will initiate shutdown.
@@ -2401,29 +2359,18 @@ impl HeadlessServer {
                 if client.render_state.semantic_frame_is_current(&frame) {
                     continue;
                 }
-                let generation = self.next_mirror_frame_generation;
-                self.next_mirror_frame_generation =
-                    self.next_mirror_frame_generation.saturating_add(1);
+                let Some(writer) = client.writer.as_ref().cloned() else {
+                    continue;
+                };
                 if let Some(client) = self.clients.get_mut(&client_id) {
-                    client.mirror_frame_generation = generation;
+                    client.render_state.commit_semantic_frame(frame.clone());
                 }
-                let server_event_tx = self.server_event_tx.clone();
                 std::thread::spawn(move || {
-                    let serialized =
-                        HeadlessServer::frame_server_message(&ServerMessage::Frame(frame.clone()));
-                    let event = match serialized {
-                        Ok(serialized) => ServerEvent::MirrorFrameReady {
-                            client_id,
-                            generation,
-                            frame,
-                            serialized,
-                        },
-                        Err(_) => ServerEvent::MirrorFrameDropped {
-                            client_id,
-                            generation,
-                        },
-                    };
-                    let _ = server_event_tx.blocking_send(event);
+                    if let Ok(serialized) =
+                        HeadlessServer::frame_server_message(&ServerMessage::Frame(frame))
+                    {
+                        let _ = writer.render.send(serialized);
+                    }
                 });
                 sent_any = true;
                 continue;
@@ -3242,7 +3189,6 @@ mod tests {
             effective_size: (MIN_COLS, MIN_ROWS),
             latency_critical_client_id: None,
             pending_mirror_app_frame: None,
-            next_mirror_frame_generation: 1,
             next_app_snapshot_generation: 1,
             shutting_down: false,
             handoff_in_progress: false,
@@ -3267,32 +3213,29 @@ mod tests {
         }
     }
 
+    fn recv_server_frame_within(
+        rx: &LatestRenderReceiver,
+        timeout: Duration,
+        label: &str,
+    ) -> FrameData {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let now = Instant::now();
+            assert!(now < deadline, "timed out waiting for {label}");
+            let remaining = deadline.saturating_duration_since(now);
+            match read_server_message(rx.recv_timeout(remaining).expect(label)) {
+                ServerMessage::Frame(frame) => return frame,
+                ServerMessage::Terminal(_) => panic!("expected frame for {label}, got terminal"),
+                _ => continue,
+            }
+        }
+    }
+
     fn test_client_input(client_id: u64, data: impl Into<Vec<u8>>) -> ServerEvent {
         ServerEvent::ClientInput {
             client_id,
             data: data.into(),
             received_at: Instant::now(),
-        }
-    }
-
-    fn drain_next_server_event(server: &mut HeadlessServer) {
-        let deadline = Instant::now() + Duration::from_millis(100);
-        loop {
-            match server.server_event_rx.try_recv() {
-                Ok(ev) => {
-                    server.handle_server_event(ev);
-                    return;
-                }
-                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
-                    if Instant::now() >= deadline {
-                        panic!("timed out waiting for server event");
-                    }
-                    std::thread::sleep(Duration::from_millis(1));
-                }
-                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                    panic!("server event channel disconnected");
-                }
-            }
         }
     }
 
@@ -4839,7 +4782,6 @@ next_tab = ""
         assert!(server.pending_mirror_app_frame.is_some());
 
         server.render_and_stream();
-        drain_next_server_event(&mut server);
 
         let background_frame = read_server_frame(
             background_rx
@@ -4906,14 +4848,13 @@ next_tab = ""
         assert!(server.pending_mirror_app_frame.is_some());
 
         server.render_and_stream();
-        drain_next_server_event(&mut server);
 
         assert!(!server.clients.get(&2).unwrap().render_pending);
 
-        let background_frame = read_server_frame(
-            background_rx
-                .recv_timeout(Duration::from_millis(100))
-                .expect("latest background frame"),
+        let background_frame = recv_server_frame_within(
+            &background_rx,
+            Duration::from_millis(100),
+            "latest background frame",
         );
         assert_eq!((background_frame.width, background_frame.height), (80, 24));
     }
@@ -5633,7 +5574,6 @@ next_tab = ""
         assert!(server.latency_critical_client_id.is_none());
 
         server.render_and_stream();
-        drain_next_server_event(&mut server);
 
         let second_frame = read_server_frame(
             second_rx
