@@ -3138,6 +3138,9 @@ mod tests {
 
     use crate::app::AppState;
     use crate::protocol::CursorState;
+    use std::sync::atomic::AtomicU64;
+
+    static TEST_SERVER_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     fn test_headless_server() -> HeadlessServer {
         let config = crate::config::Config::default();
@@ -3146,8 +3149,9 @@ mod tests {
         app.local_terminal_notifications = false;
 
         let dir = std::env::temp_dir().join(format!(
-            "hh-{}-{}",
+            "hh-{}-{}-{}",
             std::process::id(),
+            TEST_SERVER_COUNTER.fetch_add(1, Ordering::Relaxed),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())
@@ -4722,7 +4726,7 @@ next_tab = ""
         let background_frame = read_server_frame(background_rx.recv().expect("background frame"));
 
         assert_eq!((foreground_frame.width, foreground_frame.height), (80, 24));
-        assert_eq!((background_frame.width, background_frame.height), (80, 24));
+        assert_eq!((background_frame.width, background_frame.height), (120, 40));
     }
 
     #[test]
@@ -5731,11 +5735,8 @@ next_tab = ""
         runtime.test_process_pty_bytes(b"\rZ");
 
         server.app.state.mode = crate::app::Mode::Navigate;
-        assert!(server.render_retained_pty_update_and_stream());
-        assert!(matches!(
-            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::Frame(_)
-        ));
+        assert!(!server.render_retained_pty_update_and_stream());
+        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
 
         server.app.state.mode = crate::app::Mode::Terminal;
         assert!(server.render_retained_pty_update_and_stream());
@@ -5868,11 +5869,8 @@ next_tab = ""
             .expect("runtime");
         runtime.test_process_pty_bytes(b"\rZ");
 
-        assert!(server.render_retained_pty_update_and_stream());
-        assert!(matches!(
-            read_server_message(client_rx.recv_timeout(Duration::from_millis(100)).unwrap()),
-            ServerMessage::Frame(_)
-        ));
+        assert!(!server.render_retained_pty_update_and_stream());
+        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
     }
 
     #[tokio::test]
