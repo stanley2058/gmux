@@ -1658,7 +1658,7 @@ impl HeadlessServer {
                             self.app.arm_input_render_bypass();
                         }
                     }
-                    return true;
+                    return false;
                 }
                 let events = if let Some(client) = self.clients.get_mut(&client_id) {
                     let mut events = client.raw_input.push(&data);
@@ -3949,7 +3949,7 @@ next_tab = ""
             .try_send(test_client_input(1, b"b".to_vec()))
             .unwrap();
 
-        assert!(server.drain_server_events());
+        assert!(!server.drain_server_events());
         assert!(server.app.input_render_bypass_pending);
         assert_eq!(input_rx.try_recv().unwrap(), Bytes::from_static(b"a"));
         assert_eq!(input_rx.try_recv().unwrap(), Bytes::from_static(b"b"));
