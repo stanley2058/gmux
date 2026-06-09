@@ -6,7 +6,8 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -274,9 +275,190 @@ fn frame_contains_text(frame: &FrameWire, needle: &str) -> bool {
     text.contains(needle)
 }
 
+fn bench_env_u16(name: &str, default: u16) -> u16 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn bench_env_f64(name: &str, default: f64) -> f64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| *value > 0.0)
+        .unwrap_or(default)
+}
+
+fn bench_sorted(values: &[u64]) -> Vec<u64> {
+    let mut sorted = values.to_vec();
+    sorted.sort_unstable();
+    sorted
+}
+
+fn bench_average(values: &[u64]) -> u64 {
+    if values.is_empty() {
+        return 0;
+    }
+    values.iter().sum::<u64>() / values.len() as u64
+}
+
+fn bench_percentile(sorted_values: &[u64], percentile: usize) -> u64 {
+    if sorted_values.is_empty() {
+        return 0;
+    }
+    let index = ((sorted_values.len() - 1) * percentile) / 100;
+    sorted_values[index]
+}
+
+fn print_latency_bench_stats(label: &str, values: &[u64]) {
+    let sorted = bench_sorted(values);
+    println!(
+        "{label}: n={} avg={}us p50={}us p95={}us max={}us",
+        values.len(),
+        bench_average(values),
+        bench_percentile(&sorted, 50),
+        bench_percentile(&sorted, 95),
+        sorted.last().copied().unwrap_or_default()
+    );
+}
+
+fn send_input_message(stream: &mut UnixStream, input_data: &[u8]) {
+    let input_payload = {
+        let mut buf = encode_varint_u32(1);
+        buf.extend_from_slice(&encode_varint_u32(input_data.len() as u32));
+        buf.extend_from_slice(input_data);
+        buf
+    };
+    let framed = frame_message(&input_payload);
+    stream.write_all(&framed).expect("send input");
+    stream.flush().expect("flush input");
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[test]
+#[ignore = "live latency benchmark; run with `just bench-input-latency`"]
+fn held_key_live_input_latency_benchmark() {
+    let _lock = test_lock();
+    let cols = bench_env_u16("GMUX_INTERACTION_BENCH_COLS", 160);
+    let rows = bench_env_u16("GMUX_INTERACTION_BENCH_ROWS", 48);
+    let seconds = bench_env_f64("GMUX_INTERACTION_BENCH_SECONDS", 5.0);
+    let input_hz = bench_env_f64("GMUX_INTERACTION_BENCH_INPUT_HZ", 25.0);
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let api_socket = runtime_dir.join("gmux.sock");
+    let client_socket = runtime_dir.join("gmux-client.sock");
+
+    let spawned = spawn_server(&config_home, &runtime_dir, &api_socket, &client_socket);
+    wait_for_socket(&api_socket, Duration::from_secs(10));
+    wait_for_file(&client_socket, Duration::from_secs(10));
+
+    let mut stream = UnixStream::connect(&client_socket).expect("should connect to client socket");
+    let (version, error) = client_handshake(&mut stream, TEST_PROTOCOL_VERSION, cols, rows)
+        .expect("handshake should succeed");
+    assert_eq!(version, TEST_PROTOCOL_VERSION);
+    assert!(error.is_none(), "{:?}", error);
+    let _ = read_next_frame_payload(&mut stream, Duration::from_secs(10))
+        .expect("should receive initial frame");
+
+    let bench_for = Duration::from_secs_f64(seconds);
+    let reader_deadline = Instant::now() + bench_for + Duration::from_secs(2);
+    let stop = Arc::new(AtomicBool::new(false));
+    let sent_inputs = Arc::new(AtomicUsize::new(0));
+    let writer_stop = stop.clone();
+    let writer_sent = sent_inputs.clone();
+    let mut input_stream = stream.try_clone().expect("clone client socket");
+    let writer = thread::spawn(move || {
+        let interval = Duration::from_secs_f64(1.0 / input_hz);
+        let started = Instant::now();
+        let mut next_send = started;
+        while started.elapsed() < bench_for && !writer_stop.load(Ordering::Acquire) {
+            send_input_message(&mut input_stream, b"a");
+            writer_sent.fetch_add(1, Ordering::AcqRel);
+            next_send += interval;
+            let now = Instant::now();
+            if next_send > now {
+                thread::sleep(next_send - now);
+            }
+        }
+        writer_stop.store(true, Ordering::Release);
+    });
+
+    stream
+        .set_read_timeout(Some(Duration::from_millis(200)))
+        .expect("set read timeout");
+    let mut frame_dt_us = Vec::new();
+    let mut input_queue_us = Vec::new();
+    let mut input_to_frame_us = Vec::new();
+    let mut dirty_to_frame_us = Vec::new();
+    let mut render_us = Vec::new();
+    let mut frame_build_us = Vec::new();
+    let mut prepare_us = Vec::new();
+    let mut checksum = 0usize;
+    let mut last_frame_at: Option<Instant> = None;
+
+    while Instant::now() < reader_deadline {
+        match read_server_message(&mut stream) {
+            Ok((1, payload)) => {
+                let now = Instant::now();
+                if let Some(previous) = last_frame_at {
+                    frame_dt_us.push(
+                        now.saturating_duration_since(previous)
+                            .as_micros()
+                            .min(u128::from(u64::MAX)) as u64,
+                    );
+                }
+                last_frame_at = Some(now);
+                let frame = decode_frame_payload(&payload).expect("decode frame");
+                if let Some(timing) = frame.debug_timing {
+                    input_queue_us.push(timing.server_input_queue_us);
+                    input_to_frame_us.push(timing.server_input_to_frame_us);
+                    if let Some(value) = timing.server_pty_dirty_to_frame_us {
+                        dirty_to_frame_us.push(value);
+                    }
+                    if let Some(value) = timing.server_render_us {
+                        render_us.push(value);
+                    }
+                    if let Some(value) = timing.server_frame_build_us {
+                        frame_build_us.push(value);
+                    }
+                    if let Some(value) = timing.server_prepare_us {
+                        prepare_us.push(value);
+                    }
+                }
+                checksum ^= frame.cells.len();
+            }
+            Ok(_) => {}
+            Err(_) if stop.load(Ordering::Acquire) => break,
+            Err(_) => {}
+        }
+    }
+    stop.store(true, Ordering::Release);
+    writer.join().expect("input writer thread should finish");
+    std::hint::black_box(checksum);
+
+    println!(
+        "held_key_live_input_latency: frames={} inputs={} cols={} rows={} seconds={seconds:.2} input_hz={input_hz:.1}",
+        frame_dt_us.len() + usize::from(last_frame_at.is_some()),
+        sent_inputs.load(Ordering::Acquire),
+        cols,
+        rows,
+    );
+    print_latency_bench_stats("frame_dt", &frame_dt_us);
+    print_latency_bench_stats("server_input_queue", &input_queue_us);
+    print_latency_bench_stats("server_input_to_frame", &input_to_frame_us);
+    print_latency_bench_stats("server_pty_dirty_to_frame", &dirty_to_frame_us);
+    print_latency_bench_stats("server_render", &render_us);
+    print_latency_bench_stats("server_frame_build", &frame_build_us);
+    print_latency_bench_stats("server_prepare", &prepare_us);
+
+    cleanup_spawned_gmux(spawned, base);
+}
 
 #[test]
 fn client_connects_and_receives_frame() {

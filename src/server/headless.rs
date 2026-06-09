@@ -3765,6 +3765,190 @@ mod tests {
         (server, client_rx, pane_id)
     }
 
+    fn interaction_test_server_with_size(
+        initial_screen: &[u8],
+        size: (u16, u16),
+    ) -> (
+        HeadlessServer,
+        LatestRenderReceiver,
+        crate::layout::PaneId,
+        mpsc::Receiver<Bytes>,
+    ) {
+        let mut server = test_headless_server();
+        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        let (runtime, pane_input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
+                size.0,
+                size.1,
+                1_000_000,
+                initial_screen,
+                1024,
+            );
+        workspace.insert_test_runtime(pane_id, runtime);
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        server.app.state.mode = crate::app::Mode::Terminal;
+
+        let (client_tx, _client_control_rx, client_rx) = test_client_writer();
+        server.clients.insert(
+            1,
+            ClientConnection::new(
+                size,
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                Some(client_tx),
+            ),
+        );
+        server.foreground_client_id = Some(1);
+        server.clients.get_mut(&1).unwrap().terminal_size = size;
+        server.sync_foreground_client_state();
+        server.resize_shared_runtime_to_effective_size();
+
+        (server, client_rx, pane_id, pane_input_rx)
+    }
+
+    fn bench_env_u16(name: &str, default: u16) -> u16 {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(default)
+    }
+
+    fn bench_env_usize(name: &str, default: usize) -> usize {
+        std::env::var(name)
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(default)
+    }
+
+    fn bench_sorted(values: &[u64]) -> Vec<u64> {
+        let mut sorted = values.to_vec();
+        sorted.sort_unstable();
+        sorted
+    }
+
+    fn bench_average(values: &[u64]) -> u64 {
+        if values.is_empty() {
+            return 0;
+        }
+        values.iter().sum::<u64>() / values.len() as u64
+    }
+
+    fn bench_percentile(sorted_values: &[u64], percentile: usize) -> u64 {
+        if sorted_values.is_empty() {
+            return 0;
+        }
+        let index = ((sorted_values.len() - 1) * percentile) / 100;
+        sorted_values[index]
+    }
+
+    fn print_latency_bench_stats(label: &str, values: &[u64]) {
+        let sorted = bench_sorted(values);
+        println!(
+            "{label}: avg={}us p50={}us p95={}us max={}us",
+            bench_average(values),
+            bench_percentile(&sorted, 50),
+            bench_percentile(&sorted, 95),
+            sorted.last().copied().unwrap_or_default()
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "interaction benchmark; run with `just bench-input-latency`"]
+    async fn held_key_interaction_latency_benchmark() {
+        let cols = bench_env_u16("GMUX_INTERACTION_BENCH_COLS", 160);
+        let rows = bench_env_u16("GMUX_INTERACTION_BENCH_ROWS", 48);
+        let frames = bench_env_usize("GMUX_INTERACTION_BENCH_FRAMES", 240);
+        let initial_screen = b"gmux interaction latency benchmark\r\n$ ";
+        let (mut server, client_rx, pane_id, mut pane_input_rx) =
+            interaction_test_server_with_size(initial_screen, (cols, rows));
+
+        server.render_and_stream();
+        let _ = recv_server_frame_within(
+            &client_rx,
+            Duration::from_secs(1),
+            "initial interaction benchmark frame",
+        );
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_secs(1))
+            .expect("initial interaction benchmark baseline");
+
+        let mut total_loop_us = Vec::with_capacity(frames);
+        let mut input_queue_us = Vec::with_capacity(frames);
+        let mut input_to_frame_us = Vec::with_capacity(frames);
+        let mut dirty_to_frame_us = Vec::with_capacity(frames);
+        let mut render_us = Vec::with_capacity(frames);
+        let mut frame_build_us = Vec::with_capacity(frames);
+        let mut prepare_us = Vec::with_capacity(frames);
+        let mut checksum = 0usize;
+
+        for _ in 0..frames {
+            let loop_started = Instant::now();
+            let _ = server.handle_server_event(test_client_input(1, b"a"));
+            let echoed = pane_input_rx
+                .try_recv()
+                .expect("pane should receive held-key input");
+            server
+                .app
+                .state
+                .runtime_for_pane_in_session_at(&server.app.terminal_runtimes, 0, pane_id)
+                .expect("runtime")
+                .test_process_pty_bytes(&echoed);
+            server.record_debug_pty_dirty_for_pending_inputs(Instant::now());
+            server.render_and_stream();
+            let frame = recv_server_frame_within(
+                &client_rx,
+                Duration::from_secs(1),
+                "held-key interaction benchmark frame",
+            );
+            let timing = frame
+                .debug_timing
+                .expect("interaction benchmark frame should include debug timing");
+            total_loop_us.push(debug_duration_us(loop_started.elapsed()));
+            input_queue_us.push(timing.server_input_queue_us);
+            input_to_frame_us.push(timing.server_input_to_frame_us);
+            if let Some(value) = timing.server_pty_dirty_to_frame_us {
+                dirty_to_frame_us.push(value);
+            }
+            if let Some(value) = timing.server_render_us {
+                render_us.push(value);
+            }
+            if let Some(value) = timing.server_frame_build_us {
+                frame_build_us.push(value);
+            }
+            if let Some(value) = timing.server_prepare_us {
+                prepare_us.push(value);
+            }
+            checksum ^= frame.cells.len();
+        }
+        std::hint::black_box(checksum);
+
+        println!(
+            "held_key_interaction_latency: frames={} cols={} rows={} input=a",
+            frames, cols, rows
+        );
+        print_latency_bench_stats("total_loop", &total_loop_us);
+        print_latency_bench_stats("server_input_queue", &input_queue_us);
+        print_latency_bench_stats("server_input_to_frame", &input_to_frame_us);
+        print_latency_bench_stats("server_pty_dirty_to_frame", &dirty_to_frame_us);
+        print_latency_bench_stats("server_render", &render_us);
+        print_latency_bench_stats("server_frame_build", &frame_build_us);
+        print_latency_bench_stats("server_prepare", &prepare_us);
+    }
+
     fn assert_frame_data_eq(actual: &FrameData, expected: &FrameData) {
         assert_eq!(
             (actual.width, actual.height),
