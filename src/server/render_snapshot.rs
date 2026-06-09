@@ -92,6 +92,9 @@ fn blank_cell() -> CellData {
         fg: 0,
         bg: 0,
         modifier: 0,
+        underline_color: 0,
+        underline_style: crate::protocol::UNDERLINE_NONE,
+        overline: false,
         skip: false,
         hyperlink: None,
     }
@@ -114,6 +117,9 @@ mod tests {
             fg: 0,
             bg: 0,
             modifier: 0,
+            underline_color: 0,
+            underline_style: crate::protocol::UNDERLINE_NONE,
+            overline: false,
             skip: false,
             hyperlink: None,
         }

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 14;
+pub const PROTOCOL_VERSION: u32 = 15;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -41,6 +41,33 @@ pub enum RenderEncoding {
     SemanticFrame,
     /// Send already-diffed terminal ANSI byte streams.
     TerminalAnsi,
+}
+
+/// SGR underline style value carried in rendered cells.
+///
+/// 0 = none, 1 = single, 2 = double, 3 = curly, 4 = dotted, 5 = dashed.
+pub type UnderlineStyle = u8;
+
+pub(crate) const UNDERLINE_NONE: UnderlineStyle = 0;
+pub(crate) const UNDERLINE_SINGLE: UnderlineStyle = 1;
+pub(crate) const UNDERLINE_DOUBLE: UnderlineStyle = 2;
+pub(crate) const UNDERLINE_CURLY: UnderlineStyle = 3;
+pub(crate) const UNDERLINE_DOTTED: UnderlineStyle = 4;
+pub(crate) const UNDERLINE_DASHED: UnderlineStyle = 5;
+
+pub(crate) fn normalize_underline_style(style: UnderlineStyle) -> UnderlineStyle {
+    match style {
+        UNDERLINE_NONE | UNDERLINE_SINGLE | UNDERLINE_DOUBLE | UNDERLINE_CURLY
+        | UNDERLINE_DOTTED | UNDERLINE_DASHED => style,
+        _ => UNDERLINE_NONE,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct CellDecorations {
+    pub(crate) underline_color: u32,
+    pub(crate) underline_style: UnderlineStyle,
+    pub(crate) overline: bool,
 }
 
 /// Keybinding profile requested by an attached app client.
@@ -169,6 +196,12 @@ pub struct CellData {
     pub bg: u32,
     /// Bitmask of style modifiers (bold, italic, etc.).
     pub modifier: u16,
+    /// Underline color as a packed u32.
+    pub underline_color: u32,
+    /// Underline style as an SGR underline value.
+    pub underline_style: UnderlineStyle,
+    /// Whether this cell draws an overline.
+    pub overline: bool,
     /// Whether this cell should be skipped during diff-based rendering.
     pub skip: bool,
     /// Index into `FrameData::hyperlinks` for this cell's OSC 8 target, if any.
@@ -253,13 +286,23 @@ impl FrameData {
         buffer: &ratatui::buffer::Buffer,
         cursor: Option<CursorState>,
     ) -> Self {
-        Self::from_ratatui_buffer_with_hyperlinks(buffer, cursor, &[])
+        Self::from_ratatui_buffer_with_hyperlinks_and_decorations(buffer, cursor, &[], &[])
     }
 
+    #[cfg(test)]
     pub fn from_ratatui_buffer_with_hyperlinks(
         buffer: &ratatui::buffer::Buffer,
         cursor: Option<CursorState>,
         hyperlinks: &[((u16, u16), String, String)],
+    ) -> Self {
+        Self::from_ratatui_buffer_with_hyperlinks_and_decorations(buffer, cursor, hyperlinks, &[])
+    }
+
+    pub(crate) fn from_ratatui_buffer_with_hyperlinks_and_decorations(
+        buffer: &ratatui::buffer::Buffer,
+        cursor: Option<CursorState>,
+        hyperlinks: &[((u16, u16), String, String)],
+        decorations: &[((u16, u16), CellDecorations)],
     ) -> Self {
         let area = buffer.area;
         let width = area.width;
@@ -271,10 +314,27 @@ impl FrameData {
         for ((x, y), symbol, uri) in hyperlinks {
             hyperlink_by_position.insert((*x, *y), (symbol.as_str(), uri.as_str()));
         }
+        let decorations_by_position: HashMap<(u16, u16), CellDecorations> =
+            decorations.iter().copied().collect();
         let mut cells = Vec::with_capacity((width as usize) * (height as usize));
         for row in 0..height {
             for col in 0..width {
                 let cell = buffer.cell((col, row)).expect("cell within bounds");
+                let default_underline_style =
+                    if cell.modifier.contains(ratatui::style::Modifier::UNDERLINED) {
+                        UNDERLINE_SINGLE
+                    } else {
+                        UNDERLINE_NONE
+                    };
+                let decorations =
+                    decorations_by_position
+                        .get(&(col, row))
+                        .copied()
+                        .unwrap_or(CellDecorations {
+                            underline_color: color_to_u32(cell.underline_color),
+                            underline_style: default_underline_style,
+                            overline: false,
+                        });
                 let hyperlink = hyperlink_by_position
                     .get(&(col, row))
                     .and_then(|(symbol, uri)| {
@@ -292,6 +352,9 @@ impl FrameData {
                     fg: color_to_u32(cell.fg),
                     bg: color_to_u32(cell.bg),
                     modifier: modifier_to_u16(cell.modifier),
+                    underline_color: decorations.underline_color,
+                    underline_style: normalize_underline_style(decorations.underline_style),
+                    overline: decorations.overline,
                     skip: cell.skip,
                     hyperlink,
                 });
@@ -330,7 +393,11 @@ impl FrameData {
                 cell.set_symbol(&cell_data.symbol);
                 cell.fg = u32_to_color(cell_data.fg);
                 cell.bg = u32_to_color(cell_data.bg);
+                cell.underline_color = u32_to_color(cell_data.underline_color);
                 cell.modifier = u16_to_modifier(cell_data.modifier);
+                if normalize_underline_style(cell_data.underline_style) != UNDERLINE_NONE {
+                    cell.modifier.insert(ratatui::style::Modifier::UNDERLINED);
+                }
                 cell.skip = cell_data.skip;
             }
         }
@@ -829,6 +896,9 @@ mod tests {
                     fg: color_to_u32(Color::Red),
                     bg: color_to_u32(Color::Black),
                     modifier: Modifier::BOLD.bits(),
+                    underline_color: 0,
+                    underline_style: UNDERLINE_NONE,
+                    overline: false,
                     skip: false,
                     hyperlink: None,
                 },
@@ -837,6 +907,9 @@ mod tests {
                     fg: color_to_u32(Color::Green),
                     bg: color_to_u32(Color::Reset),
                     modifier: Modifier::ITALIC.bits(),
+                    underline_color: 0,
+                    underline_style: UNDERLINE_NONE,
+                    overline: false,
                     skip: false,
                     hyperlink: None,
                 },
@@ -845,6 +918,9 @@ mod tests {
                     fg: color_to_u32(Color::Rgb(255, 128, 0)),
                     bg: color_to_u32(Color::Indexed(220)),
                     modifier: (Modifier::BOLD | Modifier::UNDERLINED).bits(),
+                    underline_color: color_to_u32(Color::Rgb(1, 2, 3)),
+                    underline_style: UNDERLINE_CURLY,
+                    overline: true,
                     skip: false,
                     hyperlink: Some(0),
                 },
@@ -853,6 +929,9 @@ mod tests {
                     fg: color_to_u32(Color::Reset),
                     bg: color_to_u32(Color::Reset),
                     modifier: Modifier::empty().bits(),
+                    underline_color: 0,
+                    underline_style: UNDERLINE_NONE,
+                    overline: false,
                     skip: true,
                     hyperlink: None,
                 },
@@ -861,6 +940,9 @@ mod tests {
                     fg: color_to_u32(Color::Cyan),
                     bg: color_to_u32(Color::Blue),
                     modifier: Modifier::REVERSED.bits(),
+                    underline_color: 0,
+                    underline_style: UNDERLINE_NONE,
+                    overline: false,
                     skip: false,
                     hyperlink: None,
                 },
@@ -869,6 +951,9 @@ mod tests {
                     fg: color_to_u32(Color::Yellow),
                     bg: color_to_u32(Color::Magenta),
                     modifier: Modifier::empty().bits(),
+                    underline_color: 0,
+                    underline_style: UNDERLINE_NONE,
+                    overline: false,
                     skip: false,
                     hyperlink: None,
                 },
@@ -893,6 +978,12 @@ mod tests {
         match decoded {
             ServerMessage::Frame(frame) => {
                 assert_eq!(frame.cells[2].hyperlink, Some(0));
+                assert_eq!(
+                    frame.cells[2].underline_color,
+                    color_to_u32(Color::Rgb(1, 2, 3))
+                );
+                assert_eq!(frame.cells[2].underline_style, UNDERLINE_CURLY);
+                assert!(frame.cells[2].overline);
                 assert_eq!(frame.hyperlinks, vec!["https://example.com".to_owned()]);
             }
             other => panic!("expected frame, got {other:?}"),
@@ -1017,6 +1108,9 @@ mod tests {
                 fg: color_to_u32(Color::Rgb((i % 256) as u8, ((i / 256) % 256) as u8, 128)),
                 bg: color_to_u32(Color::Indexed((i % 256) as u8)),
                 modifier: ((i % 16) as u16),
+                underline_color: 0,
+                underline_style: UNDERLINE_NONE,
+                overline: false,
                 skip: i % 100 == 0,
                 hyperlink: None,
             })
@@ -1348,6 +1442,26 @@ mod tests {
             vec!["https://example.com".to_owned()]
         );
 
+        let with_decorations = FrameData::from_ratatui_buffer_with_hyperlinks_and_decorations(
+            &buffer,
+            None,
+            &[],
+            &[(
+                (2, 0),
+                CellDecorations {
+                    underline_color: color_to_u32(Color::Rgb(1, 2, 3)),
+                    underline_style: UNDERLINE_DASHED,
+                    overline: true,
+                },
+            )],
+        );
+        assert_eq!(
+            with_decorations.cells[2].underline_color,
+            color_to_u32(Color::Rgb(1, 2, 3))
+        );
+        assert_eq!(with_decorations.cells[2].underline_style, UNDERLINE_DASHED);
+        assert!(with_decorations.cells[2].overline);
+
         // Convert back to ratatui buffer and compare.
         let restored = frame.to_ratatui_buffer().expect("should reconstruct");
         assert_eq!(restored.area, area);
@@ -1368,6 +1482,9 @@ mod tests {
                     fg: 0,
                     bg: 0,
                     modifier: 0,
+                    underline_color: 0,
+                    underline_style: UNDERLINE_NONE,
+                    overline: false,
                     skip: false,
                     hyperlink: None,
                 };

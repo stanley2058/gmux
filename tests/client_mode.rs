@@ -196,6 +196,9 @@ struct CellWire {
     fg: u32,
     bg: u32,
     modifier: u16,
+    underline_color: u32,
+    underline_style: u8,
+    overline: bool,
     skip: bool,
     hyperlink: Option<u32>,
 }
@@ -250,7 +253,15 @@ fn frame_contains_text(frame: &FrameWire, needle: &str) -> bool {
     let mut text = String::new();
     for row in frame.cells.chunks(width) {
         for cell in row {
-            let _ = (cell.fg, cell.bg, cell.modifier, cell.skip);
+            let _ = (
+                cell.fg,
+                cell.bg,
+                cell.modifier,
+                cell.underline_color,
+                cell.underline_style,
+                cell.overline,
+                cell.skip,
+            );
             text.push_str(&cell.symbol);
         }
         text.push('\n');

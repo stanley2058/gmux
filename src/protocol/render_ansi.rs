@@ -256,6 +256,20 @@ fn color_to_sgr_bg(val: u32) -> String {
     }
 }
 
+fn color_to_sgr_underline(val: u32) -> String {
+    match val >> 24 {
+        0x00 => "59".to_owned(),
+        0x01 => format!("58;5;{}", val & 0xFF),
+        0x02 => {
+            let r = (val >> 16) & 0xFF;
+            let g = (val >> 8) & 0xFF;
+            let b = val & 0xFF;
+            format!("58;2;{r};{g};{b}")
+        }
+        _ => "59".to_owned(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Modifier → SGR
 // ---------------------------------------------------------------------------
@@ -263,7 +277,11 @@ fn color_to_sgr_bg(val: u32) -> String {
 /// Converts a u16 modifier bitmask to SGR escape sequence fragments.
 ///
 /// Returns a Vec of SGR parameter strings (e.g., "1" for bold, "3" for italic).
-fn modifier_to_sgr_parts(val: u16) -> Vec<&'static str> {
+fn modifier_to_sgr_parts(
+    val: u16,
+    underline_style: crate::protocol::UnderlineStyle,
+    overline: bool,
+) -> Vec<String> {
     let mut parts = Vec::new();
 
     // ratatui::Modifier bits (from bitflags)
@@ -278,46 +296,62 @@ fn modifier_to_sgr_parts(val: u16) -> Vec<&'static str> {
     const CROSSED_OUT: u16 = 1 << 8; // 0x100
 
     if val & BOLD != 0 {
-        parts.push("1");
+        parts.push("1".to_owned());
     }
     if val & DIM != 0 {
-        parts.push("2");
+        parts.push("2".to_owned());
     }
     if val & ITALIC != 0 {
-        parts.push("3");
+        parts.push("3".to_owned());
     }
-    if val & UNDERLINED != 0 {
-        parts.push("4");
+    match crate::protocol::normalize_underline_style(underline_style) {
+        crate::protocol::UNDERLINE_NONE if val & UNDERLINED != 0 => parts.push("4".to_owned()),
+        crate::protocol::UNDERLINE_NONE => {}
+        crate::protocol::UNDERLINE_SINGLE => parts.push("4".to_owned()),
+        crate::protocol::UNDERLINE_DOUBLE => parts.push("4:2".to_owned()),
+        crate::protocol::UNDERLINE_CURLY => parts.push("4:3".to_owned()),
+        crate::protocol::UNDERLINE_DOTTED => parts.push("4:4".to_owned()),
+        crate::protocol::UNDERLINE_DASHED => parts.push("4:5".to_owned()),
+        _ => {}
     }
     if val & SLOW_BLINK != 0 {
-        parts.push("5");
+        parts.push("5".to_owned());
     }
     if val & RAPID_BLINK != 0 {
-        parts.push("6");
+        parts.push("6".to_owned());
     }
     if val & REVERSED != 0 {
-        parts.push("7");
+        parts.push("7".to_owned());
     }
     if val & HIDDEN != 0 {
-        parts.push("8");
+        parts.push("8".to_owned());
     }
     if val & CROSSED_OUT != 0 {
-        parts.push("9");
+        parts.push("9".to_owned());
+    }
+    if overline {
+        parts.push("53".to_owned());
     }
 
     parts
 }
 
 /// Builds a complete SGR escape sequence for a cell's style.
-fn build_sgr(fg: u32, bg: u32, modifier: u16) -> String {
+fn build_sgr(
+    fg: u32,
+    bg: u32,
+    modifier: u16,
+    underline_color: u32,
+    underline_style: crate::protocol::UnderlineStyle,
+    overline: bool,
+) -> String {
     let mut parts = vec!["0".to_owned()];
-    parts.extend(
-        modifier_to_sgr_parts(modifier)
-            .into_iter()
-            .map(str::to_owned),
-    );
+    parts.extend(modifier_to_sgr_parts(modifier, underline_style, overline));
     parts.push(color_to_sgr_fg(fg));
     parts.push(color_to_sgr_bg(bg));
+    if underline_color != 0 {
+        parts.push(color_to_sgr_underline(underline_color));
+    }
     format!("\x1b[{}m", parts.join(";"))
 }
 
@@ -332,6 +366,9 @@ fn cells_equal(a: &CellData, b: &CellData) -> bool {
         && a.fg == b.fg
         && a.bg == b.bg
         && a.modifier == b.modifier
+        && a.underline_color == b.underline_color
+        && a.underline_style == b.underline_style
+        && a.overline == b.overline
         && a.hyperlink == b.hyperlink
     // Skip flag is only for ratatui internal use, not visual.
 }
@@ -528,7 +565,14 @@ fn write_all_cells(writer: &mut impl Write, frame: &FrameData) {
             let _ = write!(writer, "\x1b[{};{}H", row + 1, col + 1);
 
             // Set style.
-            let sgr = build_sgr(cell.fg, cell.bg, cell.modifier);
+            let sgr = build_sgr(
+                cell.fg,
+                cell.bg,
+                cell.modifier,
+                cell.underline_color,
+                cell.underline_style,
+                cell.overline,
+            );
             let _ = writer.write_all(sgr.as_bytes());
 
             write_hyperlink_if_changed(
@@ -618,7 +662,14 @@ fn write_cell(
 
     let _ = write!(writer, "\x1b[{};{}H", row + 1, col + 1);
 
-    let sgr = build_sgr(cell.fg, cell.bg, cell.modifier);
+    let sgr = build_sgr(
+        cell.fg,
+        cell.bg,
+        cell.modifier,
+        cell.underline_color,
+        cell.underline_style,
+        cell.overline,
+    );
     if sgr != *last_sgr {
         let _ = writer.write_all(sgr.as_bytes());
         *last_sgr = sgr;
@@ -639,6 +690,9 @@ fn cells_visually_equal(
         && cell.fg == prev_cell.fg
         && cell.bg == prev_cell.bg
         && cell.modifier == prev_cell.modifier
+        && cell.underline_color == prev_cell.underline_color
+        && cell.underline_style == prev_cell.underline_style
+        && cell.overline == prev_cell.overline
         && sanitized_cell_hyperlink_uri(sanitized_hyperlinks, cell)
             == sanitized_cell_hyperlink_uri(prev_sanitized_hyperlinks, prev_cell)
     // Skip flag is only for ratatui internal use, not visual.
@@ -710,6 +764,9 @@ mod tests {
             fg,
             bg,
             modifier,
+            underline_color: 0,
+            underline_style: crate::protocol::UNDERLINE_NONE,
+            overline: false,
             skip: false,
             hyperlink: None,
         }
@@ -765,25 +822,32 @@ mod tests {
 
     #[test]
     fn modifier_to_sgr_parts_bold() {
-        let parts = modifier_to_sgr_parts(1); // BOLD
-        assert!(parts.contains(&"1"));
+        let parts = modifier_to_sgr_parts(1, crate::protocol::UNDERLINE_NONE, false); // BOLD
+        assert!(parts.contains(&"1".to_owned()));
     }
 
     #[test]
     fn modifier_to_sgr_parts_italic() {
-        let parts = modifier_to_sgr_parts(4); // ITALIC
-        assert!(parts.contains(&"3"));
+        let parts = modifier_to_sgr_parts(4, crate::protocol::UNDERLINE_NONE, false); // ITALIC
+        assert!(parts.contains(&"3".to_owned()));
     }
 
     #[test]
     fn modifier_to_sgr_parts_empty() {
-        let parts = modifier_to_sgr_parts(0);
+        let parts = modifier_to_sgr_parts(0, crate::protocol::UNDERLINE_NONE, false);
         assert!(parts.is_empty());
     }
 
     #[test]
     fn build_sgr_produces_valid_sequence() {
-        let sgr = build_sgr(0x00_00_00_02, 0x00_00_00_01, 1); // fg=Red, bg=Black, bold
+        let sgr = build_sgr(
+            0x00_00_00_02,
+            0x00_00_00_01,
+            1,
+            0,
+            crate::protocol::UNDERLINE_NONE,
+            false,
+        ); // fg=Red, bg=Black, bold
         assert!(sgr.starts_with("\x1b["));
         assert!(sgr.ends_with("m"));
         assert!(sgr.contains("0")); // reset existing style first
@@ -794,7 +858,36 @@ mod tests {
 
     #[test]
     fn build_sgr_resets_previous_modifiers_when_cell_is_plain() {
-        assert_eq!(build_sgr(0x00_00_00_00, 0x00_00_00_00, 0), "\x1b[0;39;49m");
+        assert_eq!(
+            build_sgr(
+                0x00_00_00_00,
+                0x00_00_00_00,
+                0,
+                0,
+                crate::protocol::UNDERLINE_NONE,
+                false,
+            ),
+            "\x1b[0;39;49m"
+        );
+    }
+
+    #[test]
+    fn build_sgr_emits_underline_shape_color_and_overline() {
+        assert_eq!(
+            build_sgr(
+                0,
+                0,
+                0,
+                0x02_11_22_33,
+                crate::protocol::UNDERLINE_CURLY,
+                true,
+            ),
+            "\x1b[0;4:3;53;39;49;58;2;17;34;51m"
+        );
+        assert_eq!(
+            build_sgr(0, 0, 0, 0, crate::protocol::UNDERLINE_DOTTED, false,),
+            "\x1b[0;4:4;39;49m"
+        );
     }
 
     #[test]

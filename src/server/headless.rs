@@ -2342,8 +2342,19 @@ impl HeadlessServer {
             &self.app.terminal_runtimes,
         );
         crate::render_prof::duration_since("full_render.visible_hyperlinks", hyperlinks_started);
+        let decorations_started = crate::render_prof::timer();
+        let decorations = crate::server::render_stream::visible_decorations(
+            &self.app.state,
+            &self.app.terminal_runtimes,
+        );
+        crate::render_prof::duration_since("full_render.visible_decorations", decorations_started);
         let frame_started = crate::render_prof::timer();
-        let frame = FrameData::from_ratatui_buffer_with_hyperlinks(&buffer, cursor, &hyperlinks);
+        let frame = FrameData::from_ratatui_buffer_with_hyperlinks_and_decorations(
+            &buffer,
+            cursor,
+            &hyperlinks,
+            &decorations,
+        );
         crate::render_prof::duration_since("full_render.frame_build", frame_started);
         let frame_build_duration = debug_frame_build_started.elapsed();
         self.store_app_frame_snapshot(
@@ -2679,11 +2690,18 @@ impl HeadlessServer {
                         "full_render.visible_hyperlinks",
                         hyperlinks_started,
                     );
+                    let decorations_started = crate::render_prof::timer();
+                    let decorations = runtime.visible_decorations(area);
+                    crate::render_prof::duration_since(
+                        "full_render.visible_decorations",
+                        decorations_started,
+                    );
                     let frame_started = crate::render_prof::timer();
-                    let frame = FrameData::from_ratatui_buffer_with_hyperlinks(
+                    let frame = FrameData::from_ratatui_buffer_with_hyperlinks_and_decorations(
                         &buffer,
                         cursor,
                         &hyperlinks,
+                        &decorations,
                     );
                     crate::render_prof::duration_since("full_render.frame_build", frame_started);
                     debug_context.render = ServerRenderDebug {

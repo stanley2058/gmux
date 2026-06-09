@@ -11,7 +11,7 @@ use tracing::{debug, error};
 use unicode_width::UnicodeWidthStr;
 
 use crate::layout::PaneId;
-use crate::protocol::CellData;
+use crate::protocol::{self, CellData};
 
 use super::{
     input::{
@@ -227,6 +227,13 @@ impl PaneTerminal {
 
     pub fn visible_hyperlinks(&self, area: Rect) -> Vec<((u16, u16), String, String)> {
         self.ghostty.visible_hyperlinks(area)
+    }
+
+    pub(crate) fn visible_decorations(
+        &self,
+        area: Rect,
+    ) -> Vec<((u16, u16), protocol::CellDecorations)> {
+        self.ghostty.visible_decorations(area)
     }
 
     pub fn kitty_image_placements_with_data_filter<F>(
@@ -1015,6 +1022,17 @@ impl GhosttyPaneTerminal {
             .unwrap_or_default()
     }
 
+    pub(crate) fn visible_decorations(
+        &self,
+        area: Rect,
+    ) -> Vec<((u16, u16), protocol::CellDecorations)> {
+        self.core
+            .lock()
+            .ok()
+            .and_then(|mut core| ghostty_visible_decorations(&mut core, area).ok())
+            .unwrap_or_default()
+    }
+
     pub fn kitty_image_placements_with_data_filter<F>(
         &self,
         needs_data: F,
@@ -1082,7 +1100,7 @@ impl GhosttyPaneTerminal {
                 let mut x = 0u16;
                 while x < area.width && cells.next() {
                     let basic = cells.basic_data().unwrap_or_default();
-                    let style = ghostty_cell_style(
+                    let cell_style = ghostty_cell_style(
                         &cells,
                         &basic,
                         default_fg,
@@ -1107,7 +1125,7 @@ impl GhosttyPaneTerminal {
                     let cell = &mut buf[(area.x + x, area.y + y)];
                     cell.reset();
                     cell.set_symbol(symbol);
-                    cell.set_style(style);
+                    cell.set_style(cell_style.style);
                     x += 1;
                 }
                 while x < area.width {
@@ -1151,6 +1169,7 @@ impl GhosttyPaneTerminal {
 }
 
 type VisibleHyperlinks = Vec<((u16, u16), String, String)>;
+type VisibleDecorations = Vec<((u16, u16), protocol::CellDecorations)>;
 
 fn ghostty_clear_render_dirty(render_state: &mut crate::ghostty::RenderState, area_height: u16) {
     let Ok(mut row_iterator) = crate::ghostty::RowIterator::new() else {
@@ -1265,7 +1284,7 @@ fn ghostty_collect_dirty_patch(
                 if basic.has_hyperlink {
                     fallback!("hyperlink_present");
                 }
-                let style = ghostty_cell_style(
+                let cell_style = ghostty_cell_style(
                     &cells,
                     &basic,
                     default_fg,
@@ -1283,7 +1302,7 @@ fn ghostty_collect_dirty_patch(
                     Ok(symbol) => symbol.to_owned(),
                     Err(_) => ghostty_blank_symbol_for_width(basic.wide).to_owned(),
                 };
-                patch_cells.push(cell_data_from_style(symbol, style));
+                patch_cells.push(cell_data_from_terminal_style(symbol, cell_style));
                 x += 1;
             }
             while x < area_width {
@@ -1352,6 +1371,53 @@ fn ghostty_visible_hyperlinks(
         y += 1;
     }
     Ok(links)
+}
+
+fn ghostty_visible_decorations(
+    core: &mut GhosttyPaneCore,
+    area: Rect,
+) -> Result<VisibleDecorations, crate::ghostty::Error> {
+    let GhosttyPaneCore {
+        terminal,
+        render_state,
+        ..
+    } = core;
+    render_state.update(terminal)?;
+    let mut row_iterator = crate::ghostty::RowIterator::new()?;
+    let mut row_cells = crate::ghostty::RowCells::new()?;
+    let mut rows = render_state.populate_row_iterator(&mut row_iterator)?;
+    let mut decorations = Vec::new();
+    let mut y = 0u16;
+    while y < area.height && rows.next() {
+        let mut cells = rows.populate_cells(&mut row_cells)?;
+        let mut x = 0u16;
+        while x < area.width && cells.next() {
+            let basic = cells.basic_data().unwrap_or_default();
+            let underline_style = protocol::normalize_underline_style(basic.style.underline);
+            if underline_style != protocol::UNDERLINE_NONE
+                || basic.style.underline_color.is_some()
+                || basic.style.overline
+            {
+                decorations.push((
+                    (area.x + x, area.y + y),
+                    protocol::CellDecorations {
+                        underline_color: protocol::color_to_u32(
+                            basic
+                                .style
+                                .underline_color
+                                .map(ghostty_cell_color)
+                                .unwrap_or(Color::Reset),
+                        ),
+                        underline_style,
+                        overline: basic.style.overline,
+                    },
+                ));
+            }
+            x += 1;
+        }
+        y += 1;
+    }
+    Ok(decorations)
 }
 
 fn ghostty_visible_text(core: &mut GhosttyPaneCore) -> Result<String, crate::ghostty::Error> {
@@ -1610,15 +1676,43 @@ fn blank_cell_data(default_fg: Option<Color>, default_bg: Option<Color>) -> Cell
 }
 
 fn cell_data_from_style(symbol: String, style: Style) -> CellData {
+    let underline_style = if style.add_modifier.contains(Modifier::UNDERLINED) {
+        protocol::UNDERLINE_SINGLE
+    } else {
+        protocol::UNDERLINE_NONE
+    };
+    cell_data_from_terminal_style(
+        symbol,
+        TerminalCellStyle {
+            style,
+            underline_style,
+            overline: false,
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+struct TerminalCellStyle {
+    style: Style,
+    underline_style: protocol::UnderlineStyle,
+    overline: bool,
+}
+
+fn cell_data_from_terminal_style(symbol: String, cell_style: TerminalCellStyle) -> CellData {
     CellData {
         symbol: if symbol.is_empty() {
             " ".to_string()
         } else {
             symbol
         },
-        fg: crate::protocol::color_to_u32(style.fg.unwrap_or(Color::Reset)),
-        bg: crate::protocol::color_to_u32(style.bg.unwrap_or(Color::Reset)),
-        modifier: crate::protocol::modifier_to_u16(style.add_modifier),
+        fg: protocol::color_to_u32(cell_style.style.fg.unwrap_or(Color::Reset)),
+        bg: protocol::color_to_u32(cell_style.style.bg.unwrap_or(Color::Reset)),
+        modifier: protocol::modifier_to_u16(cell_style.style.add_modifier),
+        underline_color: protocol::color_to_u32(
+            cell_style.style.underline_color.unwrap_or(Color::Reset),
+        ),
+        underline_style: protocol::normalize_underline_style(cell_style.underline_style),
+        overline: cell_style.overline,
         skip: false,
         hyperlink: None,
     }
@@ -1642,7 +1736,7 @@ fn ghostty_cell_style(
     default_bg: Option<Color>,
     resolved_fg: Option<Color>,
     resolved_bg: Option<Color>,
-) -> Style {
+) -> TerminalCellStyle {
     let mut fg = basic
         .style
         .fg_color
@@ -1692,13 +1786,18 @@ fn ghostty_cell_style(
     if basic.style.blink {
         modifiers |= Modifier::SLOW_BLINK;
     }
-    if basic.style.underlined {
+    let underline_style = protocol::normalize_underline_style(basic.style.underline);
+    if underline_style != protocol::UNDERLINE_NONE {
         modifiers |= Modifier::UNDERLINED;
     }
     if basic.style.strikethrough {
         modifiers |= Modifier::CROSSED_OUT;
     }
-    style.add_modifier(modifiers)
+    TerminalCellStyle {
+        style: style.add_modifier(modifiers),
+        underline_style,
+        overline: basic.style.overline,
+    }
 }
 
 #[derive(Debug)]
@@ -2793,6 +2892,11 @@ mod tests {
         let (tx, _rx) = mpsc::channel(4);
         let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
         let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+        let backend = ratatui::backend::TestBackend::new(20, 5);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| pane.render(frame, Rect::new(0, 0, 20, 5), false))
+            .unwrap();
         {
             let mut core = pane.core.lock().unwrap();
             core.terminal
@@ -3088,8 +3192,7 @@ mod tests {
         let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
         let pane_id = PaneId::from_raw(1);
 
-        let result =
-            pane.process_pty_bytes(pane_id, 0, b"\x1bP+q6E6F7065;536D756C78;4D7\x1b\\", &tx);
+        let result = pane.process_pty_bytes(pane_id, 0, b"\x1bP+q6E6F7065;4D7\x1b\\", &tx);
 
         assert!(result.terminal_responses.is_empty());
         assert!(rx.try_recv().is_err());
@@ -3118,6 +3221,25 @@ mod tests {
     }
 
     #[test]
+    fn process_pty_bytes_returns_extended_underline_xtgettcap_query_response() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
+        let pane_id = PaneId::from_raw(1);
+
+        let result = pane.process_pty_bytes(pane_id, 0, b"\x1bP+q536D756C78\x1b\\", &tx);
+
+        assert_eq!(
+            result.terminal_responses,
+            vec![expected_xtgettcap_response(
+                "536D756C78",
+                Some(b"\\E[4:%p1%dm")
+            )]
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
     fn render_preserves_underline_color() {
         let (tx, _rx) = mpsc::channel(4);
         let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
@@ -3136,6 +3258,60 @@ mod tests {
         let style = terminal.backend().buffer()[(0, 0)].style();
         assert!(style.add_modifier.contains(Modifier::UNDERLINED));
         assert_eq!(style.underline_color, Some(Color::Rgb(17, 34, 51)));
+    }
+
+    #[test]
+    fn visible_decorations_preserves_underline_shape_color_and_overline() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+        {
+            let mut core = pane.core.lock().unwrap();
+            core.terminal
+                .write(b"\x1b[4:3m\x1b[58:2::17:34:51m\x1b[53mU");
+        }
+
+        let decorations = pane.visible_decorations(Rect::new(0, 0, 20, 5));
+
+        assert_eq!(decorations.len(), 1);
+        let (position, decoration) = decorations[0];
+        assert_eq!(position, (0, 0));
+        assert_eq!(decoration.underline_style, crate::protocol::UNDERLINE_CURLY);
+        assert_eq!(
+            decoration.underline_color,
+            crate::protocol::color_to_u32(Color::Rgb(17, 34, 51))
+        );
+        assert!(decoration.overline);
+    }
+
+    #[test]
+    fn dirty_patch_preserves_underline_shape_color_and_overline() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+        let backend = ratatui::backend::TestBackend::new(20, 5);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| pane.render(frame, Rect::new(0, 0, 20, 5), false))
+            .unwrap();
+        {
+            let mut core = pane.core.lock().unwrap();
+            core.terminal
+                .write(b"\x1b[4:5m\x1b[58:2::17:34:51m\x1b[53mU");
+        }
+
+        match pane.collect_dirty_patch(20, 5) {
+            TerminalDirtyPatchOutcome::Patch(patch) => {
+                let cell = &patch.rows[0].1[0];
+                assert_eq!(cell.underline_style, crate::protocol::UNDERLINE_DASHED);
+                assert_eq!(
+                    cell.underline_color,
+                    crate::protocol::color_to_u32(Color::Rgb(17, 34, 51))
+                );
+                assert!(cell.overline);
+            }
+            other => panic!("expected dirty patch, got {other:?}"),
+        }
     }
 
     #[test]

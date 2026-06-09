@@ -359,6 +359,26 @@ pub(crate) fn visible_hyperlinks(
     links
 }
 
+pub(crate) fn visible_decorations(
+    app_state: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+) -> Vec<((u16, u16), crate::protocol::CellDecorations)> {
+    let Some(tab) = app_state.session().and_then(|session| session.active_tab()) else {
+        return Vec::new();
+    };
+
+    let mut decorations = Vec::new();
+    for info in &app_state.view.pane_infos {
+        if let Some(runtime) = tab
+            .terminal_id(info.id)
+            .and_then(|terminal_id| terminal_runtimes.get(terminal_id))
+        {
+            decorations.extend(runtime.visible_decorations(info.inner_rect));
+        }
+    }
+    decorations
+}
+
 pub(crate) fn focused_terminal_cursor(
     app_state: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,

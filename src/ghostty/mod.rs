@@ -349,7 +349,7 @@ pub struct CellStyle {
     pub invisible: bool,
     pub strikethrough: bool,
     pub overline: bool,
-    pub underlined: bool,
+    pub underline: u8,
 }
 
 impl From<ffi::GhosttyStyle> for CellStyle {
@@ -366,7 +366,10 @@ impl From<ffi::GhosttyStyle> for CellStyle {
             invisible: value.invisible,
             strikethrough: value.strikethrough,
             overline: value.overline,
-            underlined: value.underline != 0,
+            underline: match value.underline {
+                0..=5 => value.underline as u8,
+                _ => 0,
+            },
         }
     }
 }

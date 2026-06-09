@@ -626,6 +626,9 @@ struct CellWire {
     fg: u32,
     bg: u32,
     modifier: u16,
+    underline_color: u32,
+    underline_style: u8,
+    overline: bool,
     skip: bool,
     hyperlink: Option<u32>,
 }

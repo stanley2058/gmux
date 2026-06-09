@@ -281,6 +281,13 @@ impl TerminalRuntime {
         self.0.visible_hyperlinks(area)
     }
 
+    pub(crate) fn visible_decorations(
+        &self,
+        area: Rect,
+    ) -> Vec<((u16, u16), crate::protocol::CellDecorations)> {
+        self.0.visible_decorations(area)
+    }
+
     pub fn kitty_image_placements_with_data_filter<F>(
         &self,
         needs_data: F,

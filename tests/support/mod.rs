@@ -13,7 +13,7 @@ static PID_REGISTRY: OnceLock<Mutex<HashSet<u32>>> = OnceLock::new();
 static RUNTIME_DIR_REGISTRY: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
 static INIT: Once = Once::new();
 static CLEANUP_GUARD: OnceLock<CleanupGuard> = OnceLock::new();
-pub const TEST_PROTOCOL_VERSION: u32 = 14;
+pub const TEST_PROTOCOL_VERSION: u32 = 15;
 const WATCHDOG_SCAN_INTERVAL: Duration = Duration::from_secs(1);
 const RUNTIME_OWNER_MARKER: &str = ".gmux-test-owner-pid";
 
