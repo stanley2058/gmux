@@ -234,6 +234,126 @@ pub(crate) fn confirm_close_button_rects(inner: Rect) -> (Rect, Rect) {
     (rects[0], rects[1])
 }
 
+pub(crate) fn update_confirm_button_rects(inner: Rect) -> (Rect, Rect) {
+    let rects = action_button_row_rects(
+        inner,
+        &[
+            ActionButtonSpec {
+                hint: Some("↵"),
+                label: "update",
+            },
+            ActionButtonSpec {
+                hint: Some("esc"),
+                label: "cancel",
+            },
+        ],
+        2,
+        5,
+    );
+    (rects[0], rects[1])
+}
+
+pub(crate) fn update_message_button_rect(inner: Rect) -> Rect {
+    action_button_row_rects(
+        inner,
+        &[ActionButtonSpec {
+            hint: Some("↵"),
+            label: "ok",
+        }],
+        0,
+        4,
+    )[0]
+}
+
+pub(super) fn render_update_confirm_overlay(app: &AppState, frame: &mut Frame, area: Rect) {
+    super::dim_background(frame, area);
+    let Some(inner) = render_modal_shell(frame, area, 68, 8, &app.palette) else {
+        return;
+    };
+    let Some(release) = app.update.available.as_ref() else {
+        return;
+    };
+
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .areas::<6>(inner);
+    render_modal_header(frame, rows[0], "Update gmux?", &app.palette);
+    frame.render_widget(
+        Paragraph::new(format!(" update to {}", release.version)).style(
+            Style::default()
+                .fg(app.palette.green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        rows[2],
+    );
+    frame.render_widget(
+        Paragraph::new(" current session will relaunch; other sessions will exit")
+            .style(Style::default().fg(app.palette.overlay0)),
+        rows[3],
+    );
+
+    let (update_rect, cancel_rect) = update_confirm_button_rects(inner);
+    render_action_button(
+        frame,
+        update_rect,
+        Some("↵"),
+        "update",
+        Style::default()
+            .fg(panel_contrast_fg(&app.palette))
+            .bg(app.palette.green)
+            .add_modifier(Modifier::BOLD),
+    );
+    render_action_button(
+        frame,
+        cancel_rect,
+        Some("esc"),
+        "cancel",
+        Style::default()
+            .fg(app.palette.text)
+            .bg(app.palette.surface0)
+            .add_modifier(Modifier::BOLD),
+    );
+}
+
+pub(super) fn render_update_message_overlay(app: &AppState, frame: &mut Frame, area: Rect) {
+    super::dim_background(frame, area);
+    let Some(inner) = render_modal_shell(frame, area, 68, 7, &app.palette) else {
+        return;
+    };
+    let message = app
+        .update
+        .message
+        .as_deref()
+        .unwrap_or("update status unavailable");
+    render_modal_header(
+        frame,
+        Rect::new(inner.x, inner.y, inner.width, 1),
+        "Update",
+        &app.palette,
+    );
+    frame.render_widget(
+        Paragraph::new(format!(" {message}")).style(Style::default().fg(app.palette.text)),
+        Rect::new(inner.x, inner.y + 2, inner.width, 2),
+    );
+
+    render_action_button(
+        frame,
+        update_message_button_rect(inner),
+        Some("↵"),
+        "ok",
+        Style::default()
+            .fg(panel_contrast_fg(&app.palette))
+            .bg(app.palette.accent)
+            .add_modifier(Modifier::BOLD),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -20,7 +20,10 @@ mod status;
 mod tabs;
 mod widgets;
 
-use self::dialogs::{render_confirm_close_overlay, render_rename_overlay};
+use self::dialogs::{
+    render_confirm_close_overlay, render_rename_overlay, render_update_confirm_overlay,
+    render_update_message_overlay,
+};
 use self::keybind_help::render_keybind_help_overlay;
 pub(crate) use self::markdown_overlay::overlay_close_button_rect;
 use self::menus::{
@@ -47,7 +50,10 @@ use self::status::{
 };
 use self::tabs::render_tab_bar;
 pub(crate) use self::{
-    dialogs::{confirm_close_button_rects, confirm_close_popup_rect, rename_button_rects},
+    dialogs::{
+        confirm_close_button_rects, confirm_close_popup_rect, rename_button_rects,
+        update_confirm_button_rects, update_message_button_rect,
+    },
     settings::{settings_button_rects, settings_show_primary_action},
     sidebar::{
         collapsed_sidebar_sections, collapsed_sidebar_toggle_rect, expanded_pane_panel_rect,
@@ -337,6 +343,8 @@ pub fn render_with_runtime_registry(
         Mode::GlobalMenu => render_global_launcher_menu(app, frame),
         Mode::KeybindHelp => render_keybind_help_overlay(app, frame),
         Mode::Navigator => render_navigator_overlay(app, terminal_runtimes, frame),
+        Mode::UpdateConfirm => render_update_confirm_overlay(app, frame, frame.area()),
+        Mode::UpdateMessage => render_update_message_overlay(app, frame, frame.area()),
         Mode::Terminal => {}
     }
 }
@@ -528,7 +536,11 @@ mod tests {
         let row = buffer_row_text(buffer, menu, menu.y);
 
         assert_eq!(menu, Rect::new(94, 0, 6, 1));
-        assert!(row.contains("menu"));
+        assert_eq!(buffer[(0, 0)].symbol(), " ");
+        assert_eq!(buffer[(menu.x, menu.y)].symbol(), " ");
+        assert_eq!(buffer[(menu.x + 1, menu.y)].symbol(), "m");
+        assert_eq!(buffer[(menu.x + menu.width - 1, menu.y)].symbol(), " ");
+        assert_eq!(row, " menu");
     }
 
     #[test]

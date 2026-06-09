@@ -12,4 +12,8 @@ pub enum AppEvent {
     /// A pane child emitted a valid OSC 52 clipboard write. The main loop
     /// re-emits it through gmux's own clipboard writer.
     ClipboardWrite { content: Vec<u8> },
+    /// Background GitHub release check completed.
+    UpdateCheckFinished(crate::update::UpdateCheckResult),
+    /// Background self-update installer completed.
+    UpdateInstallFinished(crate::update::UpdateInstallResult),
 }

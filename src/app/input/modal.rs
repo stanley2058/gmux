@@ -71,14 +71,36 @@ pub(crate) enum GlobalMenuAction {
     Keybinds,
     ReloadConfig,
     Settings,
+    Update,
 }
 
-pub(super) fn global_menu_actions(_state: &AppState) -> Vec<GlobalMenuAction> {
-    let mut actions = vec![
+impl GlobalMenuAction {
+    pub(crate) fn label(self, state: &AppState) -> String {
+        match self {
+            Self::Detach => "detach".to_string(),
+            Self::Keybinds => "keybinds".to_string(),
+            Self::ReloadConfig => "reload config".to_string(),
+            Self::Settings => "settings".to_string(),
+            Self::Update => state
+                .update
+                .available
+                .as_ref()
+                .map(|release| format!("update to {}", release.version))
+                .unwrap_or_else(|| "update".to_string()),
+        }
+    }
+}
+
+pub(super) fn global_menu_actions(state: &AppState) -> Vec<GlobalMenuAction> {
+    let mut actions = Vec::new();
+    if state.update.available.is_some() {
+        actions.push(GlobalMenuAction::Update);
+    }
+    actions.extend([
         GlobalMenuAction::Settings,
         GlobalMenuAction::Keybinds,
         GlobalMenuAction::ReloadConfig,
-    ];
+    ]);
     actions.push(GlobalMenuAction::Detach);
     actions
 }
@@ -113,6 +135,18 @@ pub(super) fn apply_global_menu_action(state: &mut AppState, action: GlobalMenuA
             leave_modal(state);
         }
         GlobalMenuAction::Settings => super::settings::open_settings(state),
+        GlobalMenuAction::Update => {
+            if state.update.installing {
+                state.update.message = Some("update already in progress".to_string());
+                state.mode = Mode::UpdateMessage;
+            } else if !crate::update::self_update_enabled() {
+                state.update.message =
+                    Some("self-update is disabled by package distributor".to_string());
+                state.mode = Mode::UpdateMessage;
+            } else {
+                state.mode = Mode::UpdateConfirm;
+            }
+        }
     }
 }
 
@@ -235,6 +269,29 @@ pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {
         KeyCode::Home => state.keybind_help.scroll = 0,
         KeyCode::End => state.keybind_help.scroll = state.keybind_help_max_scroll(),
         KeyCode::Esc | KeyCode::Enter | KeyCode::Char('?') => leave_modal(state),
+        _ => {}
+    }
+}
+
+pub(crate) fn handle_update_confirm_key(state: &mut AppState, key: KeyEvent) {
+    match key.code {
+        KeyCode::Enter => {
+            state.request_start_self_update = true;
+            state.update.installing = true;
+            state.update.message = Some("updating gmux".to_string());
+            leave_modal(state);
+        }
+        KeyCode::Esc => leave_modal(state),
+        _ => {}
+    }
+}
+
+pub(crate) fn handle_update_message_key(state: &mut AppState, key: KeyEvent) {
+    match key.code {
+        KeyCode::Enter | KeyCode::Esc => {
+            state.update.message = None;
+            leave_modal(state);
+        }
         _ => {}
     }
 }

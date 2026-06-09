@@ -123,10 +123,11 @@ impl AppState {
         )
     }
 
-    pub(crate) fn global_menu_labels(&self) -> Vec<&'static str> {
-        let mut labels = vec!["settings", "keybinds", "reload config"];
-        labels.push("detach");
-        labels
+    pub(crate) fn global_menu_labels(&self) -> Vec<String> {
+        super::modal::global_menu_actions(self)
+            .into_iter()
+            .map(|action| action.label(self))
+            .collect()
     }
 
     pub(crate) fn global_menu_rect(&self) -> Rect {
@@ -413,6 +414,62 @@ mod tests {
         assert!(app.state.detach_requested);
         assert!(!app.state.should_quit);
         assert_ne!(app.state.mode, Mode::GlobalMenu);
+    }
+
+    #[test]
+    fn available_update_is_first_global_menu_item() {
+        let mut app = app_for_mouse_test();
+        app.state.update.available = Some(crate::update::UpdateRelease {
+            version: "0.2.0".to_string(),
+            tag: "v0.2.0".to_string(),
+            asset_name: "gmux-linux-x86_64.tar.gz".to_string(),
+        });
+
+        assert_eq!(
+            app.state.global_menu_labels(),
+            vec![
+                "update to 0.2.0".to_string(),
+                "settings".to_string(),
+                "keybinds".to_string(),
+                "reload config".to_string(),
+                "detach".to_string(),
+            ]
+        );
+        assert!(!app.state.global_menu_attention_badge_visible());
+        assert!(app.state.global_menu_item_has_badge("update to 0.2.0"));
+    }
+
+    #[test]
+    fn clicking_update_menu_item_opens_disabled_popup_without_feature() {
+        let mut app = app_for_mouse_test();
+        app.state.update.available = Some(crate::update::UpdateRelease {
+            version: "0.2.0".to_string(),
+            tag: "v0.2.0".to_string(),
+            asset_name: "gmux-linux-x86_64.tar.gz".to_string(),
+        });
+        let launcher = app.state.global_launcher_rect();
+        app.handle_mouse(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            launcher.x,
+            launcher.y,
+        ));
+
+        let menu = app.state.global_menu_rect();
+        app.handle_mouse(mouse(
+            MouseEventKind::Down(MouseButton::Left),
+            menu.x + 2,
+            menu.y + 1,
+        ));
+
+        if crate::update::self_update_enabled() {
+            assert_eq!(app.state.mode, Mode::UpdateConfirm);
+        } else {
+            assert_eq!(app.state.mode, Mode::UpdateMessage);
+            assert_eq!(
+                app.state.update.message.as_deref(),
+                Some("self-update is disabled by package distributor")
+            );
+        }
     }
 
     #[test]
@@ -709,6 +766,7 @@ mod tests {
         ws.test_add_tab(Some("review"));
         ws.test_add_tab(Some("ops"));
         ws.test_add_tab(Some("notes"));
+        ws.test_add_tab(Some("deploy"));
         app.state.sessions = vec![ws];
         app.state.active_session = Some(0);
         app.state.selected_session = 0;
@@ -754,15 +812,16 @@ mod tests {
         let target = app.state.view.tab_hit_areas[last_idx];
         let clamped_scroll = app.state.tab_scroll;
         assert!(target.width > 0, "last tab should already be visible");
+        let target_col = target.x + target.width.saturating_sub(1);
 
         app.handle_mouse(mouse(
             MouseEventKind::Down(MouseButton::Left),
-            target.x + 1,
+            target_col,
             target.y,
         ));
         app.handle_mouse(mouse(
             MouseEventKind::Up(MouseButton::Left),
-            target.x + 1,
+            target_col,
             target.y,
         ));
 

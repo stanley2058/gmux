@@ -1494,6 +1494,31 @@ impl AppState {
             // Intercepted in App::handle_internal_event before reaching this
             // dispatch; never touches AppState.
             AppEvent::ClipboardWrite { .. } => {}
+            AppEvent::UpdateCheckFinished(result) => {
+                self.update.checking = false;
+                if result.release.is_some() {
+                    self.update.available = result.release;
+                }
+                if let Some(error) = result.error {
+                    tracing::debug!(error, "update check failed");
+                }
+            }
+            AppEvent::UpdateInstallFinished(result) => {
+                self.update.installing = false;
+                match result {
+                    crate::update::UpdateInstallResult::Success(success) => {
+                        self.update.message = Some(format!(
+                            "updated to {}; relaunching current session",
+                            success.version
+                        ));
+                        self.mode = Mode::UpdateMessage;
+                    }
+                    crate::update::UpdateInstallResult::Failed { message } => {
+                        self.update.message = Some(format!("update failed: {message}"));
+                        self.mode = Mode::UpdateMessage;
+                    }
+                }
+            }
         }
     }
 

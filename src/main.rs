@@ -47,6 +47,7 @@ mod terminal;
 mod terminal_notify;
 mod terminal_theme;
 mod ui;
+mod update;
 mod workspace;
 
 fn init_logging() {
@@ -591,6 +592,7 @@ fn main() -> io::Result<()> {
             api_rx,
             event_hub,
         );
+        app.start_update_check();
         let result = app.run(&mut terminal).await;
 
         // Reset modifyOtherKeys if we enabled it.

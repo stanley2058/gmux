@@ -479,6 +479,14 @@ impl HeadlessServer {
                 crate::render_prof::event("full_render_cause.config_reload");
             }
 
+            if self.app.state.request_start_self_update {
+                self.app.state.request_start_self_update = false;
+                self.app.start_self_update();
+                needs_render = true;
+                needs_full_render = true;
+                crate::render_prof::event("full_render_cause.self_update");
+            }
+
             if latest_app_client(&self.clients).is_some() && self.app.ensure_default_session() {
                 needs_render = true;
                 needs_full_render = true;
@@ -1252,7 +1260,7 @@ impl HeadlessServer {
     ///
     /// Returns true if the event changed visual state (requiring a re-render).
     fn handle_internal_event_with_forwarding(&mut self, ev: AppEvent) -> bool {
-        match &ev {
+        match ev {
             AppEvent::ClipboardWrite { content } => {
                 // Clipboard writes are client-local side effects. Forward them only to
                 // the foreground client instead of broadcasting to every attached client.
@@ -1263,16 +1271,17 @@ impl HeadlessServer {
                 true
             }
             AppEvent::PaneDied { pane_id } => {
-                let pane_id_val = *pane_id;
+                let pane_id_val = pane_id;
                 let terminal_id = self.app.state.session_tab_entries().find_map(|entry| {
                     entry
                         .tab
                         .panes
-                        .get(pane_id)
+                        .get(&pane_id)
                         .map(|pane| pane.attached_terminal_id.to_string())
                 });
 
-                self.app.handle_internal_event(ev);
+                self.app
+                    .handle_internal_event(AppEvent::PaneDied { pane_id });
 
                 if self.app.find_pane(pane_id_val).is_none() {
                     if let Some(terminal_id) = terminal_id {
@@ -1283,6 +1292,28 @@ impl HeadlessServer {
                     }
                 }
 
+                true
+            }
+            AppEvent::UpdateInstallFinished(crate::update::UpdateInstallResult::Success(
+                success,
+            )) => {
+                let params = crate::api::schema::ServerLiveHandoffParams {
+                    import_exe: Some(success.binary_path.display().to_string()),
+                    expected_protocol: None,
+                    expected_version: Some(success.version.clone()),
+                };
+                if let Err(err) = self.perform_live_handoff(params) {
+                    self.app
+                        .handle_internal_event(AppEvent::UpdateInstallFinished(
+                            crate::update::UpdateInstallResult::Failed {
+                                message: format!("updated binary but relaunch failed: {err}"),
+                            },
+                        ));
+                }
+                true
+            }
+            AppEvent::UpdateCheckFinished(_) | AppEvent::UpdateInstallFinished(_) => {
+                self.app.handle_internal_event(ev);
                 true
             }
         }
@@ -2999,6 +3030,7 @@ pub fn run_server() -> io::Result<()> {
         // Terminal notifications are forwarded to connected clients as
         // ServerMessage::Notify instead of emitted by the server process.
         app.local_terminal_notifications = false;
+        app.start_update_check();
 
         // Create the headless server.
         let mut server = match HeadlessServer::new(

@@ -183,6 +183,69 @@ impl AppState {
                     return None;
                 }
 
+                if self.mode == Mode::UpdateConfirm {
+                    let Some(inner) = crate::ui::centered_popup_rect(self.screen_rect(), 68, 8)
+                        .map(|popup| {
+                            Rect::new(
+                                popup.x + 1,
+                                popup.y + 1,
+                                popup.width.saturating_sub(2),
+                                popup.height.saturating_sub(2),
+                            )
+                        })
+                    else {
+                        leave_modal(self);
+                        return None;
+                    };
+                    let (update, cancel) = crate::ui::update_confirm_button_rects(inner);
+                    match modal_action_from_buttons(
+                        mouse.column,
+                        mouse.row,
+                        &[
+                            (update, ModalAction::Confirm),
+                            (cancel, ModalAction::Cancel),
+                        ],
+                    ) {
+                        Some(ModalAction::Confirm) => {
+                            self.request_start_self_update = true;
+                            self.update.installing = true;
+                            self.update.message = Some("updating gmux".to_string());
+                            leave_modal(self);
+                        }
+                        Some(ModalAction::Cancel) | None => leave_modal(self),
+                        _ => {}
+                    }
+                    return None;
+                }
+
+                if self.mode == Mode::UpdateMessage {
+                    if let Some(inner) = crate::ui::centered_popup_rect(self.screen_rect(), 68, 7)
+                        .map(|popup| {
+                            Rect::new(
+                                popup.x + 1,
+                                popup.y + 1,
+                                popup.width.saturating_sub(2),
+                                popup.height.saturating_sub(2),
+                            )
+                        })
+                    {
+                        let ok = crate::ui::update_message_button_rect(inner);
+                        if modal_action_from_buttons(
+                            mouse.column,
+                            mouse.row,
+                            &[(ok, ModalAction::Confirm)],
+                        )
+                        .is_some()
+                        {
+                            self.update.message = None;
+                            leave_modal(self);
+                        }
+                    } else {
+                        leave_modal(self);
+                    }
+                    return None;
+                }
+
                 if matches!(self.mode, Mode::RenameTab | Mode::RenamePane) {
                     let action = self
                         .rename_modal_inner()
@@ -2281,6 +2344,7 @@ mod tests {
         ws.tabs[0].set_custom_name("very-long-one".into());
         ws.test_add_tab(Some("very-long-two"));
         ws.test_add_tab(Some("very-long-three"));
+        ws.test_add_tab(Some("very-long-four"));
         app.state.sessions = vec![ws];
         app.state.active_session = Some(0);
         app.state.selected_session = 0;

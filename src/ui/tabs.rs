@@ -7,18 +7,29 @@ use ratatui::{
 };
 
 use super::widgets::panel_contrast_fg;
+use crate::app::state::Palette;
 use crate::app::AppState;
 use crate::session;
 use crate::terminal::TerminalRuntimeRegistry;
 use crate::workspace::{SessionUiState, Tab};
 
-const MIN_TAB_WIDTH: u16 = 8;
 const NEW_TAB_WIDTH: u16 = 3;
 const TAB_SCROLL_BUTTON_WIDTH: u16 = 3;
-const MENU_WIDTH: u16 = 6;
-const MENU_BADGE_WIDTH: u16 = 8;
+const TOP_BAR_EDGE_PADDING: u16 = 1;
 const SESSION_MAX_WIDTH: u16 = 24;
 const PROGRAM_MAX_WIDTH: u16 = 18;
+
+#[derive(Clone, Copy)]
+enum TopBarMenuSegmentKind {
+    AttentionBadge,
+    Label,
+}
+
+#[derive(Clone)]
+struct TopBarMenuSegment {
+    text: String,
+    kind: TopBarMenuSegmentKind,
+}
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TabBarView {
@@ -53,7 +64,7 @@ fn tab_bar_label(tab: &Tab) -> String {
 }
 
 fn tab_width(tab: &Tab) -> u16 {
-    (tab_bar_label(tab).chars().count() as u16 + 4).max(MIN_TAB_WIDTH)
+    tab_bar_label(tab).chars().count() as u16 + 2
 }
 
 fn launch_label(argv: Option<&Vec<String>>) -> Option<String> {
@@ -91,12 +102,65 @@ fn session_name(_app: &AppState, _terminal_runtimes: &TerminalRuntimeRegistry) -
     session::active_display_name()
 }
 
-pub(crate) fn top_bar_menu_width(app: &AppState) -> u16 {
+fn top_bar_menu_segments(app: &AppState) -> Vec<TopBarMenuSegment> {
+    let mut segments = Vec::new();
     if app.global_menu_attention_badge_visible() {
-        MENU_BADGE_WIDTH
-    } else {
-        MENU_WIDTH
+        segments.push(TopBarMenuSegment {
+            text: "● ".to_string(),
+            kind: TopBarMenuSegmentKind::AttentionBadge,
+        });
     }
+    segments.push(TopBarMenuSegment {
+        text: if app.update.available.is_some() {
+            "↑ menu".to_string()
+        } else {
+            "menu".to_string()
+        },
+        kind: TopBarMenuSegmentKind::Label,
+    });
+    segments
+}
+
+fn top_bar_menu_segments_width(segments: &[TopBarMenuSegment]) -> u16 {
+    segments
+        .iter()
+        .map(|segment| segment.text.chars().count() as u16)
+        .sum()
+}
+
+pub(crate) fn top_bar_menu_width(app: &AppState) -> u16 {
+    top_bar_menu_segments_width(&top_bar_menu_segments(app))
+        .saturating_add(TOP_BAR_EDGE_PADDING.saturating_mul(2))
+}
+
+fn top_bar_menu_bg(app: &AppState, p: &Palette) -> ratatui::style::Color {
+    if app.update.available.is_some() {
+        p.green
+    } else {
+        p.panel_bg
+    }
+}
+
+fn top_bar_menu_line(app: &AppState, p: &Palette) -> Line<'static> {
+    let bg = top_bar_menu_bg(app, p);
+    let padding_style = Style::default().bg(bg);
+    let mut spans = vec![Span::styled(" ", padding_style)];
+    spans.extend(top_bar_menu_segments(app).into_iter().map(|segment| {
+        let style = match segment.kind {
+            TopBarMenuSegmentKind::AttentionBadge => Style::default()
+                .fg(p.accent)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD),
+            TopBarMenuSegmentKind::Label if app.update.available.is_some() => Style::default()
+                .fg(p.panel_bg)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD),
+            TopBarMenuSegmentKind::Label => Style::default().fg(p.overlay1).bg(bg),
+        };
+        Span::styled(segment.text, style)
+    }));
+    spans.push(Span::styled(" ", padding_style));
+    Line::from(spans)
 }
 
 pub(crate) fn top_bar_tab_area(
@@ -117,6 +181,7 @@ pub(crate) fn top_bar_tab_area(
         .count()
         .min(PROGRAM_MAX_WIDTH as usize) as u16;
     let left_w = session_w
+        .saturating_add(TOP_BAR_EDGE_PADDING)
         .saturating_add(3)
         .saturating_add(program_w)
         .saturating_add(3);
@@ -369,6 +434,7 @@ pub(super) fn render_tab_bar(
     let left_width = tabs_area.x.saturating_sub(area.x).min(area.width);
     if left_width > 0 {
         let line = Line::from(vec![
+            Span::styled(" ", Style::default().bg(p.panel_bg)),
             Span::styled(
                 session,
                 Style::default()
@@ -460,7 +526,7 @@ pub(super) fn render_tab_bar(
         };
         let width = rect.width as usize;
         let name = tab_bar_label(tab);
-        let text = format!(" {:width$}", name, width = width.saturating_sub(1));
+        let text = format!(" {name:width$}", width = width.saturating_sub(1));
         frame.render_widget(Paragraph::new(text).style(style), rect);
     }
 
@@ -491,24 +557,7 @@ pub(super) fn render_tab_bar(
 
     let menu_rect = app.global_launcher_rect();
     if menu_rect.width > 0 {
-        let menu_line = if app.global_menu_attention_badge_visible() {
-            Line::from(vec![
-                Span::styled(
-                    "● ",
-                    Style::default()
-                        .fg(p.accent)
-                        .bg(p.panel_bg)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled("menu", Style::default().fg(p.overlay1).bg(p.panel_bg)),
-            ])
-        } else {
-            Line::from(vec![Span::styled(
-                "menu",
-                Style::default().fg(p.overlay1).bg(p.panel_bg),
-            )])
-        };
-        frame.render_widget(Paragraph::new(menu_line), menu_rect);
+        frame.render_widget(Paragraph::new(top_bar_menu_line(app, p)), menu_rect);
     }
 
     if first_visible_idx.is_some_and(|idx| idx > 0) {
@@ -547,5 +596,39 @@ mod tests {
             launch_label(Some(&vec!["/usr/bin/fish".to_string()])),
             Some("fish".to_string())
         );
+    }
+
+    #[test]
+    fn tab_width_uses_label_with_side_padding() {
+        let ws = crate::workspace::Workspace::test_new("test");
+
+        assert_eq!(tab_width(&ws.tabs[0]), 3);
+    }
+
+    #[test]
+    fn top_bar_menu_width_tracks_rendered_segments() {
+        let mut app = AppState::test_new();
+        let normal_segments = top_bar_menu_segments(&app);
+        let attention_segments = vec![
+            TopBarMenuSegment {
+                text: "● ".to_string(),
+                kind: TopBarMenuSegmentKind::AttentionBadge,
+            },
+            TopBarMenuSegment {
+                text: "menu".to_string(),
+                kind: TopBarMenuSegmentKind::Label,
+            },
+        ];
+
+        assert_eq!(top_bar_menu_segments_width(&normal_segments), 4);
+        assert_eq!(top_bar_menu_width(&app), 6);
+        assert_eq!(top_bar_menu_segments_width(&attention_segments), 6);
+
+        app.update.available = Some(crate::update::UpdateRelease {
+            version: "0.2.0".to_string(),
+            tag: "v0.2.0".to_string(),
+            asset_name: "gmux-linux-x86_64.tar.gz".to_string(),
+        });
+        assert_eq!(top_bar_menu_width(&app), 8);
     }
 }

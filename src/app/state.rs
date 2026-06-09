@@ -607,6 +607,8 @@ pub enum Mode {
     GlobalMenu,
     KeybindHelp,
     Navigator,
+    UpdateConfirm,
+    UpdateMessage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -954,6 +956,14 @@ pub struct KeybindHelpState {
     pub scroll: u16,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct UpdateState {
+    pub checking: bool,
+    pub installing: bool,
+    pub available: Option<crate::update::UpdateRelease>,
+    pub message: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarWidthSource {
     ConfigDefault,
@@ -999,6 +1009,7 @@ pub struct AppState {
     pub detach_requested: bool,
     pub request_new_tab: bool,
     pub request_reload_config: bool,
+    pub request_start_self_update: bool,
     /// Set when the headless server should ask attached clients to reload
     /// client-local runtime config from disk.
     pub request_client_config_reload: bool,
@@ -1086,6 +1097,7 @@ pub struct AppState {
     pub settings: SettingsState,
     /// Highlight state for the bottom-right global launcher menu.
     pub global_menu: MenuListState,
+    pub update: UpdateState,
     /// Resolved host terminal default colors for theming embedded panes.
     pub host_terminal_theme: TerminalTheme,
     /// Set when a persisted session snapshot would change.
@@ -1120,8 +1132,11 @@ impl AppState {
         false
     }
 
-    pub(crate) fn global_menu_item_has_badge(&self, _item: &str) -> bool {
-        false
+    pub(crate) fn global_menu_item_has_badge(&self, item: &str) -> bool {
+        self.update
+            .available
+            .as_ref()
+            .is_some_and(|release| item == format!("update to {}", release.version))
     }
 
     pub(crate) fn focused_pane_requests_mouse_capture_from(
@@ -1326,6 +1341,7 @@ impl AppState {
             detach_requested: false,
             request_new_tab: false,
             request_reload_config: false,
+            request_start_self_update: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
             creating_new_tab: false,
@@ -1410,6 +1426,7 @@ impl AppState {
                 original_theme: None,
             },
             global_menu: MenuListState::new(0),
+            update: UpdateState::default(),
             host_terminal_theme: TerminalTheme::default(),
             session_dirty: false,
             terminal_runtime_shutdowns: Vec::new(),

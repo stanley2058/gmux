@@ -317,6 +317,7 @@ impl App {
             detach_requested: false,
             request_new_tab: false,
             request_reload_config: false,
+            request_start_self_update: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
             creating_new_tab: false,
@@ -407,6 +408,7 @@ impl App {
                 original_theme: None,
             },
             global_menu: state::MenuListState::new(0),
+            update: state::UpdateState::default(),
             host_terminal_theme: crate::terminal_theme::TerminalTheme::default(),
             session_dirty: false,
             terminal_runtime_shutdowns: Vec::new(),
@@ -548,6 +550,58 @@ impl App {
         self.prefix_input_source = source;
     }
 
+    pub(crate) fn start_update_check(&mut self) {
+        if self.state.update.checking || self.state.update.available.is_some() {
+            return;
+        }
+        self.state.update.checking = true;
+        let version = crate::build_info::version();
+        let tx = self.event_tx.clone();
+        std::thread::spawn(move || {
+            let result = crate::update::check_latest_release(&version);
+            let _ = tx.blocking_send(crate::events::AppEvent::UpdateCheckFinished(result));
+        });
+    }
+
+    pub(crate) fn start_self_update(&mut self) {
+        if !crate::update::self_update_enabled() {
+            self.state.update.message =
+                Some("self-update is disabled by package distributor".to_string());
+            self.state.update.installing = false;
+            self.state.mode = Mode::UpdateMessage;
+            return;
+        }
+        if self.no_session {
+            self.state.update.message =
+                Some("self-update requires a persistent session".to_string());
+            self.state.update.installing = false;
+            self.state.mode = Mode::UpdateMessage;
+            return;
+        }
+        let Some(release) = self.state.update.available.clone() else {
+            self.state.update.message = Some("no update is available".to_string());
+            self.state.update.installing = false;
+            self.state.mode = Mode::UpdateMessage;
+            return;
+        };
+        let binary_path = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(err) => {
+                self.state.update.message =
+                    Some(format!("failed to locate current gmux binary: {err}"));
+                self.state.update.installing = false;
+                self.state.mode = Mode::UpdateMessage;
+                return;
+            }
+        };
+        self.state.update.installing = true;
+        let tx = self.event_tx.clone();
+        std::thread::spawn(move || {
+            let result = crate::update::install_release(release, binary_path);
+            let _ = tx.blocking_send(crate::events::AppEvent::UpdateInstallFinished(result));
+        });
+    }
+
     pub async fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         if self.input_rx.is_none() {
             self.input_rx = Some(crate::raw_input::spawn_input_reader());
@@ -594,6 +648,12 @@ impl App {
             if self.state.request_reload_config {
                 self.state.request_reload_config = false;
                 self.reload_config();
+                needs_render = true;
+            }
+
+            if self.state.request_start_self_update {
+                self.state.request_start_self_update = false;
+                self.start_self_update();
                 needs_render = true;
             }
 
@@ -1125,6 +1185,12 @@ impl App {
             }
             Mode::Navigator => {
                 input::handle_navigator_key(&mut self.state, &self.terminal_runtimes, key_event);
+            }
+            Mode::UpdateConfirm => {
+                input::handle_update_confirm_key(&mut self.state, key_event);
+            }
+            Mode::UpdateMessage => {
+                input::handle_update_message_key(&mut self.state, key_event);
             }
             Mode::Terminal => {
                 // Should not be called in terminal mode.
