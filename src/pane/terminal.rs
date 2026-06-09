@@ -1119,7 +1119,7 @@ impl GhosttyPaneTerminal {
                     );
                     let symbol = match ghostty_buffer_symbol_into(
                         &cells,
-                        basic.wide,
+                        &basic,
                         hide_kitty_placeholders,
                         &mut grapheme_codepoints,
                         &mut symbol_scratch,
@@ -1314,7 +1314,7 @@ fn ghostty_collect_dirty_patch(
                 );
                 let symbol = match ghostty_buffer_symbol_into(
                     &cells,
-                    basic.wide,
+                    &basic,
                     hide_kitty_placeholders,
                     &mut grapheme_codepoints,
                     &mut symbol_scratch,
@@ -1594,7 +1594,10 @@ fn ghostty_line_from_cells(
 fn ghostty_cell_symbol(
     cells: &crate::ghostty::RowCellIter<'_>,
 ) -> Result<String, crate::ghostty::Error> {
-    let text = cells.grapheme_text()?;
+    let basic = cells.basic_data()?;
+    let mut codepoints = Vec::new();
+    let mut text = String::new();
+    ghostty_basic_cell_text_into(cells, &basic, &mut codepoints, &mut text)?;
     if text.chars().next().map(u32::from) == Some(crate::ghostty::KITTY_UNICODE_PLACEHOLDER) {
         return Ok(" ".to_string());
     }
@@ -1636,41 +1639,63 @@ pub(super) fn ghostty_normalize_buffer_symbol(
 
 fn ghostty_buffer_symbol_into<'a>(
     cells: &crate::ghostty::RowCellIter<'_>,
-    wide: crate::ghostty::CellWide,
+    basic: &crate::ghostty::CellBasicData,
     hide_kitty_placeholders: bool,
     grapheme_codepoints: &mut Vec<u32>,
     symbol_scratch: &'a mut String,
 ) -> Result<&'a str, crate::ghostty::Error> {
     symbol_scratch.clear();
-    match wide {
+    match basic.wide {
         crate::ghostty::CellWide::SpacerTail => {}
         crate::ghostty::CellWide::SpacerHead => symbol_scratch.push(' '),
         crate::ghostty::CellWide::Narrow | crate::ghostty::CellWide::Wide => {
-            cells.grapheme_text_into(grapheme_codepoints, symbol_scratch)?;
-            let hidden_kitty_placeholder = hide_kitty_placeholders
-                && symbol_scratch.chars().next().map(u32::from)
-                    == Some(crate::ghostty::KITTY_UNICODE_PLACEHOLDER);
-            if hidden_kitty_placeholder || symbol_scratch.is_empty() {
+            if hide_kitty_placeholders
+                && basic.codepoint == crate::ghostty::KITTY_UNICODE_PLACEHOLDER
+            {
+                symbol_scratch.push(' ');
+            } else {
+                ghostty_basic_cell_text_into(cells, basic, grapheme_codepoints, symbol_scratch)?;
+            }
+            if symbol_scratch.is_empty() {
                 symbol_scratch.clear();
                 symbol_scratch.push(' ');
             }
         }
     }
 
-    let expected_width = match wide {
+    let expected_width = match basic.wide {
         crate::ghostty::CellWide::Wide => 2,
         crate::ghostty::CellWide::Narrow | crate::ghostty::CellWide::SpacerHead => 1,
         crate::ghostty::CellWide::SpacerTail => 0,
     };
     let actual_width = symbol_scratch.width();
     if actual_width != expected_width
-        && !(wide == crate::ghostty::CellWide::Narrow && actual_width == 2)
+        && !(basic.wide == crate::ghostty::CellWide::Narrow && actual_width == 2)
     {
         symbol_scratch.clear();
-        symbol_scratch.push_str(ghostty_blank_symbol_for_width(wide));
+        symbol_scratch.push_str(ghostty_blank_symbol_for_width(basic.wide));
     }
 
     Ok(symbol_scratch.as_str())
+}
+
+fn ghostty_basic_cell_text_into(
+    cells: &crate::ghostty::RowCellIter<'_>,
+    basic: &crate::ghostty::CellBasicData,
+    grapheme_codepoints: &mut Vec<u32>,
+    text: &mut String,
+) -> Result<(), crate::ghostty::Error> {
+    text.clear();
+    grapheme_codepoints.clear();
+    if basic.graphemes_len > 0 {
+        return cells.grapheme_text_into(grapheme_codepoints, text);
+    }
+    if basic.has_text {
+        if let Some(ch) = char::from_u32(basic.codepoint) {
+            text.push(ch);
+        }
+    }
+    Ok(())
 }
 
 fn ghostty_reset_cell(
@@ -1757,20 +1782,25 @@ fn ghostty_cell_style(
     resolved_fg: Option<Color>,
     resolved_bg: Option<Color>,
 ) -> TerminalCellStyle {
-    let mut fg = basic
-        .style
-        .fg_color
-        .map(ghostty_cell_color)
-        .or_else(|| cells.fg_color().ok().flatten().map(ghostty_color))
-        .or(default_fg);
-    let mut bg = cells
-        .content_bg_color()
-        .ok()
-        .flatten()
-        .or(basic.style.bg_color)
-        .map(ghostty_cell_color)
-        .or_else(|| cells.bg_color().ok().flatten().map(ghostty_color))
-        .or(default_bg);
+    let mut fg = match basic.style.fg_color {
+        Some(color) => Some(ghostty_cell_color(color)),
+        None => cells
+            .fg_color()
+            .ok()
+            .flatten()
+            .map(ghostty_color)
+            .or(default_fg),
+    };
+    let mut bg = match basic.style.bg_color {
+        Some(color) => Some(ghostty_cell_color(color)),
+        None => cells
+            .content_bg_color()
+            .ok()
+            .flatten()
+            .map(ghostty_cell_color)
+            .or_else(|| cells.bg_color().ok().flatten().map(ghostty_color))
+            .or(default_bg),
+    };
     if basic.style.invisible {
         fg = bg.or(default_bg);
     }
@@ -2773,17 +2803,17 @@ mod tests {
         if rows.next() {
             let mut cells = rows.populate_cells(&mut row_cells).unwrap();
             while cells.next() {
-                let wide = cells.wide().unwrap_or(crate::ghostty::CellWide::Narrow);
+                let basic = cells.basic_data().unwrap_or_default();
                 let symbol = ghostty_buffer_symbol_into(
                     &cells,
-                    wide,
+                    &basic,
                     false,
                     &mut grapheme_codepoints,
                     &mut symbol_scratch,
                 )
                 .unwrap()
                 .to_string();
-                out.push((wide, symbol));
+                out.push((basic.wide, symbol));
             }
         }
 

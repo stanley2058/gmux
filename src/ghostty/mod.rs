@@ -2310,7 +2310,10 @@ pub struct RowCellIter<'a> {
 pub struct CellBasicData {
     pub wide: CellWide,
     pub has_hyperlink: bool,
+    pub has_text: bool,
     pub has_styling: bool,
+    pub codepoint: u32,
+    pub graphemes_len: u32,
     pub style: CellStyle,
 }
 
@@ -2319,7 +2322,10 @@ impl Default for CellBasicData {
         Self {
             wide: CellWide::Narrow,
             has_hyperlink: false,
+            has_text: false,
             has_styling: false,
+            codepoint: 0,
+            graphemes_len: 0,
             style: CellStyle::default(),
         }
     }
@@ -2359,11 +2365,14 @@ impl<'a> RowCellIter<'a> {
             ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_RAW,
             ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE,
             ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_HAS_STYLING,
+            ffi::GhosttyRenderStateRowCellsData_GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_GRAPHEMES_LEN,
         ];
+        let mut graphemes_len = 0u32;
         let mut row_values = [
             (&mut raw as *mut ffi::GhosttyCell).cast::<c_void>(),
             (&mut style as *mut ffi::GhosttyStyle).cast::<c_void>(),
             (&mut has_styling as *mut bool).cast::<c_void>(),
+            (&mut graphemes_len as *mut u32).cast::<c_void>(),
         ];
         let mut written = 0usize;
         unsafe {
@@ -2379,13 +2388,19 @@ impl<'a> RowCellIter<'a> {
 
         let mut wide = ffi::GhosttyCellWide_GHOSTTY_CELL_WIDE_NARROW;
         let mut has_hyperlink = false;
+        let mut has_text = false;
+        let mut codepoint = 0u32;
         let cell_keys = [
             ffi::GhosttyCellData_GHOSTTY_CELL_DATA_WIDE,
             ffi::GhosttyCellData_GHOSTTY_CELL_DATA_HAS_HYPERLINK,
+            ffi::GhosttyCellData_GHOSTTY_CELL_DATA_HAS_TEXT,
+            ffi::GhosttyCellData_GHOSTTY_CELL_DATA_CODEPOINT,
         ];
         let mut cell_values = [
             (&mut wide as *mut ffi::GhosttyCellWide).cast::<c_void>(),
             (&mut has_hyperlink as *mut bool).cast::<c_void>(),
+            (&mut has_text as *mut bool).cast::<c_void>(),
+            (&mut codepoint as *mut u32).cast::<c_void>(),
         ];
         unsafe {
             ffi::ghostty_cell_get_multi(
@@ -2401,7 +2416,10 @@ impl<'a> RowCellIter<'a> {
         Ok(CellBasicData {
             wide: CellWide::from_raw(wide),
             has_hyperlink,
+            has_text,
             has_styling,
+            codepoint,
+            graphemes_len,
             style: style.into(),
         })
     }
