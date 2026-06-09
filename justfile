@@ -1,9 +1,25 @@
 # gmux task runner
 
-# Run tests
-test:
-    cargo test --locked
+# Run fast tests for the normal edit/agent feedback loop
+test-fast:
+    cargo test --locked --bin gmux
     python3 -m unittest scripts.test_vendor_libghostty_vt
+
+# Run process/PTY/socket integration tests
+test-integration:
+    cargo test --locked --test api_ping
+    cargo test --locked --test auto_detect
+    cargo test --locked --test cli_wrapper
+    cargo test --locked --test client_mode
+    cargo test --locked --test cross_area
+    cargo test --locked --test detach_reattach
+    cargo test --locked --test live_handoff
+    cargo test --locked --test multi_client
+    cargo test --locked --test server_headless
+    cargo test --locked --test terminal_feature_matrix
+
+# Run tests
+test: test-fast test-integration
 
 # Run one cargo test filter, e.g. `just test-one codex_stale_working`
 test-one filter:

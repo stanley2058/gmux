@@ -13,8 +13,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Deserialize;
 use support::{
-    cleanup_test_base, client_handshake, encode_varint_u16, encode_varint_u32, frame_message,
-    read_server_message, register_runtime_dir, register_spawned_gmux_pid,
+    cleanup_test_base, client_handshake, drain_messages, encode_varint_u16, encode_varint_u32,
+    frame_message, read_server_message, register_runtime_dir, register_spawned_gmux_pid,
     unregister_spawned_gmux_pid, wait_for_file, wait_for_message_variant, wait_for_socket,
     wait_until, TEST_PROTOCOL_VERSION,
 };
@@ -476,10 +476,7 @@ fn client_resize_sends_message() {
     assert!(error.is_none(), "{:?}", error);
 
     // Drain the initial frame(s).
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .unwrap();
-    while read_server_message(&mut stream).is_ok() {}
+    drain_messages(&mut stream);
 
     // Send a Resize message: ClientMessage::Resize is variant 3.
     let resize_payload = {
@@ -809,10 +806,7 @@ fn navigate_mode_keybind_dispatch_in_server() {
     assert!(error.is_none(), "{:?}", error);
 
     // Drain initial frames.
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .unwrap();
-    while read_server_message(&mut stream).is_ok() {}
+    drain_messages(&mut stream);
 
     // Send Ctrl+B (prefix key) as raw bytes. In kitty mode, Ctrl+B is 0x02.
     // In legacy mode, it's also 0x02 (control character).
@@ -927,10 +921,7 @@ fn graceful_shutdown_sends_server_shutdown_to_client() {
     assert!(error.is_none(), "{:?}", error);
 
     // Drain initial frame(s).
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .unwrap();
-    while read_server_message(&mut stream).is_ok() {}
+    drain_messages(&mut stream);
 
     // Send SIGINT to the server process to trigger graceful shutdown.
     if let Some(pid) = spawned.child.process_id() {
@@ -1031,10 +1022,7 @@ fn removed_agent_report_api_does_not_notify_client() {
     assert!(error.is_none(), "{:?}", error);
 
     // Drain initial frame(s).
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .unwrap();
-    while read_server_message(&mut stream).is_ok() {}
+    drain_messages(&mut stream);
 
     // Create an initial tab via the API.
     let mut ws_stream = UnixStream::connect(&api_socket).expect("connect to API");

@@ -19,9 +19,12 @@ Terminal multiplexer and session manager. Rust + ratatui.
 Use `just` recipes by default:
 
 ```bash
+just test-fast
 just test
 just check
 ```
+
+Use `just test-fast` for the normal edit/agent feedback loop; it runs in-source Rust tests plus maintenance tests without spawning the full process/PTY/socket integration suite. Use `just test-integration` for the integration tier, and `just test` for the full test suite.
 
 Run `just check` before committing unless a narrower validation is explicitly acceptable. Do not bypass failing checks; fix the failure or explain exactly why the narrower check is enough.
 

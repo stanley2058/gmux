@@ -1991,6 +1991,31 @@ mod tests {
     use ratatui::{layout::Rect, style::Color};
     use tokio::sync::mpsc;
 
+    struct KittyGraphicsEnabledGuard {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        previous: bool,
+    }
+
+    impl Drop for KittyGraphicsEnabledGuard {
+        fn drop(&mut self) {
+            crate::kitty_graphics::set_enabled(self.previous);
+        }
+    }
+
+    fn set_kitty_graphics_enabled_for_test(enabled: bool) -> KittyGraphicsEnabledGuard {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        let lock = LOCK
+            .get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let previous = crate::kitty_graphics::is_enabled();
+        crate::kitty_graphics::set_enabled(enabled);
+        KittyGraphicsEnabledGuard {
+            _lock: lock,
+            previous,
+        }
+    }
+
     fn write_numbered_lines(terminal: &mut crate::ghostty::Terminal, count: usize) {
         for i in 0..count {
             terminal.write(format!("{i:06}\r\n").as_bytes());
@@ -2888,7 +2913,7 @@ mod tests {
 
     #[test]
     fn render_blanks_kitty_unicode_placeholders_when_graphics_enabled() {
-        crate::kitty_graphics::set_enabled(true);
+        let _kitty_graphics = set_kitty_graphics_enabled_for_test(true);
         let (tx, _rx) = mpsc::channel(4);
         let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
         let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
@@ -2908,7 +2933,6 @@ mod tests {
         terminal
             .draw(|frame| pane.render(frame, Rect::new(0, 0, 20, 5), false))
             .unwrap();
-        crate::kitty_graphics::set_enabled(false);
 
         let buffer = terminal.backend().buffer();
         assert_eq!(buffer[(0, 0)].symbol(), "b");
