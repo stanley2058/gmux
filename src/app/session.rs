@@ -30,6 +30,7 @@ impl App {
                 self.state.session(),
                 &self.state.terminals,
                 &self.terminal_runtimes,
+                self.state.restore_processes,
             );
             let history = self.persist_pane_history.then(|| {
                 crate::persist::capture_history(self.state.session(), &self.terminal_runtimes)

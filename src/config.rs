@@ -112,4 +112,20 @@ command = "lazygit"
         assert!(!profile.contains("command ="));
         assert!(!profile.contains("[[keys.command]]"));
     }
+
+    #[test]
+    fn terminal_restore_processes_defaults_on_and_can_be_disabled() {
+        let default_config = Config::default();
+        assert!(default_config.terminal.restore_processes);
+
+        let config: Config = toml::from_str(
+            r#"
+[terminal]
+restore_processes = false
+"#,
+        )
+        .unwrap();
+
+        assert!(!config.terminal.restore_processes);
+    }
 }

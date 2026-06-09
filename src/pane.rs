@@ -125,6 +125,34 @@ fn foreground_process_name(shell_pid: u32) -> Option<String> {
         .or_else(|| job.processes.iter().find_map(process_display_name))
 }
 
+fn foreground_process_argv(shell_pid: u32) -> Option<Vec<String>> {
+    let mut job = crate::platform::foreground_job(shell_pid)?;
+    let session_pids = crate::platform::session_processes(shell_pid);
+    if !session_pids.is_empty() {
+        job.processes
+            .retain(|process| session_pids.contains(&process.pid));
+    }
+    select_foreground_process_argv(shell_pid, &job)
+}
+
+fn select_foreground_process_argv(
+    shell_pid: u32,
+    job: &crate::platform::ForegroundJob,
+) -> Option<Vec<String>> {
+    job.processes
+        .iter()
+        .filter(|process| process.pid != shell_pid)
+        .find(|process| process.pid == job.process_group_id && process.argv.is_some())
+        .and_then(|process| process.argv.clone())
+        .or_else(|| {
+            job.processes
+                .iter()
+                .filter(|process| process.pid != shell_pid)
+                .find_map(|process| process.argv.clone())
+        })
+        .filter(|argv| !argv.is_empty())
+}
+
 fn spawn_basic_detection_task(
     pane_id: PaneId,
     child_pid: Arc<AtomicU32>,
@@ -754,6 +782,34 @@ impl PaneRuntime {
         render_notify: Arc<Notify>,
         render_dirty: Arc<AtomicBool>,
     ) -> std::io::Result<Self> {
+        Self::spawn_argv_command_with_initial_history(
+            pane_id,
+            (rows, cols),
+            cwd,
+            argv,
+            term,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            None,
+            events,
+            render_notify,
+            render_dirty,
+        )
+    }
+
+    pub fn spawn_argv_command_with_initial_history(
+        pane_id: PaneId,
+        size: (u16, u16),
+        cwd: std::path::PathBuf,
+        argv: &[String],
+        term: &str,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        initial_history_ansi: Option<&str>,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<AtomicBool>,
+    ) -> std::io::Result<Self> {
         let Some((program, args)) = argv.split_first() else {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -769,8 +825,8 @@ impl PaneRuntime {
         apply_pane_terminal_env(&mut cmd, term);
         Self::spawn_command_builder(
             pane_id,
-            rows,
-            cols,
+            size.0,
+            size.1,
             scrollback_limit_bytes,
             host_terminal_theme,
             events,
@@ -778,7 +834,9 @@ impl PaneRuntime {
             render_dirty,
             cmd,
             "failed to spawn argv command pane",
-            SpawnInitialState::default(),
+            SpawnInitialState {
+                history_ansi: initial_history_ansi,
+            },
         )
     }
 
@@ -1367,6 +1425,14 @@ impl PaneRuntime {
         }
         foreground_process_name(pid)
     }
+
+    pub fn foreground_process_argv(&self) -> Option<Vec<String>> {
+        let pid = self.child_pid.load(Ordering::Acquire);
+        if pid == 0 {
+            return None;
+        }
+        foreground_process_argv(pid)
+    }
 }
 
 #[cfg(test)]
@@ -1464,6 +1530,58 @@ mod tests {
     #[test]
     fn shutdown_liveness_treats_missing_process_as_gone() {
         assert!(!process_alive_for_shutdown(43, 42, false, |_| false));
+    }
+
+    fn foreground_process(pid: u32, argv: Option<Vec<&str>>) -> crate::platform::ForegroundProcess {
+        crate::platform::ForegroundProcess {
+            pid,
+            name: format!("process-{pid}"),
+            argv0: None,
+            argv: argv.map(|argv| argv.into_iter().map(str::to_string).collect()),
+            cmdline: None,
+        }
+    }
+
+    #[test]
+    fn foreground_argv_selection_ignores_idle_shell() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 42,
+            processes: vec![foreground_process(42, Some(vec!["/bin/sh"]))],
+        };
+
+        assert_eq!(select_foreground_process_argv(42, &job), None);
+    }
+
+    #[test]
+    fn foreground_argv_selection_prefers_process_group_leader() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 100,
+            processes: vec![
+                foreground_process(101, Some(vec!["helper"])),
+                foreground_process(100, Some(vec!["vim", "src/main.rs"])),
+            ],
+        };
+
+        assert_eq!(
+            select_foreground_process_argv(42, &job),
+            Some(vec!["vim".to_string(), "src/main.rs".to_string()])
+        );
+    }
+
+    #[test]
+    fn foreground_argv_selection_falls_back_to_first_non_shell_member() {
+        let job = crate::platform::ForegroundJob {
+            process_group_id: 100,
+            processes: vec![
+                foreground_process(100, None),
+                foreground_process(101, Some(vec!["less", "README.md"])),
+            ],
+        };
+
+        assert_eq!(
+            select_foreground_process_argv(42, &job),
+            Some(vec!["less".to_string(), "README.md".to_string()])
+        );
     }
 
     fn capture_shell_output(command: &str, pane_term: &str, extra_env: &[(&str, &str)]) -> String {

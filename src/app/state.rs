@@ -738,6 +738,7 @@ impl SettingsPage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsEditField {
+    PaneTerm,
     DefaultShell,
     NewTerminalCwdPath,
     SidebarWidth,
@@ -1081,6 +1082,7 @@ pub struct AppState {
     pub default_shell: String,
     pub shell_mode: crate::config::ShellModeConfig,
     pub new_terminal_cwd: NewTerminalCwdConfig,
+    pub restore_processes: bool,
     pub pane_scrollback_limit_bytes: usize,
     #[allow(dead_code)] // kept for backward compat; palette.accent is the source of truth
     pub accent: Color,
@@ -1410,6 +1412,7 @@ impl AppState {
             default_shell: String::new(),
             shell_mode: crate::config::ShellModeConfig::Auto,
             new_terminal_cwd: NewTerminalCwdConfig::Follow,
+            restore_processes: true,
             pane_scrollback_limit_bytes: crate::config::DEFAULT_SCROLLBACK_LIMIT_BYTES,
             accent: Color::Cyan,
             toast_config: ToastConfig::default(),

@@ -858,6 +858,7 @@ impl HeadlessServer {
             self.app.state.session(),
             &self.app.state.terminals,
             &self.app.terminal_runtimes,
+            self.app.state.restore_processes,
         );
 
         let mut handoff_entries = Vec::new();

@@ -144,6 +144,8 @@ pub struct TerminalConfig {
     pub shell_mode: ShellModeConfig,
     /// CWD policy for new interactive panes and tabs.
     pub new_cwd: NewTerminalCwdConfig,
+    /// Best-effort relaunch of foreground pane processes on session restore. Default: true.
+    pub restore_processes: bool,
 }
 
 impl Default for TerminalConfig {
@@ -153,6 +155,7 @@ impl Default for TerminalConfig {
             default_shell: String::new(),
             shell_mode: ShellModeConfig::Auto,
             new_cwd: NewTerminalCwdConfig::Follow,
+            restore_processes: true,
         }
     }
 }

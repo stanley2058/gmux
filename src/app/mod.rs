@@ -248,12 +248,15 @@ impl App {
             let (restored_session, terminals, terminal_runtimes) = crate::persist::restore(
                 &snap,
                 history.as_ref(),
-                24,
-                80,
-                config.advanced.scrollback_limit_bytes,
-                &config.terminal.default_shell,
-                config.terminal.shell_mode,
-                &config.terminal.term,
+                crate::persist::RestoreOptions {
+                    rows: 24,
+                    cols: 80,
+                    scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
+                    default_shell: &config.terminal.default_shell,
+                    shell_mode: config.terminal.shell_mode,
+                    pane_term: &config.terminal.term,
+                    restore_processes: config.terminal.restore_processes,
+                },
                 event_tx.clone(),
                 render_notify.clone(),
                 render_dirty.clone(),
@@ -388,6 +391,7 @@ impl App {
             default_shell: config.terminal.default_shell.clone(),
             shell_mode: config.terminal.shell_mode,
             new_terminal_cwd: config.terminal.new_cwd.clone(),
+            restore_processes: config.terminal.restore_processes,
             pane_scrollback_limit_bytes: config.advanced.scrollback_limit_bytes,
             accent: crate::config::parse_color(&config.ui.accent),
             toast_config: config.ui.toast.clone(),
@@ -963,6 +967,7 @@ impl App {
             self.state.default_shell = config.terminal.default_shell.clone();
             self.state.shell_mode = config.terminal.shell_mode;
             self.state.new_terminal_cwd = config.terminal.new_cwd.clone();
+            self.state.restore_processes = config.terminal.restore_processes;
         }
 
         if !invalid_section("remote") {

@@ -25,6 +25,7 @@ struct PaneRestoreStartup<'a> {
 struct RestoreRuntimeContext<'a> {
     scrollback_limit_bytes: usize,
     shell_config: crate::pane::PaneShellConfig<'a>,
+    restore_processes: bool,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
@@ -47,16 +48,23 @@ type RestoredTab = (
 );
 type RestoreFailures<T> = (T, usize);
 
-/// Restore the session state from a snapshot. Each pane gets a fresh shell in its saved cwd.
+#[derive(Clone, Copy)]
+pub struct RestoreOptions<'a> {
+    pub rows: u16,
+    pub cols: u16,
+    pub scrollback_limit_bytes: usize,
+    pub default_shell: &'a str,
+    pub shell_mode: crate::config::ShellModeConfig,
+    pub pane_term: &'a str,
+    pub restore_processes: bool,
+}
+
+/// Restore the session state from a snapshot. Panes get a fresh shell or, when enabled,
+/// a best-effort relaunch of the saved foreground argv in the saved cwd.
 pub fn restore(
     snapshot: &SessionSnapshot,
     history: Option<&SessionHistorySnapshot>,
-    rows: u16,
-    cols: u16,
-    scrollback_limit_bytes: usize,
-    default_shell: &str,
-    shell_mode: crate::config::ShellModeConfig,
-    pane_term: &str,
+    options: RestoreOptions<'_>,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
     render_dirty: Arc<AtomicBool>,
@@ -65,10 +73,12 @@ pub fn restore(
     restore_with_imports(
         snapshot,
         history,
-        rows,
-        cols,
-        scrollback_limit_bytes,
-        crate::pane::PaneShellConfig::new(default_shell, shell_mode).with_term(pane_term),
+        options.rows,
+        options.cols,
+        options.scrollback_limit_bytes,
+        crate::pane::PaneShellConfig::new(options.default_shell, options.shell_mode)
+            .with_term(options.pane_term),
+        options.restore_processes,
         &mut imported_panes,
         events,
         render_notify,
@@ -95,6 +105,7 @@ pub fn restore_handoff(
         80,
         scrollback_limit_bytes,
         crate::pane::PaneShellConfig::new(default_shell, shell_mode).with_term(pane_term),
+        true,
         imports,
         events,
         render_notify,
@@ -148,6 +159,7 @@ fn restore_with_imports_strict(
     cols: u16,
     scrollback_limit_bytes: usize,
     shell_config: crate::pane::PaneShellConfig<'_>,
+    restore_processes: bool,
     imported_panes: &mut HashMap<u32, crate::handoff_runtime::ImportedHandoffRuntime>,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
@@ -160,6 +172,7 @@ fn restore_with_imports_strict(
         cols,
         scrollback_limit_bytes,
         shell_config,
+        restore_processes,
         imported_panes,
         events,
         render_notify,
@@ -186,6 +199,7 @@ fn restore_with_imports(
     cols: u16,
     scrollback_limit_bytes: usize,
     shell_config: crate::pane::PaneShellConfig<'_>,
+    restore_processes: bool,
     imported_panes: &mut HashMap<u32, crate::handoff_runtime::ImportedHandoffRuntime>,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
@@ -198,6 +212,7 @@ fn restore_with_imports(
         cols,
         scrollback_limit_bytes,
         shell_config,
+        restore_processes,
         imported_panes,
         events,
         render_notify,
@@ -213,6 +228,7 @@ fn restore_with_imports_and_failures(
     cols: u16,
     scrollback_limit_bytes: usize,
     shell_config: crate::pane::PaneShellConfig<'_>,
+    restore_processes: bool,
     imported_panes: &mut HashMap<u32, crate::handoff_runtime::ImportedHandoffRuntime>,
     events: mpsc::Sender<AppEvent>,
     render_notify: Arc<Notify>,
@@ -226,6 +242,7 @@ fn restore_with_imports_and_failures(
         let runtime_context = RestoreRuntimeContext {
             scrollback_limit_bytes,
             shell_config,
+            restore_processes,
             events: events.clone(),
             render_notify: render_notify.clone(),
             render_dirty: render_dirty.clone(),
@@ -379,6 +396,7 @@ fn restore_tab(
         let imported_runtime = old_pane_id.and_then(|old_id| imported_panes.remove(&old_id));
         let was_imported = imported_runtime.is_some();
 
+        let mut restored_launch_argv = None;
         let runtime_result = if let Some(imported) = imported_runtime {
             TerminalRuntime::from_handoff_fd(
                 crate::handoff_runtime::ImportedHandoffRuntime {
@@ -391,6 +409,62 @@ fn restore_tab(
                 runtime_context.render_notify.clone(),
                 runtime_context.render_dirty.clone(),
             )
+        } else if runtime_context.restore_processes {
+            if let Some(argv) = saved_launch_argv.as_ref().filter(|argv| !argv.is_empty()) {
+                match TerminalRuntime::spawn_argv_command_with_initial_history(
+                    *id,
+                    (rows, cols),
+                    cwd.clone(),
+                    argv,
+                    runtime_context.shell_config.pane_term(),
+                    runtime_context.scrollback_limit_bytes,
+                    crate::terminal_theme::TerminalTheme::default(),
+                    startup.initial_history_ansi,
+                    runtime_context.events.clone(),
+                    runtime_context.render_notify.clone(),
+                    runtime_context.render_dirty.clone(),
+                ) {
+                    Ok(runtime) => {
+                        restored_launch_argv = Some(argv.clone());
+                        Ok(runtime)
+                    }
+                    Err(err) => {
+                        warn!(
+                            tab = ?snap.custom_name,
+                            pane_id = id.raw(),
+                            err = %err,
+                            "failed to restore saved pane process, falling back to shell"
+                        );
+                        TerminalRuntime::spawn_with_initial_history(
+                            *id,
+                            rows,
+                            cols,
+                            cwd.clone(),
+                            runtime_context.scrollback_limit_bytes,
+                            crate::terminal_theme::TerminalTheme::default(),
+                            runtime_context.shell_config,
+                            startup.initial_history_ansi,
+                            runtime_context.events.clone(),
+                            runtime_context.render_notify.clone(),
+                            runtime_context.render_dirty.clone(),
+                        )
+                    }
+                }
+            } else {
+                TerminalRuntime::spawn_with_initial_history(
+                    *id,
+                    rows,
+                    cols,
+                    cwd.clone(),
+                    runtime_context.scrollback_limit_bytes,
+                    crate::terminal_theme::TerminalTheme::default(),
+                    runtime_context.shell_config,
+                    startup.initial_history_ansi,
+                    runtime_context.events.clone(),
+                    runtime_context.render_notify.clone(),
+                    runtime_context.render_dirty.clone(),
+                )
+            }
         } else {
             TerminalRuntime::spawn_with_initial_history(
                 *id,
@@ -411,10 +485,10 @@ fn restore_tab(
             Ok(runtime) => {
                 let terminal_id = TerminalId::alloc();
                 let mut terminal = TerminalState::new(terminal_id.clone(), cwd.clone());
-                if was_imported {
-                    if let Some(argv) = saved_launch_argv {
-                        terminal = terminal.with_launch_argv(argv).with_respawn_shell_on_exit();
-                    }
+                if let Some(argv) = restored_launch_argv
+                    .or_else(|| was_imported.then(|| saved_launch_argv.clone()).flatten())
+                {
+                    terminal = terminal.with_launch_argv(argv).with_respawn_shell_on_exit();
                 }
                 if let Some(label) = saved_label {
                     terminal.set_manual_label(label);
@@ -672,12 +746,7 @@ mod tests {
         let (_workspaces, _terminals, runtimes) = restore(
             &snapshot,
             Some(&history),
-            5,
-            40,
-            4096,
-            "/bin/sh",
-            crate::config::ShellModeConfig::NonLogin,
-            crate::config::DEFAULT_TERMINAL_TERM,
+            test_restore_options(true),
             events,
             render_notify,
             render_dirty,
@@ -711,12 +780,7 @@ mod tests {
         let (_workspaces, _terminals, runtimes) = restore(
             &snapshot,
             None,
-            5,
-            40,
-            4096,
-            "/bin/sh",
-            crate::config::ShellModeConfig::NonLogin,
-            crate::config::DEFAULT_TERMINAL_TERM,
+            test_restore_options(true),
             events,
             render_notify,
             render_dirty,
@@ -738,6 +802,95 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let _ = runtime.try_send_bytes(bytes::Bytes::from_static(b"exit\n"));
+    }
+
+    #[tokio::test]
+    async fn restore_relaunches_saved_argv_when_enabled() {
+        let (mut snapshot, _history) = snapshot_with_saved_pane_history();
+        let argv = vec![
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            "sleep 5".to_string(),
+        ];
+        snapshot.tabs[0].panes.get_mut(&0).unwrap().launch_argv = Some(argv.clone());
+        let (events, _events_rx) = mpsc::channel(8);
+        let render_notify = Arc::new(Notify::new());
+        let render_dirty = Arc::new(AtomicBool::new(false));
+
+        let (_workspaces, terminals, _runtimes) = restore(
+            &snapshot,
+            None,
+            test_restore_options(true),
+            events,
+            render_notify,
+            render_dirty,
+        );
+
+        let terminal = terminals.values().next().expect("restored terminal");
+        assert_eq!(terminal.launch_argv.as_ref(), Some(&argv));
+        assert!(terminal.respawn_shell_on_exit);
+    }
+
+    #[tokio::test]
+    async fn restore_ignores_saved_argv_when_disabled() {
+        let (mut snapshot, _history) = snapshot_with_saved_pane_history();
+        snapshot.tabs[0].panes.get_mut(&0).unwrap().launch_argv = Some(vec![
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            "sleep 5".to_string(),
+        ]);
+        let (events, _events_rx) = mpsc::channel(8);
+        let render_notify = Arc::new(Notify::new());
+        let render_dirty = Arc::new(AtomicBool::new(false));
+
+        let (_workspaces, terminals, _runtimes) = restore(
+            &snapshot,
+            None,
+            test_restore_options(false),
+            events,
+            render_notify,
+            render_dirty,
+        );
+
+        let terminal = terminals.values().next().expect("restored terminal");
+        assert_eq!(terminal.launch_argv, None);
+        assert!(!terminal.respawn_shell_on_exit);
+    }
+
+    #[tokio::test]
+    async fn restore_falls_back_to_shell_when_saved_argv_fails() {
+        let (mut snapshot, _history) = snapshot_with_saved_pane_history();
+        snapshot.tabs[0].panes.get_mut(&0).unwrap().launch_argv =
+            Some(vec!["/definitely/not/a/gmux-test-command".to_string()]);
+        let (events, _events_rx) = mpsc::channel(8);
+        let render_notify = Arc::new(Notify::new());
+        let render_dirty = Arc::new(AtomicBool::new(false));
+
+        let (_workspaces, terminals, runtimes) = restore(
+            &snapshot,
+            None,
+            test_restore_options(true),
+            events,
+            render_notify,
+            render_dirty,
+        );
+
+        assert_eq!(runtimes.len(), 1);
+        let terminal = terminals.values().next().expect("restored terminal");
+        assert_eq!(terminal.launch_argv, None);
+        assert!(!terminal.respawn_shell_on_exit);
+    }
+
+    fn test_restore_options(restore_processes: bool) -> RestoreOptions<'static> {
+        RestoreOptions {
+            rows: 5,
+            cols: 40,
+            scrollback_limit_bytes: 4096,
+            default_shell: "/bin/sh",
+            shell_mode: crate::config::ShellModeConfig::NonLogin,
+            pane_term: crate::config::DEFAULT_TERMINAL_TERM,
+            restore_processes,
+        }
     }
 
     fn snapshot_with_saved_pane_history() -> (SessionSnapshot, SessionHistorySnapshot) {
