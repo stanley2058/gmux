@@ -1132,7 +1132,16 @@ impl AppState {
         terminal_runtimes: &TerminalRuntimeRegistry,
         mouse: MouseEvent,
     ) {
-        let lines_per_notch = self.mouse_scroll_lines;
+        self.handle_terminal_wheel_with_lines(terminal_runtimes, mouse, self.mouse_scroll_lines);
+    }
+
+    pub(crate) fn handle_terminal_wheel_with_lines(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        mouse: MouseEvent,
+        lines: usize,
+    ) {
+        let lines = lines.max(1);
 
         if let Some(info) = self.pane_at(mouse.column, mouse.row).cloned() {
             self.focus_pane(info.id);
@@ -1140,11 +1149,9 @@ impl AppState {
                 return;
             }
             match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    self.scroll_pane_up(terminal_runtimes, info.id, lines_per_notch)
-                }
+                MouseEventKind::ScrollUp => self.scroll_pane_up(terminal_runtimes, info.id, lines),
                 MouseEventKind::ScrollDown => {
-                    self.scroll_pane_down(terminal_runtimes, info.id, lines_per_notch)
+                    self.scroll_pane_down(terminal_runtimes, info.id, lines)
                 }
                 _ => {}
             }
@@ -1154,11 +1161,9 @@ impl AppState {
         if let Some(info) = self.pane_frame_at(mouse.column, mouse.row).cloned() {
             self.focus_pane(info.id);
             match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    self.scroll_pane_up(terminal_runtimes, info.id, lines_per_notch)
-                }
+                MouseEventKind::ScrollUp => self.scroll_pane_up(terminal_runtimes, info.id, lines),
                 MouseEventKind::ScrollDown => {
-                    self.scroll_pane_down(terminal_runtimes, info.id, lines_per_notch)
+                    self.scroll_pane_down(terminal_runtimes, info.id, lines)
                 }
                 _ => {}
             }
@@ -1167,11 +1172,53 @@ impl AppState {
 
         if let Some(rt) = self.focused_runtime_in_session(terminal_runtimes) {
             match mouse.kind {
-                MouseEventKind::ScrollUp => rt.scroll_up(lines_per_notch),
-                MouseEventKind::ScrollDown => rt.scroll_down(lines_per_notch),
+                MouseEventKind::ScrollUp => rt.scroll_up(lines),
+                MouseEventKind::ScrollDown => rt.scroll_down(lines),
                 _ => {}
             }
         }
+    }
+
+    pub(crate) fn host_scroll_wheel_target(
+        &self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        mouse: MouseEvent,
+    ) -> Option<crate::layout::PaneId> {
+        if self.mode != Mode::Terminal
+            || !matches!(
+                mouse.kind,
+                MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+            )
+            || self.on_tab_bar(mouse.column, mouse.row)
+            || self
+                .selection
+                .as_ref()
+                .is_some_and(|selection| selection.is_in_progress())
+        {
+            return None;
+        }
+
+        let sidebar = self.view.sidebar_rect;
+        let in_sidebar = mouse.column >= sidebar.x
+            && mouse.column < sidebar.x + sidebar.width
+            && mouse.row >= sidebar.y
+            && mouse.row < sidebar.y + sidebar.height;
+        if in_sidebar {
+            return None;
+        }
+
+        let pane_id = self
+            .pane_at(mouse.column, mouse.row)
+            .or_else(|| self.pane_frame_at(mouse.column, mouse.row))
+            .map(|info| info.id)
+            .or_else(|| self.session().and_then(|ws| ws.focused_pane_id()))?;
+        let ws_idx = self.session_index()?;
+        let rt = self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, pane_id)?;
+        matches!(
+            rt.wheel_routing(),
+            Some(crate::pane::WheelRouting::HostScroll) | None
+        )
+        .then_some(pane_id)
     }
 
     pub(super) fn forward_pane_mouse_button(
@@ -1452,6 +1499,95 @@ mod tests {
             .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
             .expect("scroll metrics after wheel");
         assert_eq!(metrics.offset_from_bottom, 7);
+    }
+
+    #[tokio::test]
+    async fn routed_terminal_wheel_burst_coalesces_host_scrollback_scroll() {
+        let mut app = app_for_mouse_test();
+        let mut ws = Workspace::test_new("test");
+        let pane_id = ws.tabs[0].root_pane;
+        let pane_infos = ws.tabs[0].layout.panes(Rect::new(26, 2, 80, 18));
+        let info = pane_infos[0].clone();
+        ws.tabs[0].runtimes.insert(
+            pane_id,
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
+                info.inner_rect.width,
+                info.inner_rect.height,
+                16 * 1024,
+                &numbered_lines_bytes(96),
+            ),
+        );
+
+        app.state.sessions = vec![ws];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+        app.state.view.pane_infos = pane_infos;
+        app.state.mouse_scroll_lines = 5;
+
+        let x = info.inner_rect.x + 1;
+        let y = info.inner_rect.y + 1;
+        let result = app.route_client_events(
+            vec![
+                crate::raw_input::RawInputEvent::Mouse(mouse(MouseEventKind::ScrollUp, x, y)),
+                crate::raw_input::RawInputEvent::Mouse(mouse(MouseEventKind::ScrollUp, x, y)),
+                crate::raw_input::RawInputEvent::Mouse(mouse(MouseEventKind::ScrollUp, x, y)),
+            ],
+            true,
+        );
+
+        assert!(result.visual_change);
+        let metrics = app
+            .state
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
+            .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
+            .expect("scroll metrics after wheel burst");
+        assert_eq!(metrics.offset_from_bottom, 15);
+    }
+
+    #[tokio::test]
+    async fn routed_terminal_wheel_burst_preserves_mouse_reporting_events() {
+        let mut app = app_for_mouse_test();
+        let mut ws = Workspace::test_new("test");
+        let pane_id = ws.tabs[0].root_pane;
+        let pane_infos = ws.tabs[0].layout.panes(Rect::new(26, 2, 80, 18));
+        let info = pane_infos[0].clone();
+        let (runtime, mut input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
+                info.inner_rect.width,
+                info.inner_rect.height,
+                0,
+                b"\x1b[?1000h\x1b[?1006h",
+                4,
+            );
+        ws.tabs[0].runtimes.insert(pane_id, runtime);
+
+        app.state.sessions = vec![ws];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+        app.state.view.pane_infos = pane_infos;
+
+        let x = info.inner_rect.x + 1;
+        let y = info.inner_rect.y + 1;
+        let result = app.route_client_events(
+            vec![
+                crate::raw_input::RawInputEvent::Mouse(mouse(MouseEventKind::ScrollUp, x, y)),
+                crate::raw_input::RawInputEvent::Mouse(mouse(MouseEventKind::ScrollUp, x, y)),
+            ],
+            true,
+        );
+
+        assert!(result.forwarded_to_pty);
+        assert_eq!(
+            input_rx.try_recv().expect("first wheel report"),
+            Bytes::from_static(b"\x1b[<64;2;2M")
+        );
+        assert_eq!(
+            input_rx.try_recv().expect("second wheel report"),
+            Bytes::from_static(b"\x1b[<64;2;2M")
+        );
+        assert!(input_rx.try_recv().is_err());
     }
 
     #[tokio::test]

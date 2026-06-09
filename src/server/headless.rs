@@ -1249,10 +1249,106 @@ impl HeadlessServer {
     /// Drains high-priority client input before normal server work.
     fn drain_priority_input_events(&mut self) -> bool {
         let mut changed = false;
-        while let Ok(ev) = self.server_input_rx.try_recv() {
+        let mut pending = None;
+        loop {
+            let Some(ev) = pending
+                .take()
+                .or_else(|| self.server_input_rx.try_recv().ok())
+            else {
+                break;
+            };
+            let ev = self.coalesce_priority_input_event(ev, &mut pending);
             changed |= self.handle_server_event(ev);
         }
         changed
+    }
+
+    fn coalesce_priority_input_event(
+        &mut self,
+        event: ServerEvent,
+        pending: &mut Option<ServerEvent>,
+    ) -> ServerEvent {
+        match event {
+            ServerEvent::ClientInput {
+                client_id,
+                mut data,
+                received_at,
+            } => {
+                while let Ok(next) = self.server_input_rx.try_recv() {
+                    match next {
+                        ServerEvent::ClientInput {
+                            client_id: next_client_id,
+                            data: next_data,
+                            ..
+                        } if next_client_id == client_id => data.extend(next_data),
+                        other => {
+                            *pending = Some(other);
+                            break;
+                        }
+                    }
+                }
+                ServerEvent::ClientInput {
+                    client_id,
+                    data,
+                    received_at,
+                }
+            }
+            ServerEvent::ClientAttachScroll {
+                client_id,
+                source: AttachScrollSource::Wheel,
+                direction,
+                lines,
+                column,
+                row,
+                modifiers,
+            } if self.terminal_attach_scroll_uses_host_scroll(client_id) => {
+                let mut total_lines = lines.max(1);
+                while let Ok(next) = self.server_input_rx.try_recv() {
+                    match next {
+                        ServerEvent::ClientAttachScroll {
+                            client_id: next_client_id,
+                            source: AttachScrollSource::Wheel,
+                            direction: next_direction,
+                            lines: next_lines,
+                            ..
+                        } if next_client_id == client_id && next_direction == direction => {
+                            total_lines = total_lines.saturating_add(next_lines.max(1));
+                        }
+                        other => {
+                            *pending = Some(other);
+                            break;
+                        }
+                    }
+                }
+                ServerEvent::ClientAttachScroll {
+                    client_id,
+                    source: AttachScrollSource::Wheel,
+                    direction,
+                    lines: total_lines,
+                    column,
+                    row,
+                    modifiers,
+                }
+            }
+            other => other,
+        }
+    }
+
+    fn terminal_attach_scroll_uses_host_scroll(&self, client_id: u64) -> bool {
+        let Some(ClientConnection {
+            mode: ClientConnectionMode::TerminalAttach { terminal_id },
+            ..
+        }) = self.clients.get(&client_id)
+        else {
+            return false;
+        };
+        let Some(runtime) = self.runtime_for_terminal_id_string(terminal_id) else {
+            return false;
+        };
+        matches!(
+            runtime.wheel_routing(),
+            Some(crate::pane::WheelRouting::HostScroll) | None
+        )
     }
 
     /// Drains server events from the dedicated channel.
@@ -3649,6 +3745,22 @@ mod tests {
         }
     }
 
+    fn test_attach_wheel_scroll(
+        client_id: u64,
+        direction: AttachScrollDirection,
+        lines: u16,
+    ) -> ServerEvent {
+        ServerEvent::ClientAttachScroll {
+            client_id,
+            source: AttachScrollSource::Wheel,
+            direction,
+            lines,
+            column: Some(0),
+            row: Some(0),
+            modifiers: 0,
+        }
+    }
+
     fn frame_text(frame: &FrameData) -> String {
         frame
             .cells
@@ -4467,6 +4579,145 @@ next_tab = ""
         let metrics = runtime.scroll_metrics().expect("scroll metrics");
         assert_eq!(metrics.offset_from_bottom, 1);
         drop(runtime);
+        drop(_runtime_guard);
+        rt.shutdown_timeout(Duration::from_millis(100));
+    }
+
+    #[test]
+    fn priority_drain_coalesces_terminal_attach_host_wheel_scroll() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        let _runtime_guard = rt.enter();
+        let mut server = test_headless_server();
+        let terminal_id = crate::terminal::TerminalId::alloc();
+        let terminal_id_string = terminal_id.to_string();
+        let mut bytes = Vec::new();
+        for line in 0..80 {
+            bytes.extend_from_slice(format!("line {line:02}\r\n").as_bytes());
+        }
+        let runtime =
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(20, 5, 4096, &bytes);
+        server.app.state.terminals.insert(
+            terminal_id.clone(),
+            crate::terminal::TerminalState::new(terminal_id.clone(), "/tmp".into()),
+        );
+        server
+            .app
+            .terminal_runtimes
+            .insert(terminal_id.clone(), runtime);
+        server.clients.insert(
+            7,
+            ClientConnection::new_with_mode(
+                ClientConnectionMode::TerminalAttach {
+                    terminal_id: terminal_id_string,
+                },
+                None,
+                (20, 5),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                false,
+                None,
+            ),
+        );
+
+        server
+            .server_input_tx
+            .send(test_attach_wheel_scroll(7, AttachScrollDirection::Up, 3))
+            .expect("queue first scroll");
+        server
+            .server_input_tx
+            .send(test_attach_wheel_scroll(7, AttachScrollDirection::Up, 4))
+            .expect("queue second scroll");
+        server
+            .server_input_tx
+            .send(test_attach_wheel_scroll(7, AttachScrollDirection::Up, 5))
+            .expect("queue third scroll");
+
+        assert!(server.drain_priority_input_events());
+        let runtime = server
+            .app
+            .terminal_runtimes
+            .get(&terminal_id)
+            .expect("runtime after drain");
+        assert_eq!(
+            runtime
+                .scroll_metrics()
+                .expect("scroll metrics")
+                .offset_from_bottom,
+            12
+        );
+        assert!(server.app.input_render_bypass_pending);
+
+        drop(_runtime_guard);
+        rt.shutdown_timeout(Duration::from_millis(100));
+    }
+
+    #[test]
+    fn priority_drain_preserves_terminal_attach_mouse_report_wheel_events() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        let _runtime_guard = rt.enter();
+        let mut server = test_headless_server();
+        let terminal_id = crate::terminal::TerminalId::alloc();
+        let terminal_id_string = terminal_id.to_string();
+        let (runtime, mut input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
+                20,
+                5,
+                0,
+                b"\x1b[?1000h\x1b[?1006h",
+                4,
+            );
+        server.app.state.terminals.insert(
+            terminal_id.clone(),
+            crate::terminal::TerminalState::new(terminal_id.clone(), "/tmp".into()),
+        );
+        server.app.terminal_runtimes.insert(terminal_id, runtime);
+        server.clients.insert(
+            7,
+            ClientConnection::new_with_mode(
+                ClientConnectionMode::TerminalAttach {
+                    terminal_id: terminal_id_string,
+                },
+                None,
+                (20, 5),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                false,
+                None,
+            ),
+        );
+
+        server
+            .server_input_tx
+            .send(test_attach_wheel_scroll(7, AttachScrollDirection::Up, 3))
+            .expect("queue first scroll");
+        server
+            .server_input_tx
+            .send(test_attach_wheel_scroll(7, AttachScrollDirection::Up, 3))
+            .expect("queue second scroll");
+
+        assert!(server.drain_priority_input_events());
+        assert_eq!(
+            input_rx.try_recv().expect("first wheel report"),
+            Bytes::from_static(b"\x1b[<64;1;1M")
+        );
+        assert_eq!(
+            input_rx.try_recv().expect("second wheel report"),
+            Bytes::from_static(b"\x1b[<64;1;1M")
+        );
+        assert!(input_rx.try_recv().is_err());
+
         drop(_runtime_guard);
         rt.shutdown_timeout(Duration::from_millis(100));
     }

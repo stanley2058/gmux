@@ -17,7 +17,7 @@ pub(crate) mod settings_catalog;
 pub mod state;
 mod theme_sync;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::pending;
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1044,7 +1044,8 @@ impl App {
         apply_host_terminal_theme: bool,
     ) -> ClientInputRouteResult {
         let mut result = ClientInputRouteResult::default();
-        for event in events {
+        let mut events: VecDeque<_> = events.into();
+        while let Some(event) = events.pop_front() {
             let previous_mode = self.state.mode;
             match event {
                 crate::raw_input::RawInputEvent::Key(key) => {
@@ -1091,6 +1092,14 @@ impl App {
                     }
                 }
                 crate::raw_input::RawInputEvent::Mouse(mouse) => {
+                    if self.state.mouse_capture
+                        && self.coalesce_host_scroll_wheel_burst(mouse, &mut events)
+                    {
+                        result.visual_change = true;
+                        self.sync_prefix_input_source(previous_mode);
+                        continue;
+                    }
+
                     let forwarded_to_pty = if self.state.mouse_capture {
                         let forwarded_to_pty = self.mouse_event_would_forward_to_pty(mouse);
                         self.handle_mouse_event_headless(mouse);
@@ -1142,6 +1151,46 @@ impl App {
             self.sync_prefix_input_source(previous_mode);
         }
         result
+    }
+
+    fn coalesce_host_scroll_wheel_burst(
+        &mut self,
+        first: crossterm::event::MouseEvent,
+        events: &mut VecDeque<crate::raw_input::RawInputEvent>,
+    ) -> bool {
+        let Some(pane_id) = self
+            .state
+            .host_scroll_wheel_target(&self.terminal_runtimes, first)
+        else {
+            return false;
+        };
+        let mut notches = 1usize;
+        while let Some(crate::raw_input::RawInputEvent::Mouse(next)) = events.front() {
+            if next.kind != first.kind || next.modifiers != first.modifiers {
+                break;
+            }
+            if self
+                .state
+                .host_scroll_wheel_target(&self.terminal_runtimes, *next)
+                != Some(pane_id)
+            {
+                break;
+            }
+            events.pop_front();
+            notches = notches.saturating_add(1);
+        }
+
+        if notches == 1 {
+            return false;
+        }
+
+        self.state.selection = None;
+        self.state.selection_autoscroll = None;
+        self.selection_autoscroll_deadline = None;
+        let lines = self.state.mouse_scroll_lines.saturating_mul(notches).max(1);
+        self.state
+            .handle_terminal_wheel_with_lines(&self.terminal_runtimes, first, lines);
+        true
     }
 
     /// Handles a key event in non-terminal mode for the headless server.
