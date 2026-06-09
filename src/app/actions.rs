@@ -4,13 +4,14 @@
 use tracing::{info, warn};
 
 use crate::events::AppEvent;
-use crate::layout::{find_in_direction, NavDirection, PaneId};
+use crate::layout::{find_in_direction_with_bias, NavDirection, PaneId, PaneInfo};
 use crate::selection::Selection;
 use crate::workspace::SessionUiState;
 use unicode_width::UnicodeWidthChar;
 
 use super::state::{
-    text_matches_query, AppState, Mode, NavigatorRow, NavigatorTarget, PaneFocusTarget, ViewLayout,
+    text_matches_query, AppState, Mode, NavigatorRow, NavigatorTarget, PaneFocusTarget,
+    PaneNavigationAxis, ViewLayout,
 };
 // ---------------------------------------------------------------------------
 // Navigator operations
@@ -67,6 +68,7 @@ impl AppState {
             session_id,
             pane_id,
         };
+        self.pane_navigation_bias = None;
         if previous.as_ref() != Some(&target) {
             self.previous_pane_focus = previous;
         }
@@ -97,6 +99,7 @@ impl AppState {
             && self.active_session == Some(ws_idx)
             && previous.as_ref() == Some(&target)
         {
+            self.pane_navigation_bias = None;
             return false;
         }
 
@@ -106,6 +109,7 @@ impl AppState {
         let Some((_ws_idx, tab_idx)) = self.pane_focus_target_indices(&target) else {
             return false;
         };
+        self.pane_navigation_bias = None;
         if let Some(tab) = self.session_mut().and_then(|ws| ws.tabs.get_mut(tab_idx)) {
             tab.layout.focus_pane(pane_id);
             self.previous_pane_focus = previous;
@@ -605,6 +609,7 @@ impl AppState {
             self.active_session != Some(ws_idx) || self.session_entries().nth(1).is_some();
         self.selection = None;
         self.selection_autoscroll = None;
+        self.pane_navigation_bias = None;
 
         self.collapse_to_single_session();
         self.active_session = Some(0);
@@ -655,6 +660,7 @@ impl AppState {
         let previous_focus = self.current_pane_focus_target();
         self.selection = None;
         self.selection_autoscroll = None;
+        self.pane_navigation_bias = None;
         let Some(ws) = self.session_mut() else {
             return;
         };
@@ -923,6 +929,9 @@ impl AppState {
         let Some(ws_idx) = self.session_index() else {
             return false;
         };
+        let Some(session_id) = self.session().map(|ws| ws.id.clone()) else {
+            return false;
+        };
         let Some(tab) = self.session().and_then(|ws| ws.active_tab()) else {
             return false;
         };
@@ -933,11 +942,35 @@ impl AppState {
         };
 
         if let Some(focused) = panes.iter().find(|p| p.is_focused) {
-            if let Some(target) = find_in_direction(focused, direction, &panes) {
-                return self.focus_pane_in_session_at(ws_idx, target);
+            let bias = self.navigation_bias_for(&session_id, focused, direction);
+            if let Some(target) = find_in_direction_with_bias(focused, direction, &panes, bias) {
+                let source = focused.clone();
+                if self.focus_pane_in_session_at(ws_idx, target) {
+                    self.pane_navigation_bias = Some(crate::app::state::PaneNavigationBias {
+                        session_id,
+                        pane_id: target,
+                        axis: navigation_axis(direction),
+                        perpendicular_coord: perpendicular_center(&source, direction),
+                    });
+                    return true;
+                }
             }
         }
+        self.pane_navigation_bias = None;
         false
+    }
+
+    fn navigation_bias_for(
+        &self,
+        session_id: &str,
+        focused: &PaneInfo,
+        direction: NavDirection,
+    ) -> Option<u16> {
+        let bias = self.pane_navigation_bias.as_ref()?;
+        (bias.session_id == session_id
+            && bias.pane_id == focused.id
+            && bias.axis == navigation_axis(direction))
+        .then_some(bias.perpendicular_coord)
     }
 
     pub fn resize_pane(&mut self, direction: NavDirection) -> bool {
@@ -947,6 +980,7 @@ impl AppState {
                 .pane_infos
                 .iter()
                 .fold(first.rect, |acc, p| acc.union(p.rect));
+            self.pane_navigation_bias = None;
             if let Some(tab) = self.session_mut().and_then(|ws| ws.active_tab_mut()) {
                 tab.layout.resize_focused(direction, 0.05, area);
                 self.mark_session_dirty();
@@ -1000,6 +1034,7 @@ impl AppState {
             self.previous_pane_focus = None;
             return;
         }
+        self.pane_navigation_bias = None;
         if let Some(tab) = self.session_mut().and_then(|ws| ws.tabs.get_mut(tab_idx)) {
             tab.layout.focus_pane(target.pane_id);
             self.previous_pane_focus = current;
@@ -1008,6 +1043,7 @@ impl AppState {
     }
 
     pub fn toggle_zoom(&mut self) {
+        self.pane_navigation_bias = None;
         if let Some(tab) = self.session_mut().and_then(|ws| ws.active_tab_mut()) {
             if tab.layout.pane_count() > 1 {
                 tab.zoomed = !tab.zoomed;
@@ -1022,6 +1058,7 @@ impl AppState {
         let active = self.session_index();
         self.selection = None;
         self.selection_autoscroll = None;
+        self.pane_navigation_bias = None;
         self.mark_session_dirty();
         let terminal_ids = active
             .and_then(|i| {
@@ -1070,6 +1107,22 @@ impl AppState {
             self.refresh_tab_bar_view();
         }
         false
+    }
+}
+
+fn navigation_axis(direction: NavDirection) -> PaneNavigationAxis {
+    match direction {
+        NavDirection::Left | NavDirection::Right => PaneNavigationAxis::Horizontal,
+        NavDirection::Up | NavDirection::Down => PaneNavigationAxis::Vertical,
+    }
+}
+
+fn perpendicular_center(info: &PaneInfo, direction: NavDirection) -> u16 {
+    match direction {
+        NavDirection::Left | NavDirection::Right => {
+            info.rect.y.saturating_add(info.rect.height / 2)
+        }
+        NavDirection::Up | NavDirection::Down => info.rect.x.saturating_add(info.rect.width / 2),
     }
 }
 
@@ -2538,6 +2591,60 @@ mod tests {
         let mut state = app_with_workspaces(&["test"]);
         state.toggle_zoom();
         assert!(!state.sessions[0].zoomed);
+    }
+
+    #[test]
+    fn navigate_pane_without_bias_uses_existing_order() {
+        let mut state = app_with_workspaces(&["test"]);
+        let left = state.sessions[0].tabs[0].root_pane;
+        let right_top = state.sessions[0].test_split(Direction::Horizontal);
+        state.sessions[0].test_split(Direction::Vertical);
+        state.sessions[0].test_split(Direction::Vertical);
+        state.sessions[0].layout.focus_pane(left);
+        crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 30));
+
+        assert!(state.navigate_pane(NavDirection::Right));
+
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(right_top));
+    }
+
+    #[test]
+    fn navigate_pane_returns_to_previous_edge_position() {
+        let mut state = app_with_workspaces(&["test"]);
+        let left = state.sessions[0].tabs[0].root_pane;
+        state.sessions[0].test_split(Direction::Horizontal);
+        state.sessions[0].test_split(Direction::Vertical);
+        let right_bottom = state.sessions[0].test_split(Direction::Vertical);
+        state.sessions[0].layout.focus_pane(right_bottom);
+        crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 30));
+
+        assert!(state.navigate_pane(NavDirection::Left));
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(left));
+        crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 30));
+
+        assert!(state.navigate_pane(NavDirection::Right));
+
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(right_bottom));
+    }
+
+    #[test]
+    fn direct_focus_clears_pane_navigation_bias() {
+        let mut state = app_with_workspaces(&["test"]);
+        let left = state.sessions[0].tabs[0].root_pane;
+        let right_top = state.sessions[0].test_split(Direction::Horizontal);
+        state.sessions[0].test_split(Direction::Vertical);
+        let right_bottom = state.sessions[0].test_split(Direction::Vertical);
+        state.sessions[0].layout.focus_pane(right_bottom);
+        crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 30));
+
+        assert!(state.navigate_pane(NavDirection::Left));
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(left));
+        assert!(!state.focus_pane_in_session_at(0, left));
+        crate::ui::compute_view(&mut state, ratatui::layout::Rect::new(0, 0, 100, 30));
+
+        assert!(state.navigate_pane(NavDirection::Right));
+
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(right_top));
     }
 
     #[test]

@@ -313,6 +313,7 @@ impl App {
             sessions: Vec::new(),
             active_session: None,
             previous_pane_focus: None,
+            pane_navigation_bias: None,
             selected_session: 0,
             mode,
             should_quit: false,

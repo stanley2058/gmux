@@ -989,6 +989,20 @@ pub(crate) struct PaneFocusTarget {
     pub pane_id: PaneId,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PaneNavigationAxis {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PaneNavigationBias {
+    pub session_id: String,
+    pub pane_id: PaneId,
+    pub axis: PaneNavigationAxis,
+    pub perpendicular_coord: u16,
+}
+
 pub(crate) struct SessionTabEntry<'a> {
     pub session_idx: usize,
     pub tab_idx: usize,
@@ -1012,6 +1026,7 @@ pub struct AppState {
     pub sessions: Vec<SessionUiState>,
     pub active_session: Option<usize>,
     pub(crate) previous_pane_focus: Option<PaneFocusTarget>,
+    pub(crate) pane_navigation_bias: Option<PaneNavigationBias>,
     pub selected_session: usize,
     pub mode: Mode,
     pub should_quit: bool,
@@ -1349,6 +1364,7 @@ impl AppState {
             sessions: Vec::new(),
             active_session: None,
             previous_pane_focus: None,
+            pane_navigation_bias: None,
             selected_session: 0,
             mode: Mode::Navigate,
             should_quit: false,

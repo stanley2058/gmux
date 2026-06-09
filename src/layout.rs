@@ -51,7 +51,7 @@ pub struct SplitBorder {
 }
 
 /// Cardinal direction for pane navigation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavDirection {
     Left,
     Right,
@@ -242,11 +242,13 @@ impl TileLayout {
 
 // --- Directional pane navigation ---
 
-/// Find the nearest pane in the given direction from `focused`.
-pub fn find_in_direction(
+/// Find the nearest pane in the given direction from `focused`, breaking ties
+/// by a remembered perpendicular coordinate when available.
+pub fn find_in_direction_with_bias(
     focused: &PaneInfo,
     direction: NavDirection,
     panes: &[PaneInfo],
+    perpendicular_bias: Option<u16>,
 ) -> Option<PaneId> {
     let fr = focused.rect;
 
@@ -272,18 +274,37 @@ pub fn find_in_direction(
         })
         .min_by_key(|p| {
             let r = p.rect;
-            match direction {
+            let distance = match direction {
                 NavDirection::Left => fr.x.saturating_sub(r.x + r.width),
                 NavDirection::Right => r.x.saturating_sub(fr.x + fr.width),
                 NavDirection::Up => fr.y.saturating_sub(r.y + r.height),
                 NavDirection::Down => r.y.saturating_sub(fr.y + fr.height),
-            }
+            };
+            let bias_distance = perpendicular_bias.map_or(0, |coord| match direction {
+                NavDirection::Left | NavDirection::Right => range_distance(coord, r.y, r.height),
+                NavDirection::Up | NavDirection::Down => range_distance(coord, r.x, r.width),
+            });
+            (distance, bias_distance)
         })
         .map(|p| p.id)
 }
 
 fn ranges_overlap(a_start: u16, a_len: u16, b_start: u16, b_len: u16) -> bool {
     a_start < b_start + b_len && a_start + a_len > b_start
+}
+
+fn range_distance(coord: u16, start: u16, len: u16) -> u16 {
+    if len == 0 {
+        return coord.abs_diff(start);
+    }
+    let end = start.saturating_add(len);
+    if coord < start {
+        start - coord
+    } else if coord >= end {
+        coord - end + 1
+    } else {
+        0
+    }
 }
 
 // --- Tree operations ---
