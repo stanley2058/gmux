@@ -2,8 +2,10 @@
 
 mod support;
 
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -117,10 +119,24 @@ fn spawn_server(
     api_socket_path: &PathBuf,
     _client_socket_path: &PathBuf,
 ) -> SpawnedGmux {
+    spawn_server_with_config(
+        config_home,
+        runtime_dir,
+        api_socket_path,
+        "onboarding = false\n",
+    )
+}
+
+fn spawn_server_with_config(
+    config_home: &PathBuf,
+    runtime_dir: &PathBuf,
+    api_socket_path: &PathBuf,
+    config_toml: &str,
+) -> SpawnedGmux {
     fs::create_dir_all(config_home.join("gmux")).unwrap();
     fs::create_dir_all(runtime_dir).unwrap();
     register_runtime_dir(runtime_dir);
-    fs::write(config_home.join("gmux/config.toml"), "onboarding = false\n").unwrap();
+    fs::write(config_home.join("gmux/config.toml"), config_toml).unwrap();
 
     let pair = native_pty_system()
         .openpty(PtySize {
@@ -291,6 +307,80 @@ fn bench_env_f64(name: &str, default: f64) -> f64 {
         .unwrap_or(default)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InteractionBenchWorkload {
+    Echo,
+    Repaint,
+}
+
+impl InteractionBenchWorkload {
+    fn from_env() -> Self {
+        match std::env::var("GMUX_INTERACTION_BENCH_WORKLOAD")
+            .unwrap_or_else(|_| "repaint".to_owned())
+            .as_str()
+        {
+            "echo" => Self::Echo,
+            "repaint" => Self::Repaint,
+            other => panic!("unsupported GMUX_INTERACTION_BENCH_WORKLOAD={other:?}"),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Echo => "echo",
+            Self::Repaint => "repaint",
+        }
+    }
+
+    fn input_payload(self) -> &'static [u8] {
+        match self {
+            Self::Echo => b"a",
+            // Matches the common clear-screen key path while the repaint shell
+            // treats any byte as a repaint request.
+            Self::Repaint => b"\x0c",
+        }
+    }
+}
+
+fn write_repaint_bench_shell(base: &std::path::Path, cols: u16, rows: u16) -> PathBuf {
+    let script_path = base.join("repaint-bench-shell");
+    let script = format!(
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+cols={cols}
+rows={rows}
+frame=0
+stty raw -echo min 1 time 0 2>/dev/null || true
+trap 'stty sane 2>/dev/null || true' EXIT
+
+paint() {{
+    frame=$((frame + 1))
+    printf '\033[H\033[2J'
+    local row line color
+    for ((row = 1; row <= rows; row++)); do
+        color=$((16 + ((row + frame) % 216)))
+        printf -v line 'gmux repaint latency frame %06d row %03d ' "$frame" "$row"
+        while ((${{#line}} < cols)); do
+            line+="abcdefghijklmnopqrstuvwxyz0123456789"
+        done
+        printf '\033[38;5;%dm%-.*s\r\n' "$color" "$cols" "$line"
+    done
+    printf '\033[0m\033[H'
+}}
+
+paint
+while IFS= read -r -s -n 1 _byte; do
+    paint
+done
+"#
+    );
+    fs::write(&script_path, script).unwrap();
+    let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script_path, permissions).unwrap();
+    script_path
+}
+
 fn bench_sorted(values: &[u64]) -> Vec<u64> {
     let mut sorted = values.to_vec();
     sorted.sort_unstable();
@@ -348,13 +438,26 @@ fn held_key_live_input_latency_benchmark() {
     let rows = bench_env_u16("GMUX_INTERACTION_BENCH_ROWS", 48);
     let seconds = bench_env_f64("GMUX_INTERACTION_BENCH_SECONDS", 5.0);
     let input_hz = bench_env_f64("GMUX_INTERACTION_BENCH_INPUT_HZ", 25.0);
+    let workload = InteractionBenchWorkload::from_env();
     let base = unique_test_dir();
     let config_home = base.join("config");
     let runtime_dir = base.join("runtime");
     let api_socket = runtime_dir.join("gmux.sock");
     let client_socket = runtime_dir.join("gmux-client.sock");
 
-    let spawned = spawn_server(&config_home, &runtime_dir, &api_socket, &client_socket);
+    fs::create_dir_all(&base).unwrap();
+    let repaint_shell = (workload == InteractionBenchWorkload::Repaint)
+        .then(|| write_repaint_bench_shell(&base, cols, rows));
+    let config_toml = if let Some(shell) = repaint_shell.as_ref() {
+        format!(
+            "onboarding = false\n[terminal]\ndefault_shell = {:?}\nshell_mode = \"non_login\"\n",
+            shell.to_string_lossy()
+        )
+    } else {
+        "onboarding = false\n".to_owned()
+    };
+
+    let spawned = spawn_server_with_config(&config_home, &runtime_dir, &api_socket, &config_toml);
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_file(&client_socket, Duration::from_secs(10));
 
@@ -363,22 +466,48 @@ fn held_key_live_input_latency_benchmark() {
         .expect("handshake should succeed");
     assert_eq!(version, TEST_PROTOCOL_VERSION);
     assert!(error.is_none(), "{:?}", error);
-    let _ = read_next_frame_payload(&mut stream, Duration::from_secs(10))
-        .expect("should receive initial frame");
+    let mut initial_frame = decode_frame_payload(
+        &read_next_frame_payload(&mut stream, Duration::from_secs(10))
+            .expect("should receive initial frame"),
+    )
+    .expect("decode initial frame");
+    if workload == InteractionBenchWorkload::Repaint {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !frame_contains_text(&initial_frame, "gmux repaint latency")
+            && Instant::now() < deadline
+        {
+            if let Ok(payload) = read_next_frame_payload(&mut stream, Duration::from_millis(500)) {
+                initial_frame =
+                    decode_frame_payload(&payload).expect("decode repaint benchmark frame");
+            }
+        }
+        assert!(
+            frame_contains_text(&initial_frame, "gmux repaint latency"),
+            "repaint benchmark shell did not draw the initial scene"
+        );
+    }
 
     let bench_for = Duration::from_secs_f64(seconds);
     let reader_deadline = Instant::now() + bench_for + Duration::from_secs(2);
     let stop = Arc::new(AtomicBool::new(false));
     let sent_inputs = Arc::new(AtomicUsize::new(0));
+    let pending_inputs = Arc::new(Mutex::new(VecDeque::<Instant>::new()));
     let writer_stop = stop.clone();
     let writer_sent = sent_inputs.clone();
+    let writer_pending_inputs = pending_inputs.clone();
     let mut input_stream = stream.try_clone().expect("clone client socket");
+    let input_payload = workload.input_payload();
     let writer = thread::spawn(move || {
         let interval = Duration::from_secs_f64(1.0 / input_hz);
         let started = Instant::now();
         let mut next_send = started;
         while started.elapsed() < bench_for && !writer_stop.load(Ordering::Acquire) {
-            send_input_message(&mut input_stream, b"a");
+            let input_at = Instant::now();
+            send_input_message(&mut input_stream, input_payload);
+            writer_pending_inputs
+                .lock()
+                .expect("pending input queue lock poisoned")
+                .push_back(input_at);
             writer_sent.fetch_add(1, Ordering::AcqRel);
             next_send += interval;
             let now = Instant::now();
@@ -394,6 +523,7 @@ fn held_key_live_input_latency_benchmark() {
         .expect("set read timeout");
     let mut frame_dt_us = Vec::new();
     let mut input_queue_us = Vec::new();
+    let mut client_input_to_frame_us = Vec::new();
     let mut input_to_frame_us = Vec::new();
     let mut dirty_to_frame_us = Vec::new();
     let mut render_us = Vec::new();
@@ -406,6 +536,18 @@ fn held_key_live_input_latency_benchmark() {
         match read_server_message(&mut stream) {
             Ok((1, payload)) => {
                 let now = Instant::now();
+                {
+                    let mut pending = pending_inputs
+                        .lock()
+                        .expect("pending input queue lock poisoned");
+                    while let Some(input_at) = pending.pop_front() {
+                        client_input_to_frame_us.push(
+                            now.saturating_duration_since(input_at)
+                                .as_micros()
+                                .min(u128::from(u64::MAX)) as u64,
+                        );
+                    }
+                }
                 if let Some(previous) = last_frame_at {
                     frame_dt_us.push(
                         now.saturating_duration_since(previous)
@@ -443,13 +585,15 @@ fn held_key_live_input_latency_benchmark() {
     std::hint::black_box(checksum);
 
     println!(
-        "held_key_live_input_latency: frames={} inputs={} cols={} rows={} seconds={seconds:.2} input_hz={input_hz:.1}",
+        "live_input_latency: workload={} frames={} inputs={} cols={} rows={} seconds={seconds:.2} input_hz={input_hz:.1}",
+        workload.label(),
         frame_dt_us.len() + usize::from(last_frame_at.is_some()),
         sent_inputs.load(Ordering::Acquire),
         cols,
         rows,
     );
     print_latency_bench_stats("frame_dt", &frame_dt_us);
+    print_latency_bench_stats("client_input_to_frame", &client_input_to_frame_us);
     print_latency_bench_stats("server_input_queue", &input_queue_us);
     print_latency_bench_stats("server_input_to_frame", &input_to_frame_us);
     print_latency_bench_stats("server_pty_dirty_to_frame", &dirty_to_frame_us);

@@ -33,7 +33,7 @@ test-one filter:
 bench-render-pipeline:
     cargo test --locked render_pipeline_complex_scene_benchmark -- --ignored --nocapture
 
-# Benchmark held-key interaction latency through the headless server render path.
+# Benchmark interaction latency through the headless server render path.
 bench-input-latency:
     cargo test --release --locked --test client_mode held_key_live_input_latency_benchmark -- --ignored --nocapture
 

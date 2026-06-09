@@ -1253,12 +1253,12 @@ fn ghostty_collect_dirty_patch(
     if render_state.update(terminal).is_err() {
         fallback!("render_state_update_error");
     }
-    match render_state.dirty() {
+    let patch_all_rows = match render_state.dirty() {
         Ok(crate::ghostty::Dirty::Clean) => finish!(TerminalDirtyPatchOutcome::Clean),
-        Ok(crate::ghostty::Dirty::Partial) => {}
-        Ok(crate::ghostty::Dirty::Full) => fallback!("dirty_full"),
+        Ok(crate::ghostty::Dirty::Partial) => false,
+        Ok(crate::ghostty::Dirty::Full) => true,
         Err(_) => fallback!("dirty_read_error"),
-    }
+    };
 
     let colors = render_state.colors().ok();
     let default_bg = colors
@@ -1286,7 +1286,7 @@ fn ghostty_collect_dirty_patch(
         let Ok(dirty) = rows.dirty() else {
             fallback!("row_dirty_read_error");
         };
-        if dirty {
+        if dirty || patch_all_rows {
             match rows.selection() {
                 Ok(None) => {}
                 Ok(Some(_)) => fallback!("row_selection_present"),
@@ -1344,7 +1344,8 @@ fn ghostty_collect_dirty_patch(
         };
         let mut clear_y = 0u16;
         while clear_y < area_height && clear_rows.next() {
-            if dirty_ys.contains(&clear_y) && clear_rows.clear_dirty().is_err() {
+            if (patch_all_rows || dirty_ys.contains(&clear_y)) && clear_rows.clear_dirty().is_err()
+            {
                 fallback!("clear_dirty_error");
             }
             clear_y += 1;
@@ -3524,6 +3525,32 @@ mod tests {
                 assert!(cell.overline);
             }
             other => panic!("expected dirty patch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dirty_patch_collects_full_dirty_repaint() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(20, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+        let backend = ratatui::backend::TestBackend::new(20, 5);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| pane.render(frame, Rect::new(0, 0, 20, 5), false))
+            .unwrap();
+        {
+            let mut core = pane.core.lock().unwrap();
+            core.terminal
+                .write(b"\x1b[H\x1b[2Jfull dirty repaint\r\nsecond row");
+        }
+
+        match pane.collect_dirty_patch(20, 5) {
+            TerminalDirtyPatchOutcome::Patch(patch) => {
+                assert_eq!(patch.rows.len(), 5);
+                assert_eq!(patch.rows[0].1[0].symbol, "f");
+                assert_eq!(patch.rows[1].1[0].symbol, "s");
+            }
+            other => panic!("expected full dirty patch, got {other:?}"),
         }
     }
 
