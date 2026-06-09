@@ -556,12 +556,11 @@ mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::os::unix::fs::PermissionsExt;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
     use tokio::sync::mpsc;
 
     fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        crate::test_support::env_lock()
     }
 
     fn unique_test_path(name: &str) -> PathBuf {

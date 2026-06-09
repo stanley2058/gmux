@@ -3651,7 +3651,7 @@ mod tests {
         let mut app = crate::app::App::new(&config, true, None, api_rx, api::EventHub::default());
         app.local_terminal_notifications = false;
 
-        let dir = std::env::temp_dir().join(format!(
+        let dir = std::path::PathBuf::from("/tmp").join(format!(
             "hh-{}-{}-{}",
             std::process::id(),
             TEST_SERVER_COUNTER.fetch_add(1, Ordering::Relaxed),
@@ -6405,6 +6405,12 @@ next_tab = ""
         server.render_and_stream();
         let first = client_rx.recv_timeout(Duration::from_millis(100));
         assert!(first.is_ok(), "expected first frame to be sent");
+        assert!(server
+            .clients
+            .get(&1)
+            .and_then(|client| client.render_actor.as_ref())
+            .and_then(|actor| actor.wait_for_last_frame(Duration::from_millis(100)))
+            .is_some());
 
         server.render_and_stream();
         assert!(
