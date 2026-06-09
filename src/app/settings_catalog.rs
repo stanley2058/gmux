@@ -176,6 +176,7 @@ pub(crate) fn settings_rows(state: &AppState) -> Vec<SettingsRow> {
 
 pub(crate) fn edit_field_label(field: SettingsEditField) -> &'static str {
     match field {
+        SettingsEditField::PaneTerm => "pane TERM",
         SettingsEditField::DefaultShell => "default shell",
         SettingsEditField::NewTerminalCwdPath => "new terminal cwd path",
         SettingsEditField::SidebarWidth => "sidebar width",
@@ -189,6 +190,7 @@ pub(crate) fn edit_field_label(field: SettingsEditField) -> &'static str {
 
 pub(crate) fn edit_field_initial_value(state: &AppState, field: SettingsEditField) -> String {
     match field {
+        SettingsEditField::PaneTerm => state.pane_term.clone(),
         SettingsEditField::DefaultShell => state.default_shell.clone(),
         SettingsEditField::NewTerminalCwdPath => match &state.new_terminal_cwd {
             NewTerminalCwdConfig::Path(path) => path.clone(),
@@ -303,6 +305,12 @@ fn toast_delivery_rows(state: &AppState) -> Vec<SettingsRow> {
 fn terminal_rows(state: &AppState) -> Vec<SettingsRow> {
     vec![
         SettingsRow::edit(
+            "pane TERM",
+            &state.pane_term,
+            "new panes",
+            SettingsEditField::PaneTerm,
+        ),
+        SettingsRow::edit(
             "default shell",
             if state.default_shell.is_empty() {
                 "SHELL"
@@ -323,6 +331,14 @@ fn terminal_rows(state: &AppState) -> Vec<SettingsRow> {
             new_terminal_cwd_label(&state.new_terminal_cwd),
             "new panes",
             SettingsPage::NewTerminalCwd,
+        ),
+        SettingsRow::section_bool(
+            "restore running processes",
+            state.restore_processes,
+            "next restore",
+            "terminal",
+            "restore_processes",
+            "process restore setting",
         ),
     ]
 }
@@ -763,7 +779,13 @@ mod tests {
             (SettingsPage::Notifications, &["notification popups"]),
             (
                 SettingsPage::Terminal,
-                &["default shell", "shell mode", "new terminal cwd"],
+                &[
+                    "pane TERM",
+                    "default shell",
+                    "shell mode",
+                    "new terminal cwd",
+                    "restore running processes",
+                ],
             ),
             (
                 SettingsPage::Interface,

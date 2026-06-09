@@ -240,6 +240,18 @@ fn save_edit_state(state: &mut AppState) -> Option<SettingsAction> {
 
 fn edit_action(field: SettingsEditField, input: &str) -> Result<SettingsAction, &'static str> {
     match field {
+        SettingsEditField::PaneTerm => {
+            let value = input.trim();
+            if value.is_empty() {
+                return Err("enter a TERM value");
+            }
+            Ok(save_value(
+                "terminal",
+                "term",
+                toml_string(value),
+                "pane TERM",
+            ))
+        }
         SettingsEditField::DefaultShell => Ok(save_value(
             "terminal",
             "default_shell",
@@ -470,6 +482,7 @@ mod tests {
     fn settings_text_editor_saves_default_shell() {
         let mut state = state_with_workspaces(&["test"]);
         open_settings_at_page(&mut state, SettingsPage::Terminal);
+        state.settings.list.selected = 1;
 
         let action = update_settings_state(
             &mut state,

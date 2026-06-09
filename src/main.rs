@@ -95,6 +95,10 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # or a fixed path such as "~/Projects".
 # new_cwd = "follow"
 
+# Best-effort relaunch of foreground pane processes after a normal restart.
+# Stores foreground process argv in the session snapshot when enabled.
+# restore_processes = true
+
 [keys]
 # Prefix key to enter prefix mode (default: "ctrl+b")
 # Examples: "ctrl+b", "f12", "esc", "-"
