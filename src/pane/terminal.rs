@@ -2009,6 +2009,7 @@ fn should_probe_host_terminal_theme_restore(core: &GhosttyPaneCore) -> bool {
 mod tests {
     use super::*;
     use ratatui::{layout::Rect, style::Color};
+    use std::time::{Duration, Instant};
     use tokio::sync::mpsc;
 
     struct KittyGraphicsEnabledGuard {
@@ -2083,6 +2084,144 @@ mod tests {
             output.push(HEX[usize::from(byte >> 4)]);
             output.push(HEX[usize::from(byte & 0x0f)]);
         }
+    }
+
+    fn render_bench_seconds() -> Duration {
+        std::env::var("GMUX_RENDER_BENCH_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|seconds| *seconds > 0.0)
+            .map(Duration::from_secs_f64)
+            .unwrap_or_else(|| Duration::from_secs(3))
+    }
+
+    fn complex_scene_frame(cols: u16, rows: u16, frame_index: usize) -> Vec<u8> {
+        let mut frame = String::with_capacity(usize::from(cols) * usize::from(rows) * 16);
+        frame.push_str("\x1b[H");
+        for y in 0..rows {
+            for x in 0..cols {
+                let fg = 16 + ((usize::from(x) * 5 + usize::from(y) * 7 + frame_index) % 216);
+                let bg = 16 + ((usize::from(x) * 11 + usize::from(y) * 3 + frame_index * 2) % 216);
+                let style = match (usize::from(x) + usize::from(y) + frame_index) % 8 {
+                    0 => "1",
+                    1 => "3",
+                    2 => "4",
+                    3 => "7",
+                    4 => "9",
+                    5 => "1;4",
+                    6 => "3;7",
+                    _ => "0",
+                };
+                let ch = match (usize::from(x) + usize::from(y) * 3 + frame_index) % 12 {
+                    0 => 'a',
+                    1 => 'Z',
+                    2 => '0',
+                    3 => '#',
+                    4 => '░',
+                    5 => '▒',
+                    6 => '▓',
+                    7 => '█',
+                    8 => 'λ',
+                    9 => '界',
+                    10 => '✓',
+                    _ => '·',
+                };
+                frame.push_str(&format!("\x1b[{style};38;5;{fg};48;5;{bg}m{ch}"));
+            }
+            if y + 1 < rows {
+                frame.push_str("\x1b[0m\r\n");
+            }
+        }
+        frame.push_str("\x1b[0m");
+        frame.into_bytes()
+    }
+
+    fn sorted_micros(values: &[u128]) -> Vec<u128> {
+        let mut sorted = values.to_vec();
+        sorted.sort_unstable();
+        sorted
+    }
+
+    fn percentile(sorted_values: &[u128], percentile: usize) -> u128 {
+        if sorted_values.is_empty() {
+            return 0;
+        }
+        let index = ((sorted_values.len() - 1) * percentile) / 100;
+        sorted_values[index]
+    }
+
+    fn average_micros(values: &[u128]) -> u128 {
+        if values.is_empty() {
+            return 0;
+        }
+        values.iter().sum::<u128>() / values.len() as u128
+    }
+
+    fn print_bench_stats(label: &str, values: &[u128]) {
+        let sorted = sorted_micros(values);
+        println!(
+            "{label}: avg={}us p50={}us p95={}us max={}us",
+            average_micros(values),
+            percentile(&sorted, 50),
+            percentile(&sorted, 95),
+            sorted.last().copied().unwrap_or_default()
+        );
+    }
+
+    #[test]
+    #[ignore = "render benchmark; run with `just bench-render-pipeline`"]
+    fn render_pipeline_complex_scene_benchmark() {
+        const COLS: u16 = 160;
+        const ROWS: u16 = 48;
+        const PRECOMPUTED_FRAMES: usize = 96;
+
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(COLS, ROWS, 1_000_000).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx.clone()).unwrap();
+        let pane_id = PaneId::from_raw(1);
+        let frames: Vec<Vec<u8>> = (0..PRECOMPUTED_FRAMES)
+            .map(|frame_index| complex_scene_frame(COLS, ROWS, frame_index))
+            .collect();
+        let backend = ratatui::backend::TestBackend::new(COLS, ROWS);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, COLS, ROWS);
+        let bench_for = render_bench_seconds();
+        let deadline = Instant::now() + bench_for;
+        let mut frame_index = 0usize;
+        let mut write_us = Vec::new();
+        let mut render_us = Vec::new();
+        let mut frame_us = Vec::new();
+        let mut checksum = 0usize;
+
+        while Instant::now() < deadline || frame_index < PRECOMPUTED_FRAMES {
+            let frame_started = Instant::now();
+            let ansi = &frames[frame_index % frames.len()];
+            let write_started = Instant::now();
+            pane.process_pty_bytes(pane_id, 0, ansi, &tx);
+            write_us.push(write_started.elapsed().as_micros());
+
+            let render_started = Instant::now();
+            terminal
+                .draw(|frame| pane.render(frame, area, false))
+                .unwrap();
+            render_us.push(render_started.elapsed().as_micros());
+
+            checksum ^= terminal.backend().buffer()[(0, 0)].symbol().len();
+            frame_us.push(frame_started.elapsed().as_micros());
+            frame_index += 1;
+        }
+        std::hint::black_box(checksum);
+
+        println!(
+            "render_pipeline_complex_scene: frames={} cols={} rows={} seconds={:.2}",
+            frame_index,
+            COLS,
+            ROWS,
+            bench_for.as_secs_f64()
+        );
+        print_bench_stats("write_pty", &write_us);
+        print_bench_stats("pane_render", &render_us);
+        print_bench_stats("write_plus_render", &frame_us);
     }
 
     #[test]

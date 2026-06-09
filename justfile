@@ -29,6 +29,10 @@ test: test-fast test-integration
 test-one filter:
     cargo test --locked "{{filter}}"
 
+# Benchmark the Ghostty pane render path with a dense ANSI scene.
+bench-render-pipeline:
+    cargo test --locked render_pipeline_complex_scene_benchmark -- --ignored --nocapture
+
 # Run fast local lint checks
 lint:
     cargo fmt --check
