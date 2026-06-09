@@ -19,6 +19,7 @@ pub use self::{
     model::{
         validated_sidebar_bounds, Config, ConfigReloadReport, ConfigReloadStatus, KeysConfig,
         NewTerminalCwdConfig, PanePanelScopeConfig, ShellModeConfig, ToastConfig, ToastDelivery,
+        DEFAULT_TERMINAL_TERM,
     },
     theme::{parse_color, CustomThemeColors, ThemeConfig},
 };

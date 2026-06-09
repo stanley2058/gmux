@@ -253,6 +253,7 @@ impl App {
                 config.advanced.scrollback_limit_bytes,
                 &config.terminal.default_shell,
                 config.terminal.shell_mode,
+                &config.terminal.term,
                 event_tx.clone(),
                 render_notify.clone(),
                 render_dirty.clone(),
@@ -382,6 +383,7 @@ impl App {
                 .experimental
                 .switch_ascii_input_source_in_prefix,
             kitty_graphics_enabled: config.experimental.kitty_graphics,
+            pane_term: config.terminal.term.clone(),
             default_shell: config.terminal.default_shell.clone(),
             shell_mode: config.terminal.shell_mode,
             new_terminal_cwd: config.terminal.new_cwd.clone(),
@@ -475,6 +477,7 @@ impl App {
             config.advanced.scrollback_limit_bytes,
             &config.terminal.default_shell,
             config.terminal.shell_mode,
+            &config.terminal.term,
             imports,
             app.event_tx.clone(),
             app.render_notify.clone(),
@@ -896,6 +899,7 @@ impl App {
         }
 
         if !invalid_section("terminal") {
+            self.state.pane_term = config.terminal.term.clone();
             self.state.default_shell = config.terminal.default_shell.clone();
             self.state.shell_mode = config.terminal.shell_mode;
             self.state.new_terminal_cwd = config.terminal.new_cwd.clone();
@@ -1468,7 +1472,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
             &path,
-            "[terminal]\ndefault_shell = \"nu\"\nshell_mode = \"non_login\"\nnew_cwd = \"home\"\n[keys]\nnew_tab = \"prefix+m\"\nprefix = \"ctrl+a\"\n[ui]\npane_panel_scope = \"current\"\nredraw_on_focus_gained = false\nright_click_passthrough_modifier = \"ctrl\"\n[ui.toast]\ndelivery = \"gmux\"\n[experimental]\nswitch_ascii_input_source_in_prefix = true\n",
+            "[terminal]\nterm = \"xterm-256color\"\ndefault_shell = \"nu\"\nshell_mode = \"non_login\"\nnew_cwd = \"home\"\n[keys]\nnew_tab = \"prefix+m\"\nprefix = \"ctrl+a\"\n[ui]\npane_panel_scope = \"current\"\nredraw_on_focus_gained = false\nright_click_passthrough_modifier = \"ctrl\"\n[ui.toast]\ndelivery = \"gmux\"\n[experimental]\nswitch_ascii_input_source_in_prefix = true\n",
         )
         .unwrap();
         std::env::set_var(crate::config::CONFIG_PATH_ENV_VAR, &path);
@@ -1495,6 +1499,7 @@ mod tests {
             Some(KeyModifiers::CONTROL)
         );
         assert!(app.state.request_client_config_reload);
+        assert_eq!(app.state.pane_term, "xterm-256color");
         assert_eq!(app.state.default_shell, "nu");
         assert_eq!(
             app.state.shell_mode,
@@ -1778,12 +1783,14 @@ mod tests {
         let original_default_shell = app.state.default_shell.clone();
         let original_shell_mode = app.state.shell_mode;
         let original_new_cwd = app.state.new_terminal_cwd.clone();
+        let original_pane_term = app.state.pane_term.clone();
         let report = app.reload_config();
 
         assert_eq!(report.status, crate::config::ConfigReloadStatus::Partial);
         assert_eq!(app.state.default_shell, original_default_shell);
         assert_eq!(app.state.shell_mode, original_shell_mode);
         assert_eq!(app.state.new_terminal_cwd, original_new_cwd);
+        assert_eq!(app.state.pane_term, original_pane_term);
         assert_eq!(
             app.state.toast_config.delivery,
             crate::config::ToastDelivery::Terminal

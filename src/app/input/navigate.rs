@@ -304,6 +304,7 @@ impl App {
 
         let pane_scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
         let host_terminal_theme = self.state.host_terminal_theme;
+        let pane_term = self.state.pane_term.clone();
         let new_pane = self
             .state
             .session_mut()
@@ -315,6 +316,7 @@ impl App {
                 cwd,
                 command,
                 &env,
+                &pane_term,
                 pane_scrollback_limit_bytes,
                 host_terminal_theme,
             )?;

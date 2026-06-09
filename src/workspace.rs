@@ -398,6 +398,7 @@ impl SessionUiState {
                 cols,
                 cwd,
                 argv,
+                shell_config.pane_term(),
                 scrollback_limit_bytes,
                 host_terminal_theme,
             )

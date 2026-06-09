@@ -75,6 +75,11 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # green = "#a6e3a1"
 
 [terminal]
+# TERM advertised to pane applications. Default is "xterm-ghostty" because
+# panes are rendered by Gmux's Ghostty-based terminal layer. If a server lacks
+# xterm-ghostty terminfo, set this to "xterm-256color".
+# term = "xterm-ghostty"
+
 # Executable used for new interactive panes.
 # Empty means $SHELL, then /bin/sh.
 # default_shell = ""

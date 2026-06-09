@@ -35,15 +35,24 @@ pub use self::{
     terminal::{InputState, ScrollMetrics, TerminalCursorState},
 };
 
-const PANE_TERM: &str = "xterm-256color";
+const PANE_TERM: &str = crate::config::DEFAULT_TERMINAL_TERM;
 const PANE_COLORTERM: &str = "truecolor";
 
-fn apply_pane_terminal_env(cmd: &mut CommandBuilder) {
+fn normalized_pane_term(term: &str) -> &str {
+    let trimmed = term.trim();
+    if trimmed.is_empty() {
+        PANE_TERM
+    } else {
+        trimmed
+    }
+}
+
+fn apply_pane_terminal_env(cmd: &mut CommandBuilder, term: &str) {
     // Each pane is rendered by gmux's own terminal layer, not the outer terminal
     // that launched the app. Advertising the inherited TERM leaks the host terminal
     // identity into shells and across SSH, which breaks redraw and cursor movement
     // when the remote side lacks matching terminfo entries.
-    cmd.env("TERM", PANE_TERM);
+    cmd.env("TERM", normalized_pane_term(term));
     cmd.env("COLORTERM", PANE_COLORTERM);
 }
 
@@ -428,6 +437,23 @@ fn pane_shell_from(configured_shell: &str, env_shell: Option<String>) -> String 
 pub(crate) struct PaneShellConfig<'a> {
     pub(crate) default_shell: &'a str,
     pub(crate) mode: crate::config::ShellModeConfig,
+    pub(crate) term: &'a str,
+}
+
+pub(crate) struct PaneCommandConfig<'a> {
+    pub(crate) command: &'a str,
+    pub(crate) extra_env: &'a [(String, String)],
+    pub(crate) term: &'a str,
+}
+
+impl<'a> PaneCommandConfig<'a> {
+    pub(crate) fn new(command: &'a str, extra_env: &'a [(String, String)], term: &'a str) -> Self {
+        Self {
+            command,
+            extra_env,
+            term,
+        }
+    }
 }
 
 impl<'a> PaneShellConfig<'a> {
@@ -435,7 +461,17 @@ impl<'a> PaneShellConfig<'a> {
         Self {
             default_shell,
             mode,
+            term: PANE_TERM,
         }
+    }
+
+    pub(crate) fn with_term(mut self, term: &'a str) -> Self {
+        self.term = term;
+        self
+    }
+
+    pub(crate) fn pane_term(self) -> &'a str {
+        normalized_pane_term(self.term)
     }
 }
 
@@ -651,7 +687,7 @@ impl PaneRuntime {
         let mut cmd = pane_shell_command_builder(shell_config)?;
         cmd.cwd(cwd);
         cmd.env(crate::GMUX_ENV_VAR, crate::GMUX_ENV_VALUE);
-        apply_pane_terminal_env(&mut cmd);
+        apply_pane_terminal_env(&mut cmd, shell_config.pane_term());
         Self::spawn_command_builder(
             pane_id,
             rows,
@@ -674,8 +710,7 @@ impl PaneRuntime {
         rows: u16,
         cols: u16,
         cwd: std::path::PathBuf,
-        command: &str,
-        extra_env: &[(String, String)],
+        command_config: PaneCommandConfig<'_>,
         scrollback_limit_bytes: usize,
         host_terminal_theme: crate::terminal_theme::TerminalTheme,
         events: mpsc::Sender<AppEvent>,
@@ -684,11 +719,11 @@ impl PaneRuntime {
     ) -> std::io::Result<Self> {
         let mut cmd = CommandBuilder::new("/bin/sh");
         cmd.arg("-c");
-        cmd.arg(command);
+        cmd.arg(command_config.command);
         cmd.cwd(cwd);
         cmd.env(crate::GMUX_ENV_VAR, crate::GMUX_ENV_VALUE);
-        apply_pane_terminal_env(&mut cmd);
-        for (key, value) in extra_env {
+        apply_pane_terminal_env(&mut cmd, command_config.term);
+        for (key, value) in command_config.extra_env {
             cmd.env(key, value);
         }
         Self::spawn_command_builder(
@@ -712,6 +747,7 @@ impl PaneRuntime {
         cols: u16,
         cwd: std::path::PathBuf,
         argv: &[String],
+        term: &str,
         scrollback_limit_bytes: usize,
         host_terminal_theme: crate::terminal_theme::TerminalTheme,
         events: mpsc::Sender<AppEvent>,
@@ -730,7 +766,7 @@ impl PaneRuntime {
         }
         cmd.cwd(cwd);
         cmd.env(crate::GMUX_ENV_VAR, crate::GMUX_ENV_VALUE);
-        apply_pane_terminal_env(&mut cmd);
+        apply_pane_terminal_env(&mut cmd, term);
         Self::spawn_command_builder(
             pane_id,
             rows,
@@ -1421,7 +1457,7 @@ mod tests {
         assert!(!process_alive_for_shutdown(43, 42, false, |_| false));
     }
 
-    fn capture_shell_output(command: &str, extra_env: &[(&str, &str)]) -> String {
+    fn capture_shell_output(command: &str, pane_term: &str, extra_env: &[(&str, &str)]) -> String {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
@@ -1444,7 +1480,7 @@ mod tests {
         cmd.cwd(std::env::current_dir().unwrap());
         cmd.env("TERM", "xterm-ghostty");
         cmd.env("COLORTERM", "falsecolor");
-        apply_pane_terminal_env(&mut cmd);
+        apply_pane_terminal_env(&mut cmd, pane_term);
         for (key, value) in extra_env {
             cmd.env(key, value);
         }
@@ -1611,7 +1647,21 @@ mod tests {
 
     #[test]
     fn pane_terminal_identity_overrides_outer_terminal_env() {
-        let output = capture_shell_output("printf '%s\\n%s\\n' \"$TERM\" \"$COLORTERM\"", &[]);
+        let output = capture_shell_output(
+            "printf '%s\\n%s\\n' \"$TERM\" \"$COLORTERM\"",
+            PANE_TERM,
+            &[],
+        );
+        assert_eq!(output, "xterm-ghostty\ntruecolor\n");
+    }
+
+    #[test]
+    fn pane_terminal_identity_uses_configured_term() {
+        let output = capture_shell_output(
+            "printf '%s\\n%s\\n' \"$TERM\" \"$COLORTERM\"",
+            "xterm-256color",
+            &[],
+        );
         assert_eq!(output, "xterm-256color\ntruecolor\n");
     }
 
@@ -1619,6 +1669,7 @@ mod tests {
     fn pane_terminal_identity_allows_explicit_override() {
         let output = capture_shell_output(
             "printf '%s\\n%s\\n' \"$TERM\" \"$COLORTERM\"",
+            PANE_TERM,
             &[("TERM", "vt100"), ("COLORTERM", "24bit")],
         );
         assert_eq!(output, "vt100\n24bit\n");

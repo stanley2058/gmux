@@ -100,6 +100,7 @@ impl App {
         let (rows, cols) = self.state.estimate_pane_size();
         let default_shell = self.state.default_shell.clone();
         let shell_mode = self.state.shell_mode;
+        let pane_term = self.state.pane_term.clone();
         let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
         let host_terminal_theme = self.state.host_terminal_theme;
         let result = self
@@ -113,7 +114,8 @@ impl App {
                     cwd,
                     scrollback_limit_bytes,
                     host_terminal_theme,
-                    crate::pane::PaneShellConfig::new(&default_shell, shell_mode),
+                    crate::pane::PaneShellConfig::new(&default_shell, shell_mode)
+                        .with_term(&pane_term),
                 )
             });
         match result {

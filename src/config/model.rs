@@ -126,15 +126,35 @@ pub enum ShellModeConfig {
     NonLogin,
 }
 
-#[derive(Debug, Default, Deserialize)]
+pub const DEFAULT_TERMINAL_TERM: &str = "xterm-ghostty";
+
+pub fn default_terminal_term() -> String {
+    DEFAULT_TERMINAL_TERM.to_string()
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct TerminalConfig {
+    /// TERM advertised to pane applications. Default: "xterm-ghostty".
+    #[serde(default = "default_terminal_term")]
+    pub term: String,
     /// Executable used for new interactive panes. Empty means SHELL, then /bin/sh.
     pub default_shell: String,
     /// Startup mode for new interactive pane shells.
     pub shell_mode: ShellModeConfig,
     /// CWD policy for new interactive panes and tabs.
     pub new_cwd: NewTerminalCwdConfig,
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        Self {
+            term: default_terminal_term(),
+            default_shell: String::new(),
+            shell_mode: ShellModeConfig::Auto,
+            new_cwd: NewTerminalCwdConfig::Follow,
+        }
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -520,6 +540,7 @@ mod tests {
     #[test]
     fn terminal_default_shell_defaults_empty_and_parses() {
         let default_config = Config::default();
+        assert_eq!(default_config.terminal.term, DEFAULT_TERMINAL_TERM);
         assert!(default_config.terminal.default_shell.is_empty());
         assert_eq!(default_config.terminal.shell_mode, ShellModeConfig::Auto);
 
@@ -527,8 +548,10 @@ mod tests {
 [terminal]
 default_shell = "nu"
 shell_mode = "non_login"
+term = "xterm-256color"
 "#;
         let config: Config = toml::from_str(toml).unwrap();
+        assert_eq!(config.terminal.term, "xterm-256color");
         assert_eq!(config.terminal.default_shell, "nu");
         assert_eq!(config.terminal.shell_mode, ShellModeConfig::NonLogin);
     }

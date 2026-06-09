@@ -95,6 +95,7 @@ impl Tab {
                 cols,
                 initial_cwd.clone(),
                 argv,
+                shell_config.pane_term(),
                 scrollback_limit_bytes,
                 host_terminal_theme,
                 events.clone(),
@@ -189,6 +190,7 @@ impl Tab {
         cwd: Option<PathBuf>,
         command: &str,
         extra_env: &[(String, String)],
+        term: &str,
         scrollback_limit_bytes: usize,
         host_terminal_theme: crate::terminal_theme::TerminalTheme,
     ) -> std::io::Result<NewPane> {
@@ -199,7 +201,8 @@ impl Tab {
             cwd,
             scrollback_limit_bytes,
             host_terminal_theme,
-            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin),
+            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin)
+                .with_term(term),
             Some(SplitCommand::Shell { command, extra_env }),
         )
     }
@@ -211,6 +214,7 @@ impl Tab {
         cols: u16,
         cwd: Option<PathBuf>,
         argv: &[String],
+        term: &str,
         scrollback_limit_bytes: usize,
         host_terminal_theme: crate::terminal_theme::TerminalTheme,
     ) -> std::io::Result<NewPane> {
@@ -221,7 +225,8 @@ impl Tab {
             cwd,
             scrollback_limit_bytes,
             host_terminal_theme,
-            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin),
+            crate::pane::PaneShellConfig::new("", crate::config::ShellModeConfig::NonLogin)
+                .with_term(term),
             Some(SplitCommand::Argv { argv }),
         )
     }
@@ -253,8 +258,11 @@ impl Tab {
                     rows,
                     cols,
                     actual_cwd.clone(),
-                    command,
-                    extra_env,
+                    crate::pane::PaneCommandConfig::new(
+                        command,
+                        extra_env,
+                        shell_config.pane_term(),
+                    ),
                     scrollback_limit_bytes,
                     host_terminal_theme,
                     self.events.clone(),
@@ -268,6 +276,7 @@ impl Tab {
                 cols,
                 actual_cwd.clone(),
                 argv,
+                shell_config.pane_term(),
                 scrollback_limit_bytes,
                 host_terminal_theme,
                 self.events.clone(),

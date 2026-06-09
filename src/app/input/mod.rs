@@ -326,7 +326,9 @@ impl AppState {
             let pane_scrollback_limit_bytes = self.pane_scrollback_limit_bytes;
             let host_terminal_theme = self.host_terminal_theme;
             let default_shell = self.default_shell.clone();
-            let shell_config = crate::pane::PaneShellConfig::new(&default_shell, self.shell_mode);
+            let pane_term = self.pane_term.clone();
+            let shell_config = crate::pane::PaneShellConfig::new(&default_shell, self.shell_mode)
+                .with_term(&pane_term);
             let Some(ws) = self.session_mut() else {
                 return;
             };

@@ -86,6 +86,7 @@ impl App {
         let host_terminal_theme = self.state.host_terminal_theme;
         let default_shell = self.state.default_shell.clone();
         let shell_mode = self.state.shell_mode;
+        let pane_term = self.state.pane_term.clone();
         let (idx, terminal, runtime, session_id, root_pane) = {
             let session = self
                 .state
@@ -97,7 +98,7 @@ impl App {
                 initial_cwd,
                 scrollback_limit_bytes,
                 host_terminal_theme,
-                crate::pane::PaneShellConfig::new(&default_shell, shell_mode),
+                crate::pane::PaneShellConfig::new(&default_shell, shell_mode).with_term(&pane_term),
             )?;
             let root_pane = session.tabs[idx].root_pane;
             (idx, terminal, runtime, session.id.clone(), root_pane)
@@ -135,7 +136,8 @@ impl App {
             cols,
             self.state.pane_scrollback_limit_bytes,
             self.state.host_terminal_theme,
-            crate::pane::PaneShellConfig::new(&self.state.default_shell, self.state.shell_mode),
+            crate::pane::PaneShellConfig::new(&self.state.default_shell, self.state.shell_mode)
+                .with_term(&self.state.pane_term),
             self.event_tx.clone(),
             self.render_notify.clone(),
             self.render_dirty.clone(),
