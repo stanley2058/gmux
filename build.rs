@@ -40,6 +40,24 @@ fn zig_command(manifest_dir: &std::path::Path) -> PathBuf {
     PathBuf::from("zig")
 }
 
+fn build_commit(manifest_dir: &std::path::Path) -> String {
+    if let Ok(commit) = env::var("GMUX_BUILD_COMMIT") {
+        return commit;
+    }
+
+    Command::new("git")
+        .arg("rev-parse")
+        .arg("HEAD")
+        .current_dir(manifest_dir)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|commit| commit.trim().to_string())
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=vendor/libghostty-vt.vendor.json");
@@ -53,9 +71,14 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LIBGHOSTTY_VT_OPTIMIZE");
     println!("cargo:rerun-if-env-changed=LIBGHOSTTY_VT_SIMD");
     println!("cargo:rerun-if-env-changed=LIBGHOSTTY_VT_ZIG_SYSTEM_DIR");
+    println!("cargo:rerun-if-env-changed=GMUX_BUILD_COMMIT");
     println!("cargo:rerun-if-env-changed=ZIG");
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    println!(
+        "cargo:rustc-env=GMUX_BUILD_COMMIT={}",
+        build_commit(&manifest_dir)
+    );
     let vendored_dir = manifest_dir.join("vendor/libghostty-vt");
     let optimize = env::var("LIBGHOSTTY_VT_OPTIMIZE").unwrap_or_else(|_| "ReleaseFast".into());
     let simd = env_bool("LIBGHOSTTY_VT_SIMD").unwrap_or(true);

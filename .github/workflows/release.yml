@@ -128,7 +128,9 @@ jobs:
             cargo-${{ matrix.target }}-
 
       - name: Build release binary
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+        env:
+          GMUX_BUILD_COMMIT: ${{ github.sha }}
+        run: cargo build --release --locked --features self-update --target "${{ matrix.target }}"
 
       - name: Package archive
         env:
