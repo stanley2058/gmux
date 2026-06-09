@@ -1,11 +1,84 @@
 use crossterm::event::{MouseEvent, MouseEventKind};
 
 use crate::{
-    app::state::{AppState, SelectionAutoscroll, SelectionAutoscrollDirection},
+    app::state::{
+        AppState, SelectionAutoscroll, SelectionAutoscrollDirection, SelectionViewportPin,
+    },
+    layout::PaneInfo,
     terminal::TerminalRuntimeRegistry,
 };
 
 impl AppState {
+    pub(crate) fn begin_selection_viewport_pin(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        pane_id: crate::layout::PaneId,
+        inner_rect: ratatui::layout::Rect,
+    ) {
+        let Some(metrics) = self.pane_scroll_metrics(terminal_runtimes, pane_id) else {
+            self.selection_viewport_pin = None;
+            return;
+        };
+        self.selection_viewport_pin = Some(SelectionViewportPin {
+            pane_id,
+            viewport_top_row: metrics
+                .max_offset_from_bottom
+                .saturating_sub(metrics.offset_from_bottom),
+            inner_rect,
+        });
+    }
+
+    pub(crate) fn refresh_selection_viewport_pin(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        pane_id: crate::layout::PaneId,
+    ) {
+        if let Some(info) = self.pane_info_by_id(pane_id).cloned() {
+            self.begin_selection_viewport_pin(terminal_runtimes, pane_id, info.inner_rect);
+        }
+    }
+
+    pub(crate) fn apply_selection_viewport_pin(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        pane_infos: &[PaneInfo],
+    ) {
+        let Some(selection) = self.selection.as_ref() else {
+            self.selection_viewport_pin = None;
+            return;
+        };
+        if !selection.is_in_progress() {
+            self.selection_viewport_pin = None;
+            return;
+        }
+
+        let pane_id = selection.pane_id;
+        let Some(info) = pane_infos.iter().find(|info| info.id == pane_id) else {
+            self.selection_viewport_pin = None;
+            return;
+        };
+
+        let Some(pin) = self.selection_viewport_pin else {
+            self.begin_selection_viewport_pin(terminal_runtimes, pane_id, info.inner_rect);
+            return;
+        };
+        if pin.pane_id != pane_id || pin.inner_rect != info.inner_rect {
+            self.selection_viewport_pin = None;
+            return;
+        }
+
+        let Some(metrics) = self.pane_scroll_metrics(terminal_runtimes, pane_id) else {
+            self.selection_viewport_pin = None;
+            return;
+        };
+        let target_offset = metrics
+            .max_offset_from_bottom
+            .saturating_sub(pin.viewport_top_row);
+        if target_offset != metrics.offset_from_bottom {
+            self.set_pane_scroll_offset(terminal_runtimes, pane_id, target_offset);
+        }
+    }
+
     pub(crate) fn update_selection_cursor(
         &mut self,
         terminal_runtimes: &TerminalRuntimeRegistry,
@@ -83,6 +156,7 @@ impl AppState {
                     pane_id,
                     Self::selection_edge_scroll_lines(top - screen_row),
                 );
+                self.refresh_selection_viewport_pin(terminal_runtimes, pane_id);
                 // Re-advance cursor after scroll so it reflects the new viewport position
                 self.update_selection_cursor(terminal_runtimes, pane_id, screen_col, screen_row);
                 self.selection_autoscroll = Some(SelectionAutoscroll {
@@ -100,6 +174,7 @@ impl AppState {
                     pane_id,
                     Self::selection_edge_scroll_lines(screen_row - bottom),
                 );
+                self.refresh_selection_viewport_pin(terminal_runtimes, pane_id);
                 // Re-advance cursor after scroll so it reflects the new viewport position
                 self.update_selection_cursor(terminal_runtimes, pane_id, screen_col, screen_row);
                 self.selection_autoscroll = Some(SelectionAutoscroll {
@@ -163,6 +238,7 @@ impl AppState {
             }
             _ => return false,
         }
+        self.refresh_selection_viewport_pin(terminal_runtimes, pane_id);
         self.update_selection_cursor(terminal_runtimes, pane_id, mouse.column, mouse.row);
         true
     }

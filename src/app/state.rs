@@ -31,6 +31,18 @@ pub(crate) struct SelectionAutoscroll {
     pub inner_rect: Rect,
 }
 
+/// Viewport anchor held while a mouse selection is in progress.
+///
+/// Ghostty's normal scroll position is relative to the live bottom. During a
+/// selection, pinning the viewport top keeps appended output from moving text
+/// under the user's drag.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SelectionViewportPin {
+    pub pane_id: PaneId,
+    pub viewport_top_row: usize,
+    pub inner_rect: Rect,
+}
+
 #[derive(Clone)]
 pub(crate) struct RightClickPassthroughGesture {
     pub pane_info: PaneInfo,
@@ -1036,6 +1048,7 @@ pub struct AppState {
     pub(crate) tab_press: Option<TabPressState>,
     pub selection: Option<Selection>,
     pub selection_autoscroll: Option<SelectionAutoscroll>,
+    pub(crate) selection_viewport_pin: Option<SelectionViewportPin>,
     pub context_menu: Option<ContextMenuState>,
     pub config_diagnostic: Option<String>,
     pub toast: Option<ToastNotification>,
@@ -1378,6 +1391,7 @@ impl AppState {
             tab_press: None,
             selection: None,
             selection_autoscroll: None,
+            selection_viewport_pin: None,
             context_menu: None,
             config_diagnostic: None,
             toast: None,

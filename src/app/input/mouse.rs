@@ -425,6 +425,7 @@ impl AppState {
                         col,
                         self.pane_scroll_metrics(terminal_runtimes, info.id),
                     ));
+                    self.begin_selection_viewport_pin(terminal_runtimes, info.id, info.inner_rect);
                 } else if let Some(info) = self.view.pane_infos.iter().find(|p| {
                     mouse.column >= p.rect.x
                         && mouse.column < p.rect.x + p.rect.width
@@ -1588,6 +1589,94 @@ mod tests {
             Bytes::from_static(b"\x1b[<64;2;2M")
         );
         assert!(input_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn selecting_at_bottom_pins_viewport_when_output_appends() {
+        let mut app = app_for_mouse_test();
+        let mut ws = Workspace::test_new("test");
+        let pane_id = ws.tabs[0].root_pane;
+        ws.tabs[0].runtimes.insert(
+            pane_id,
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
+                80,
+                18,
+                16 * 1024,
+                &numbered_lines_bytes(96),
+            ),
+        );
+
+        app.state.sessions = vec![ws];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+        crate::ui::compute_view_with_runtime_registry(
+            &mut app.state,
+            &app.terminal_runtimes,
+            Rect::new(0, 0, 106, 20),
+        );
+
+        let info = app.state.view.pane_infos[0].clone();
+        let before_text = {
+            let runtime = app
+                .state
+                .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
+                .expect("runtime");
+            assert_eq!(
+                runtime
+                    .scroll_metrics()
+                    .expect("initial scroll metrics")
+                    .offset_from_bottom,
+                0
+            );
+            runtime.visible_text()
+        };
+        let first_visible_line = before_text
+            .lines()
+            .find(|line| !line.trim().is_empty())
+            .expect("visible line before append")
+            .to_owned();
+
+        let col = info.inner_rect.x + 1;
+        let row = info.inner_rect.y + 1;
+        app.handle_mouse(mouse(MouseEventKind::Down(MouseButton::Left), col, row));
+        app.handle_mouse(mouse(MouseEventKind::Drag(MouseButton::Left), col + 2, row));
+        assert!(app.state.selection_viewport_pin.is_some());
+
+        let appended = (96..140)
+            .map(|i| format!("{i:06}\r\n"))
+            .collect::<String>()
+            .into_bytes();
+        app.state
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
+            .expect("runtime")
+            .test_process_pty_bytes(&appended);
+        crate::ui::compute_view_with_runtime_registry(
+            &mut app.state,
+            &app.terminal_runtimes,
+            Rect::new(0, 0, 106, 20),
+        );
+
+        let runtime = app
+            .state
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
+            .expect("runtime");
+        let metrics = runtime
+            .scroll_metrics()
+            .expect("scroll metrics after append while selecting");
+        assert!(
+            metrics.offset_from_bottom > 0,
+            "selection should pin viewport away from live bottom"
+        );
+        let after_text = runtime.visible_text();
+        assert!(
+            after_text.contains(&first_visible_line),
+            "pinned viewport should still show original visible text; wanted {first_visible_line:?}, got {after_text:?}"
+        );
+        assert!(
+            !after_text.contains("000139"),
+            "pinned viewport should not follow newly appended output"
+        );
     }
 
     #[tokio::test]

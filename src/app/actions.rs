@@ -1081,6 +1081,7 @@ impl AppState {
     pub fn clear_selection(&mut self) {
         self.selection = None;
         self.selection_autoscroll = None;
+        self.selection_viewport_pin = None;
     }
 
     pub(crate) fn stop_selection_autoscroll_state(&mut self) {

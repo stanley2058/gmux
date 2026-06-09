@@ -318,6 +318,8 @@ impl App {
                 }
                 self.state
                     .scroll_pane_up(&self.terminal_runtimes, pane_id, 1);
+                self.state
+                    .refresh_selection_viewport_pin(&self.terminal_runtimes, pane_id);
             }
             crate::app::state::SelectionAutoscrollDirection::Down => {
                 let at_bottom = metrics.offset_from_bottom == 0;
@@ -327,6 +329,8 @@ impl App {
                 }
                 self.state
                     .scroll_pane_down(&self.terminal_runtimes, pane_id, 1);
+                self.state
+                    .refresh_selection_viewport_pin(&self.terminal_runtimes, pane_id);
             }
         }
 

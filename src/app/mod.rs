@@ -355,6 +355,7 @@ impl App {
             tab_press: None,
             selection: None,
             selection_autoscroll: None,
+            selection_viewport_pin: None,
             context_menu: None,
             config_diagnostic,
             toast: None,

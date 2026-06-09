@@ -200,6 +200,7 @@ fn compute_view_internal(
         resize_panes,
         cell_size,
     );
+    app.apply_selection_viewport_pin(terminal_runtimes, &pane_infos);
     if resize_panes {
         resize_background_tab_panes_to_terminal_area(
             app,
@@ -266,6 +267,7 @@ fn compute_mobile_view(
         resize_panes,
         cell_size,
     );
+    app.apply_selection_viewport_pin(terminal_runtimes, &pane_infos);
     if resize_panes {
         resize_background_tab_panes_to_terminal_area(
             app,
