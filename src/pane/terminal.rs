@@ -225,6 +225,15 @@ impl PaneTerminal {
         self.ghostty.collect_dirty_patch(area_width, area_height)
     }
 
+    pub fn try_collect_dirty_patch(
+        &self,
+        area_width: u16,
+        area_height: u16,
+    ) -> Option<TerminalDirtyPatchOutcome> {
+        self.ghostty
+            .try_collect_dirty_patch(area_width, area_height)
+    }
+
     pub fn visible_hyperlinks(&self, area: Rect) -> Vec<((u16, u16), String, String)> {
         self.ghostty.visible_hyperlinks(area)
     }
@@ -1165,6 +1174,17 @@ impl GhosttyPaneTerminal {
             .ok()
             .map(|mut core| ghostty_collect_dirty_patch(&mut core, area_width, area_height))
             .unwrap_or(TerminalDirtyPatchOutcome::Fallback)
+    }
+
+    pub fn try_collect_dirty_patch(
+        &self,
+        area_width: u16,
+        area_height: u16,
+    ) -> Option<TerminalDirtyPatchOutcome> {
+        self.core
+            .try_lock()
+            .ok()
+            .map(|mut core| ghostty_collect_dirty_patch(&mut core, area_width, area_height))
     }
 }
 

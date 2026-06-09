@@ -172,6 +172,9 @@ const SHUTDOWN_API_TIMEOUT: Duration = Duration::from_secs(5);
 /// otherwise idle. Keep this much slower than the old resize-poll cadence to
 /// avoid reintroducing the idle CPU spin.
 const CLIENT_ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const FOCUSED_INPUT_LATENCY_WINDOW: Duration = Duration::from_millis(50);
+const LATENCY_BACKGROUND_RENDER_INTERVAL: Duration = Duration::from_millis(100);
+const LATENCY_OPPORTUNISTIC_PATCH_BUDGET: Duration = Duration::from_millis(2);
 
 // ---------------------------------------------------------------------------
 // Headless server
@@ -225,6 +228,14 @@ pub struct HeadlessServer {
     server_input_rx: mpsc::UnboundedReceiver<ServerEvent>,
     /// Sender for high-priority input events.
     server_input_tx: mpsc::UnboundedSender<ServerEvent>,
+    /// Pane whose recent input owns the short focused-render latency window.
+    focused_input_pane_id: Option<crate::layout::PaneId>,
+    /// Deadline after which background panes return to normal render cadence.
+    focused_input_deadline: Option<Instant>,
+    /// Next capped background catch-up while the focused pane is still active.
+    latency_background_render_at: Option<Instant>,
+    /// True when background pane updates were skipped during focused rendering.
+    latency_background_dirty: bool,
 }
 
 fn apply_terminal_attach_scroll(
@@ -360,6 +371,10 @@ impl HeadlessServer {
             server_event_tx,
             server_input_rx,
             server_input_tx,
+            focused_input_pane_id: None,
+            focused_input_deadline: None,
+            latency_background_render_at: None,
+            latency_background_dirty: false,
         })
     }
 
@@ -453,6 +468,10 @@ impl HeadlessServer {
                 needs_full_render = true;
                 crate::render_prof::event("full_render_cause.scheduled_tasks");
             }
+            if self.handle_focused_latency_timers(now) {
+                needs_render = true;
+                crate::render_prof::event("render.request.focused_latency_timer");
+            }
 
             // Handle deferred requests.
             if self.app.state.request_complete_onboarding {
@@ -515,11 +534,24 @@ impl HeadlessServer {
                 } else if !pty_dirty {
                     crate::render_prof::event("retained_gate.not_pty_dirty");
                 }
-                let rendered_retained =
-                    pty_dirty && !needs_full_render && self.render_retained_pty_update_and_stream();
+                let rendered_focused_latency = pty_dirty
+                    && !needs_full_render
+                    && self.focused_latency_active(now)
+                    && self.render_focused_latency_update_and_stream(now);
+                let rendered_retained = !rendered_focused_latency
+                    && pty_dirty
+                    && !needs_full_render
+                    && self.render_retained_pty_update_and_stream();
                 if !rendered_retained {
-                    crate::render_prof::event("full_render.invoke");
-                    self.render_and_stream();
+                    if rendered_focused_latency {
+                        crate::render_prof::event("focused_latency.rendered");
+                    } else {
+                        crate::render_prof::event("full_render.invoke");
+                        self.render_and_stream();
+                    }
+                }
+                if !rendered_focused_latency {
+                    self.clear_latency_background_dirty();
                 }
                 self.app.last_render_at = Some(now);
                 needs_render = false;
@@ -531,6 +563,9 @@ impl HeadlessServer {
             let next_deadline = self
                 .app
                 .next_headless_loop_deadline(now, needs_render)
+                .into_iter()
+                .chain(self.next_focused_latency_deadline(now))
+                .min()
                 .map(|deadline| deadline.min(now + CLIENT_ACCEPT_POLL_INTERVAL))
                 .or(Some(now + CLIENT_ACCEPT_POLL_INTERVAL));
             let event = {
@@ -598,6 +633,80 @@ impl HeadlessServer {
         let stamp = self.next_activity_stamp;
         self.next_activity_stamp = self.next_activity_stamp.saturating_add(1);
         stamp
+    }
+
+    fn focused_latency_active(&self, now: Instant) -> bool {
+        self.focused_input_pane_id.is_some()
+            && self
+                .focused_input_deadline
+                .is_some_and(|deadline| now < deadline)
+    }
+
+    fn next_focused_latency_deadline(&self, now: Instant) -> Option<Instant> {
+        [
+            self.focused_input_deadline,
+            self.latency_background_render_at
+                .filter(|_| self.latency_background_dirty),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|deadline| *deadline > now)
+        .min()
+    }
+
+    fn handle_focused_latency_timers(&mut self, now: Instant) -> bool {
+        if self
+            .focused_input_deadline
+            .is_some_and(|deadline| now >= deadline)
+        {
+            self.focused_input_deadline = None;
+            self.focused_input_pane_id = None;
+            self.latency_background_render_at = None;
+            if self.latency_background_dirty {
+                self.latency_background_dirty = false;
+                return true;
+            }
+            return false;
+        }
+
+        if self.latency_background_dirty
+            && self
+                .latency_background_render_at
+                .is_some_and(|deadline| now >= deadline)
+        {
+            self.latency_background_render_at = None;
+            return true;
+        }
+
+        false
+    }
+
+    fn arm_focused_input_latency(&mut self, now: Instant) {
+        let Some(focused_pane_id) = self.app.state.session().and_then(|ws| ws.focused_pane_id())
+        else {
+            return;
+        };
+        self.focused_input_pane_id = Some(focused_pane_id);
+        self.focused_input_deadline = Some(now + FOCUSED_INPUT_LATENCY_WINDOW);
+    }
+
+    fn note_latency_background_skipped(&mut self, now: Instant) {
+        self.latency_background_dirty = true;
+        if self.focused_latency_active(now) && self.latency_background_render_at.is_none() {
+            self.latency_background_render_at = Some(now + LATENCY_BACKGROUND_RENDER_INTERVAL);
+        }
+    }
+
+    fn clear_latency_background_dirty(&mut self) {
+        self.latency_background_dirty = false;
+        self.latency_background_render_at = None;
+    }
+
+    fn latency_background_render_due(&self, now: Instant) -> bool {
+        self.latency_background_dirty
+            && self
+                .latency_background_render_at
+                .is_some_and(|deadline| now >= deadline)
     }
 
     fn resize_shared_runtime_to_effective_size(&mut self) {
@@ -1724,6 +1833,14 @@ impl HeadlessServer {
                 let route_result = self
                     .app
                     .route_client_events(events, self.foreground_client_id == Some(client_id));
+                if route_result.forwarded_to_pty
+                    && self
+                        .clients
+                        .get(&client_id)
+                        .is_some_and(|client| client.is_full_app_client())
+                {
+                    self.arm_focused_input_latency(Instant::now());
+                }
                 if self.app.take_config_reloaded_from_disk() {
                     self.reload_server_config(false);
                 } else {
@@ -2037,6 +2154,249 @@ impl HeadlessServer {
 
     /// Renders the current state to client-sized virtual buffers and streams
     /// frames to all connected clients.
+    fn render_focused_latency_update_and_stream(&mut self, now: Instant) -> bool {
+        crate::render_prof::event("focused_latency.attempt");
+        let focused_started = crate::render_prof::timer();
+        macro_rules! focused_fallback {
+            ($reason:literal) => {{
+                crate::render_prof::event(concat!("focused_latency_fallback.", $reason));
+                crate::render_prof::duration_since("focused_latency.total", focused_started);
+                return false;
+            }};
+        }
+        macro_rules! focused_success {
+            ($reason:literal) => {{
+                crate::render_prof::event("focused_latency.success");
+                crate::render_prof::event(concat!("focused_latency_success.", $reason));
+                crate::render_prof::duration_since("focused_latency.total", focused_started);
+                return true;
+            }};
+        }
+
+        if !self.retained_pty_update_allowed_by_app_state() {
+            focused_fallback!("unsafe_app_state");
+        }
+        self.compute_foreground_view_geometry();
+
+        let render_targets = render_targets(&self.clients, self.foreground_client_id);
+        let app_target_count = render_targets
+            .iter()
+            .filter(|(_, _, _, _, mode)| matches!(mode, ClientConnectionMode::App))
+            .count();
+        if app_target_count == 0 {
+            focused_fallback!("no_app_target");
+        }
+
+        let Some(canonical_snapshot) = self.last_app_frame.clone() else {
+            focused_fallback!("no_last_frame");
+        };
+        if canonical_snapshot.active_size != self.effective_size {
+            focused_fallback!("frame_size_mismatch");
+        }
+        if self.foreground_client_id != Some(canonical_snapshot.active_client_id) {
+            focused_fallback!("active_client_mismatch");
+        }
+
+        let active_client_id = canonical_snapshot.active_client_id;
+        let Some(active_client) = self.clients.get(&active_client_id) else {
+            focused_fallback!("client_missing");
+        };
+        let active_cell_size = active_client.cell_size;
+        if self.app.state.kitty_graphics_enabled && !active_client.graphics_cache.is_empty() {
+            focused_fallback!("graphics_cache_active");
+        }
+        if active_client.graphics_surface_reset_pending {
+            focused_fallback!("graphics_surface_reset");
+        }
+        if self.app.state.kitty_graphics_enabled
+            && active_cell_size.is_known()
+            && crate::kitty_graphics::has_visible_pane_graphics(
+                &self.app.state,
+                &self.app.terminal_runtimes,
+                active_cell_size,
+            )
+        {
+            focused_fallback!("visible_kitty_graphics");
+        }
+
+        let Some(ws_idx) = self.app.state.session_index() else {
+            focused_fallback!("no_session");
+        };
+        let focused_pane_id = self
+            .focused_input_pane_id
+            .or_else(|| self.app.state.session().and_then(|ws| ws.focused_pane_id()));
+        let Some(focused_pane_id) = focused_pane_id else {
+            focused_fallback!("no_focused_pane");
+        };
+        let pane_infos = self.app.state.view.pane_infos.clone();
+        let Some(focused_info) = pane_infos
+            .iter()
+            .find(|info| info.id == focused_pane_id)
+            .cloned()
+        else {
+            focused_fallback!("focused_pane_not_visible");
+        };
+
+        let canonical_frame = canonical_snapshot.frame.as_ref();
+        if !rect_fits_frame(focused_info.inner_rect, canonical_frame) {
+            focused_fallback!("focused_rect_outside_frame");
+        }
+
+        let Some(focused_runtime) = self.app.state.runtime_for_pane_in_session_at(
+            &self.app.terminal_runtimes,
+            ws_idx,
+            focused_pane_id,
+        ) else {
+            focused_fallback!("missing_focused_runtime");
+        };
+        let focused_patch = match focused_runtime.collect_dirty_patch(
+            focused_info.inner_rect.width,
+            focused_info.inner_rect.height,
+        ) {
+            crate::pane::TerminalDirtyPatchOutcome::Clean => None,
+            crate::pane::TerminalDirtyPatchOutcome::Fallback => {
+                focused_fallback!("focused_dirty_patch_fallback");
+            }
+            crate::pane::TerminalDirtyPatchOutcome::Patch(patch) => Some(patch),
+        };
+
+        let next_cursor = crate::server::render_stream::focused_terminal_cursor(
+            &self.app.state,
+            &self.app.terminal_runtimes,
+        );
+
+        let mut frame = canonical_snapshot.frame.as_ref().clone();
+        frame.graphics.clear();
+        let mut changed = false;
+        if let Some(patch) = focused_patch {
+            if dirty_patch_intersects_hyperlinks(canonical_frame, focused_info.inner_rect, &patch) {
+                focused_fallback!("focused_hyperlink_intersection");
+            }
+            if !apply_terminal_dirty_patch(&mut frame, focused_info.inner_rect, patch) {
+                focused_fallback!("focused_patch_apply_failed");
+            }
+            changed = true;
+        }
+        if frame.cursor != next_cursor {
+            frame.cursor = next_cursor;
+            changed = true;
+        }
+
+        if !changed {
+            if self.latency_background_render_due(now) {
+                self.clear_latency_background_dirty();
+                focused_fallback!("background_due");
+            }
+            self.note_latency_background_skipped(now);
+            focused_success!("focused_clean_background_deferred");
+        }
+
+        let patch_budget_started = Instant::now();
+        let mut background_skipped = false;
+        for info in pane_infos.iter().filter(|info| info.id != focused_pane_id) {
+            if patch_budget_started.elapsed() >= LATENCY_OPPORTUNISTIC_PATCH_BUDGET {
+                background_skipped = true;
+                crate::render_prof::event("focused_latency.background_budget_exhausted");
+                break;
+            }
+            if !rect_fits_frame(info.inner_rect, canonical_frame) {
+                background_skipped = true;
+                continue;
+            }
+            let Some(runtime) = self.app.state.runtime_for_pane_in_session_at(
+                &self.app.terminal_runtimes,
+                ws_idx,
+                info.id,
+            ) else {
+                background_skipped = true;
+                continue;
+            };
+            match runtime.try_collect_dirty_patch(info.inner_rect.width, info.inner_rect.height) {
+                Some(crate::pane::TerminalDirtyPatchOutcome::Clean) => {
+                    crate::render_prof::event("focused_latency.background_clean");
+                }
+                Some(crate::pane::TerminalDirtyPatchOutcome::Patch(patch)) => {
+                    if dirty_patch_intersects_hyperlinks(canonical_frame, info.inner_rect, &patch) {
+                        focused_fallback!("background_hyperlink_intersection");
+                    }
+                    if !apply_terminal_dirty_patch(&mut frame, info.inner_rect, patch) {
+                        focused_fallback!("background_patch_apply_failed");
+                    }
+                    changed = true;
+                    crate::render_prof::event("focused_latency.background_patch");
+                }
+                Some(crate::pane::TerminalDirtyPatchOutcome::Fallback) => {
+                    background_skipped = true;
+                    crate::render_prof::event("focused_latency.background_fallback_deferred");
+                }
+                None => {
+                    background_skipped = true;
+                    crate::render_prof::event("focused_latency.background_lock_busy");
+                }
+            }
+        }
+
+        if background_skipped {
+            self.note_latency_background_skipped(now);
+        } else {
+            self.clear_latency_background_dirty();
+        }
+
+        if !changed {
+            focused_success!("clean_no_cursor_change");
+        }
+
+        let snapshot = self.store_app_frame_snapshot(frame, ServerRenderDebug::default());
+        let mut focused_targets = render_targets
+            .into_iter()
+            .filter(|(_, _, _, _, mode)| matches!(mode, ClientConnectionMode::App))
+            .collect::<Vec<_>>();
+        if let Some(latency_client_id) = self.latency_critical_client_id {
+            focused_targets.sort_by_key(|(client_id, _, _, is_foreground, _)| {
+                if *client_id == latency_client_id {
+                    0
+                } else if *is_foreground {
+                    1
+                } else {
+                    2
+                }
+            });
+        }
+        let target_count = focused_targets.len().min(usize::from(u16::MAX)) as u16;
+        let mut broken_clients = Vec::new();
+        let mut attempted_send = false;
+        let mut sent_any = false;
+        for (client_id, size, cell_size, is_foreground, _mode) in focused_targets {
+            attempted_send = true;
+            if self.stream_app_snapshot_to_client(
+                client_id,
+                snapshot.clone(),
+                size,
+                cell_size,
+                is_foreground,
+                ServerFrameDebugContext {
+                    target_count,
+                    ..Default::default()
+                },
+                &mut broken_clients,
+                "focused_latency_send",
+            ) {
+                sent_any = true;
+            }
+        }
+        for broken_client in broken_clients {
+            self.remove_client_and_resize_if_needed(broken_client);
+        }
+        if !attempted_send {
+            focused_success!("no_target");
+        }
+        if sent_any {
+            self.latency_critical_client_id = None;
+            focused_success!("sent");
+        }
+        focused_fallback!("send_failed");
+    }
+
     fn render_retained_pty_update_and_stream(&mut self) -> bool {
         crate::render_prof::event("retained.attempt");
         let retained_started = crate::render_prof::timer();
@@ -3243,6 +3603,10 @@ mod tests {
             server_event_tx,
             server_input_rx,
             server_input_tx,
+            focused_input_pane_id: None,
+            focused_input_deadline: None,
+            latency_background_render_at: None,
+            latency_background_dirty: false,
         }
     }
 
@@ -3424,6 +3788,52 @@ mod tests {
                 idx / usize::from(actual.width),
             );
         }
+    }
+
+    #[test]
+    fn focused_latency_timer_requests_catch_up_after_quiet_window() {
+        let mut server = test_headless_server();
+        let workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        let now = Instant::now();
+        server.focused_input_pane_id = Some(pane_id);
+        server.focused_input_deadline = Some(now + FOCUSED_INPUT_LATENCY_WINDOW);
+        server.note_latency_background_skipped(now);
+
+        assert!(!server.handle_focused_latency_timers(now + Duration::from_millis(49)));
+        assert!(server.latency_background_dirty);
+
+        assert!(server.handle_focused_latency_timers(now + Duration::from_millis(50)));
+        assert_eq!(server.focused_input_pane_id, None);
+        assert_eq!(server.focused_input_deadline, None);
+        assert_eq!(server.latency_background_render_at, None);
+        assert!(!server.latency_background_dirty);
+    }
+
+    #[test]
+    fn focused_latency_timer_caps_background_catch_up() {
+        let mut server = test_headless_server();
+        let workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        let now = Instant::now();
+        server.focused_input_pane_id = Some(pane_id);
+        server.focused_input_deadline = Some(now + Duration::from_secs(1));
+        server.note_latency_background_skipped(now);
+
+        assert!(!server.handle_focused_latency_timers(
+            now + LATENCY_BACKGROUND_RENDER_INTERVAL - Duration::from_millis(1)
+        ));
+        assert!(server.latency_background_dirty);
+
+        assert!(server.handle_focused_latency_timers(now + LATENCY_BACKGROUND_RENDER_INTERVAL));
+        assert!(server.latency_background_dirty);
+        assert_eq!(server.latency_background_render_at, None);
     }
 
     #[test]

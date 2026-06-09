@@ -277,6 +277,14 @@ impl TerminalRuntime {
         self.0.collect_dirty_patch(area_width, area_height)
     }
 
+    pub(crate) fn try_collect_dirty_patch(
+        &self,
+        area_width: u16,
+        area_height: u16,
+    ) -> Option<crate::pane::TerminalDirtyPatchOutcome> {
+        self.0.try_collect_dirty_patch(area_width, area_height)
+    }
+
     pub fn visible_hyperlinks(&self, area: Rect) -> Vec<((u16, u16), String, String)> {
         self.0.visible_hyperlinks(area)
     }
