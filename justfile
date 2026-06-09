@@ -2,21 +2,25 @@
 
 # Run fast tests for the normal edit/agent feedback loop
 test-fast:
-    cargo test --locked --bin gmux
+    cargo test --locked --bin gmux -- --format terse
     python3 -m unittest scripts.test_vendor_libghostty_vt
 
 # Run process/PTY/socket integration tests
 test-integration:
-    cargo test --locked --test api_ping
-    cargo test --locked --test auto_detect
-    cargo test --locked --test cli_wrapper
-    cargo test --locked --test client_mode
-    cargo test --locked --test cross_area
-    cargo test --locked --test detach_reattach
-    cargo test --locked --test live_handoff
-    cargo test --locked --test multi_client
-    cargo test --locked --test server_headless
-    cargo test --locked --test terminal_feature_matrix
+    python3 scripts/test_integration_parallel.py
+
+# Run process/PTY/socket integration tests serially for debugging
+test-integration-serial:
+    cargo test --locked --test api_ping -- --format terse
+    cargo test --locked --test auto_detect -- --format terse
+    cargo test --locked --test cli_wrapper -- --format terse
+    cargo test --locked --test client_mode -- --format terse
+    cargo test --locked --test cross_area -- --format terse
+    cargo test --locked --test detach_reattach -- --format terse
+    cargo test --locked --test live_handoff -- --format terse
+    cargo test --locked --test multi_client -- --format terse
+    cargo test --locked --test server_headless -- --format terse
+    cargo test --locked --test terminal_feature_matrix -- --format terse
 
 # Run tests
 test: test-fast test-integration
@@ -31,12 +35,10 @@ lint:
     cargo clippy --all-targets --locked -- -D warnings
 
 # Run local CI checks
-ci: lint
-    cargo test --locked
+ci: lint test
 
-# Check formatting + run unit tests + maintenance script tests
+# Check formatting + run tests
 check: ci
-    python3 -m unittest scripts.test_vendor_libghostty_vt
 
 # Install repo-local git hooks
 install-hooks:
