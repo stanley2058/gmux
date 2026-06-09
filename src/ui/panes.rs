@@ -895,6 +895,22 @@ mod tests {
     }
 
     #[test]
+    fn zoomed_pane_does_not_render_hidden_split_border() {
+        let mut workspace = Workspace::test_new("test");
+        let focused_pane = workspace.test_split(ratatui::layout::Direction::Horizontal);
+        workspace.tabs[0].layout.focus_pane(focused_pane);
+        workspace.zoomed = true;
+        let mut app = test_app_with_workspace(workspace);
+
+        let buffer = draw_panes(&mut app, 100, 20);
+
+        assert!(app.view.split_borders.is_empty());
+        assert_eq!(app.view.pane_infos.len(), 1);
+        assert_eq!(app.view.pane_infos[0].id, focused_pane);
+        assert_eq!(cell_symbol(&buffer, 50, app.view.terminal_area.y), " ");
+    }
+
+    #[test]
     fn left_right_split_focus_owns_top_border_half_and_vertical_half() {
         let mut workspace = Workspace::test_new("test");
         let left = workspace.tabs[0].root_pane;

@@ -190,7 +190,7 @@ fn compute_view_internal(
 
     let split_borders = app
         .session()
-        .map(|ws| ws.layout.splits(terminal_area))
+        .and_then(|ws| (!ws.zoomed).then(|| ws.layout.splits(terminal_area)))
         .unwrap_or_default();
 
     let pane_infos = compute_pane_infos(
@@ -256,7 +256,7 @@ fn compute_mobile_view(
 
     let split_borders = app
         .session()
-        .map(|ws| ws.layout.splits(terminal_area))
+        .and_then(|ws| (!ws.zoomed).then(|| ws.layout.splits(terminal_area)))
         .unwrap_or_default();
 
     let pane_infos = compute_pane_infos(
@@ -515,6 +515,26 @@ mod tests {
         assert_eq!(app.view.sidebar_rect, Rect::default());
         assert_eq!(app.view.tab_bar_rect, Rect::new(0, 0, 100, 1));
         assert_eq!(app.view.terminal_area, Rect::new(0, 2, 100, 18));
+    }
+
+    #[test]
+    fn zoomed_view_hides_split_borders() {
+        let mut app = crate::app::state::AppState::test_new();
+        let mut ws = Workspace::test_new("test");
+        let focused_pane = ws.test_split(ratatui::layout::Direction::Horizontal);
+        ws.zoomed = true;
+
+        app.sessions = vec![ws];
+        app.active_session = Some(0);
+        app.selected_session = 0;
+        app.mode = Mode::Terminal;
+
+        compute_view(&mut app, Rect::new(0, 0, 100, 20));
+
+        assert!(app.view.split_borders.is_empty());
+        assert_eq!(app.view.pane_infos.len(), 1);
+        assert_eq!(app.view.pane_infos[0].id, focused_pane);
+        assert_eq!(app.view.pane_infos[0].rect, app.view.terminal_area);
     }
 
     #[test]
