@@ -26,8 +26,7 @@ impl App {
         }
 
         if let AppEvent::PaneDied { pane_id } = &ev {
-            if !self.pane_is_last_remaining(*pane_id)
-                && self.runtime_exit_action(*pane_id) == RuntimeExitAction::RespawnShell
+            if self.runtime_exit_action(*pane_id) == RuntimeExitAction::RespawnShell
                 && self.respawn_shell_for_launch_pane(*pane_id)
             {
                 self.overlay_panes.remove(pane_id);
@@ -112,18 +111,6 @@ impl App {
         } else {
             RuntimeExitAction::ClosePane
         }
-    }
-
-    fn pane_is_last_remaining(&self, pane_id: crate::layout::PaneId) -> bool {
-        let mut pane_count = 0usize;
-        let mut contains_pane = false;
-        for entry in self.state.session_tab_entries() {
-            for candidate in entry.tab.panes.keys() {
-                pane_count += 1;
-                contains_pane |= *candidate == pane_id;
-            }
-        }
-        contains_pane && pane_count == 1
     }
 
     fn respawn_shell_for_launch_pane(&mut self, pane_id: crate::layout::PaneId) -> bool {
@@ -366,7 +353,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pane_died_last_respawnable_pane_quits_without_respawn() {
+    async fn pane_died_last_respawnable_pane_respawns_shell() {
         let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut app = App::new(
             &crate::config::Config::default(),
@@ -390,7 +377,14 @@ mod tests {
 
         app.handle_internal_event(AppEvent::PaneDied { pane_id });
 
-        assert!(app.find_pane(pane_id).is_none());
-        assert!(app.state.should_quit);
+        assert!(
+            app.find_pane(pane_id).is_some(),
+            "last restored launch pane should recover into a shell"
+        );
+        assert!(!app.state.should_quit);
+
+        for (_, runtime) in app.terminal_runtimes.drain() {
+            runtime.shutdown();
+        }
     }
 }

@@ -331,7 +331,7 @@ fn capture_tab(
             .and_then(|pane| terminals.get(&pane.attached_terminal_id))
             .and_then(|terminal| terminal.manual_label.clone());
         let launch_argv = restore_processes
-            .then(|| capture_pane_launch_argv(tab.panes.get(id), terminals, terminal_runtimes))
+            .then(|| capture_pane_launch_argv(tab.panes.get(id), terminal_runtimes))
             .flatten();
         panes.insert(
             id.raw(),
@@ -354,21 +354,12 @@ fn capture_tab(
 
 fn capture_pane_launch_argv(
     pane: Option<&crate::pane::PaneState>,
-    terminals: &std::collections::HashMap<
-        crate::terminal::TerminalId,
-        crate::terminal::TerminalState,
-    >,
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> Option<Vec<String>> {
     let pane = pane?;
     terminal_runtimes
         .get(&pane.attached_terminal_id)
         .and_then(|runtime| runtime.foreground_process_argv())
-        .or_else(|| {
-            terminals
-                .get(&pane.attached_terminal_id)
-                .and_then(|terminal| terminal.launch_argv.clone())
-        })
 }
 
 /// Capture pane screen history separately from the structural session snapshot.
@@ -681,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn capture_persists_launch_argv_when_process_restore_enabled() {
+    fn capture_does_not_persist_stale_launch_argv_without_live_process() {
         let mut state = state_with_workspaces(&["one"]);
         let terminal_id = state.sessions[0].tabs[0]
             .panes
@@ -696,7 +687,7 @@ mod tests {
 
         assert_eq!(
             snap.tabs[0].panes.values().next().unwrap().launch_argv,
-            Some(vec!["top".to_string()])
+            None
         );
     }
 
