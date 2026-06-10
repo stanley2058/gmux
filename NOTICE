@@ -1,0 +1,16 @@
+gmux
+
+gmux is a modified fork of herdr:
+https://github.com/ogulcancelik/herdr
+
+Fork modifications began on 2026-06-05 with commit 935d4ce4.
+
+gmux is licensed under the GNU Affero General Public License v3.0 or later
+(AGPL-3.0-or-later). See LICENSE for the full license text.
+
+The release binary statically links vendored libghostty-vt, which is licensed
+under the MIT License. The vendored license text is available at:
+vendor/libghostty-vt/LICENSE
+
+Release archives include THIRD_PARTY_NOTICES.md with generated dependency
+notice information.

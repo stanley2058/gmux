@@ -436,6 +436,8 @@ fn main() -> io::Result<()> {
         println!("Logs:   {}", logging::help_log_paths_summary());
         println!("Env:    GMUX_CONFIG_PATH overrides config file path");
         println!("Home:   https://github.com/stanley2058/gmux");
+        println!("Source: https://github.com/stanley2058/gmux");
+        println!("License: AGPL-3.0-or-later");
         return Ok(());
     }
 

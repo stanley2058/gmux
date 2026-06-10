@@ -148,12 +148,13 @@ jobs:
           staging="dist/$package"
           mkdir -p "$staging"
           cp "target/$TARGET/release/gmux" "$staging/gmux"
-          cp README.md LICENSE "$staging/"
+          cp README.md LICENSE NOTICE "$staging/"
+          python3 scripts/generate_third_party_notices.py --target "$TARGET" --output "$staging/THIRD_PARTY_NOTICES.md"
           mkdir -p "$staging/completions"
           "$staging/gmux" completions bash > "$staging/completions/gmux.bash"
           "$staging/gmux" completions zsh > "$staging/completions/_gmux"
           "$staging/gmux" completions fish > "$staging/completions/gmux.fish"
-          tar -C "$staging" -czf "dist/$package.tar.gz" gmux README.md LICENSE completions
+          tar -C "$staging" -czf "dist/$package.tar.gz" gmux README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md completions
 
       - name: Upload archive
         uses: actions/upload-artifact@v4

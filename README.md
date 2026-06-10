@@ -2,7 +2,7 @@
 
 **A terminal multiplexer with persistent sessions, tabs, panes, and a scriptable local socket.**
 
-This is a fork of [herdr](https://github.com/ogulcancelik/herdr) with all agent integrations removed. Modified to focus on becoming a tmux replacement.
+This is a modified fork of [herdr](https://github.com/ogulcancelik/herdr). Fork modifications began on 2026-06-05 with commit `935d4ce4`; this fork removes agent integrations and focuses on becoming a tmux replacement.
 
 ## Install
 
@@ -201,3 +201,5 @@ just check
 ## License
 
 gmux is licensed under the GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`).
+
+See [`NOTICE`](./NOTICE) for upstream provenance and third-party notice information.
