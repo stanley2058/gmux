@@ -63,10 +63,12 @@ esac
 
 case "$os-$arch" in
     linux-x86_64) platform="linux-x86_64" ;;
+    linux-aarch64) platform="linux-aarch64" ;;
+    darwin-x86_64) platform="darwin-x86_64" ;;
     darwin-aarch64) platform="darwin-aarch64" ;;
     *)
         printf 'error: unsupported platform: %s-%s\n' "$os" "$arch" >&2
-        printf 'supported platforms: linux-x86_64, darwin-aarch64\n' >&2
+        printf 'supported platforms: linux-x86_64, linux-aarch64, darwin-x86_64, darwin-aarch64\n' >&2
         exit 1
         ;;
 esac

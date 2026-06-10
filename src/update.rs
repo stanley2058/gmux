@@ -164,8 +164,14 @@ fn temp_script_path() -> PathBuf {
 }
 
 fn platform_asset_name() -> Option<String> {
-    let platform = match (std::env::consts::OS, std::env::consts::ARCH) {
+    platform_asset_name_for(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn platform_asset_name_for(os: &str, arch: &str) -> Option<String> {
+    let platform = match (os, arch) {
         ("linux", "x86_64") => "linux-x86_64",
+        ("linux", "aarch64") => "linux-aarch64",
+        ("macos", "x86_64") => "darwin-x86_64",
         ("macos", "aarch64") => "darwin-aarch64",
         _ => return None,
     };
@@ -270,5 +276,26 @@ mod tests {
             .expect("valid release json");
 
         assert!(release.is_none());
+    }
+
+    #[test]
+    fn maps_supported_platform_assets() {
+        assert_eq!(
+            platform_asset_name_for("linux", "x86_64").as_deref(),
+            Some("gmux-linux-x86_64.tar.gz")
+        );
+        assert_eq!(
+            platform_asset_name_for("linux", "aarch64").as_deref(),
+            Some("gmux-linux-aarch64.tar.gz")
+        );
+        assert_eq!(
+            platform_asset_name_for("macos", "x86_64").as_deref(),
+            Some("gmux-darwin-x86_64.tar.gz")
+        );
+        assert_eq!(
+            platform_asset_name_for("macos", "aarch64").as_deref(),
+            Some("gmux-darwin-aarch64.tar.gz")
+        );
+        assert_eq!(platform_asset_name_for("windows", "x86_64"), None);
     }
 }
