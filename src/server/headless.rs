@@ -756,6 +756,28 @@ impl HeadlessServer {
         }
     }
 
+    fn compute_foreground_pane_geometry(&mut self) {
+        let Some(client_id) = self.foreground_client_id else {
+            return;
+        };
+        let Some(client) = self.clients.get(&client_id) else {
+            return;
+        };
+        let (cols, rows) = self.effective_size;
+        let area = Rect::new(0, 0, cols, rows);
+        let cell_size = if self.app.state.kitty_graphics_enabled && client.cell_size.is_known() {
+            client.cell_size
+        } else {
+            crate::kitty_graphics::HostCellSize::default()
+        };
+        crate::ui::compute_pane_geometry_with_runtime_registry(
+            &mut self.app.state,
+            &self.app.terminal_runtimes,
+            area,
+            cell_size,
+        );
+    }
+
     fn sync_foreground_client_state(&mut self) {
         let Some(client_id) = self.foreground_client_id else {
             self.effective_size = (MIN_COLS, MIN_ROWS);
@@ -2273,7 +2295,7 @@ impl HeadlessServer {
         if !self.retained_pty_update_allowed_by_app_state() {
             focused_fallback!("unsafe_app_state");
         }
-        self.compute_foreground_view_geometry();
+        self.compute_foreground_pane_geometry();
 
         let render_targets = render_targets(&self.clients, self.foreground_client_id);
         let app_target_count = render_targets
@@ -2516,7 +2538,7 @@ impl HeadlessServer {
         if !self.retained_pty_update_allowed_by_app_state() {
             retained_fallback!("unsafe_app_state");
         }
-        self.compute_foreground_view_geometry();
+        self.compute_foreground_pane_geometry();
 
         let render_targets = render_targets(&self.clients, self.foreground_client_id);
         if render_targets.is_empty() {

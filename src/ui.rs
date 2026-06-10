@@ -126,6 +126,77 @@ pub(crate) fn compute_view_without_resizing_panes(
     );
 }
 
+/// Recompute only the terminal pane geometry needed by retained PTY updates.
+///
+/// The latency path does not redraw chrome, so avoid desktop tab-bar work such
+/// as foreground-process lookup while still keeping pane rectangles/scrollbars
+/// in sync with terminal output.
+pub(crate) fn compute_pane_geometry_with_runtime_registry(
+    app: &mut AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    area: Rect,
+    cell_size: crate::kitty_graphics::HostCellSize,
+) {
+    let (layout, terminal_area, mobile_header_rect, mobile_menu_hit_area) =
+        if is_mobile_width(area, app.mobile_width_threshold) {
+            let header_h = area.height.min(2);
+            let (header_rect, terminal_area) = if area.height > header_h {
+                let [header_rect, terminal_area] =
+                    Layout::vertical([Constraint::Length(header_h), Constraint::Min(1)])
+                        .areas(area);
+                (header_rect, terminal_area)
+            } else {
+                (area, Rect::default())
+            };
+            let header_hits = compute_mobile_header_hit_areas(app, header_rect);
+            (
+                ViewLayout::Mobile,
+                terminal_area,
+                header_rect,
+                header_hits.menu,
+            )
+        } else if app.session().is_some() && area.height > 2 {
+            let [_, _, terminal_area] = Layout::vertical([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(1),
+            ])
+            .areas(area);
+            (
+                ViewLayout::Desktop,
+                terminal_area,
+                Rect::default(),
+                Rect::default(),
+            )
+        } else if app.session().is_some() && area.height > 1 {
+            let [_, terminal_area] =
+                Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
+            (
+                ViewLayout::Desktop,
+                terminal_area,
+                Rect::default(),
+                Rect::default(),
+            )
+        } else {
+            (ViewLayout::Desktop, area, Rect::default(), Rect::default())
+        };
+
+    let split_borders = app
+        .session()
+        .and_then(|ws| (!ws.zoomed).then(|| ws.layout.splits(terminal_area)))
+        .unwrap_or_default();
+    let pane_infos = compute_pane_infos(app, terminal_runtimes, terminal_area, true, cell_size);
+    app.apply_selection_viewport_pin(terminal_runtimes, &pane_infos);
+    resize_background_tab_panes_to_terminal_area(app, terminal_runtimes, terminal_area, cell_size);
+
+    app.view.layout = layout;
+    app.view.terminal_area = terminal_area;
+    app.view.mobile_header_rect = mobile_header_rect;
+    app.view.mobile_menu_hit_area = mobile_menu_hit_area;
+    app.view.pane_infos = pane_infos;
+    app.view.split_borders = split_borders;
+}
+
 fn resize_background_tab_panes_to_terminal_area(
     app: &AppState,
     terminal_runtimes: &TerminalRuntimeRegistry,
