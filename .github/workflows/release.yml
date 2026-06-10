@@ -183,12 +183,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.tar.gz dist/SHA256SUMS --clobber
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.tar.gz dist/SHA256SUMS --repo "$REPO" --clobber
           else
             gh release create "$TAG" dist/*.tar.gz dist/SHA256SUMS \
+              --repo "$REPO" \
               --title "$TAG" \
               --generate-notes
           fi
