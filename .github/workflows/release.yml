@@ -26,7 +26,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -87,16 +87,13 @@ jobs:
           - asset_platform: linux-aarch64
             runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-          - asset_platform: darwin-x86_64
-            runner: macos-13
-            target: x86_64-apple-darwin
           - asset_platform: darwin-aarch64
             runner: macos-14
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
@@ -107,7 +104,7 @@ jobs:
 
       - name: Cache Zig
         id: zig-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: vendor/zig-${{ env.ZIG_VERSION }}
           key: zig-${{ env.ZIG_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -123,7 +120,7 @@ jobs:
           scripts/bootstrap_zig_0_15_2.sh
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -157,7 +154,7 @@ jobs:
           tar -C "$staging" -czf "dist/$package.tar.gz" gmux README.md LICENSE NOTICE THIRD_PARTY_NOTICES.md completions
 
       - name: Upload archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gmux-${{ matrix.asset_platform }}
           path: dist/gmux-${{ matrix.asset_platform }}.tar.gz
@@ -171,7 +168,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

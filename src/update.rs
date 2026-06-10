@@ -171,7 +171,6 @@ fn platform_asset_name_for(os: &str, arch: &str) -> Option<String> {
     let platform = match (os, arch) {
         ("linux", "x86_64") => "linux-x86_64",
         ("linux", "aarch64") => "linux-aarch64",
-        ("macos", "x86_64") => "darwin-x86_64",
         ("macos", "aarch64") => "darwin-aarch64",
         _ => return None,
     };
@@ -289,13 +288,10 @@ mod tests {
             Some("gmux-linux-aarch64.tar.gz")
         );
         assert_eq!(
-            platform_asset_name_for("macos", "x86_64").as_deref(),
-            Some("gmux-darwin-x86_64.tar.gz")
-        );
-        assert_eq!(
             platform_asset_name_for("macos", "aarch64").as_deref(),
             Some("gmux-darwin-aarch64.tar.gz")
         );
+        assert_eq!(platform_asset_name_for("macos", "x86_64"), None);
         assert_eq!(platform_asset_name_for("windows", "x86_64"), None);
     }
 }
