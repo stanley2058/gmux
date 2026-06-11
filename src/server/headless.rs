@@ -175,6 +175,8 @@ const CLIENT_ACCEPT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const FOCUSED_INPUT_LATENCY_WINDOW: Duration = Duration::from_millis(50);
 const LATENCY_BACKGROUND_RENDER_INTERVAL: Duration = Duration::from_millis(100);
 const LATENCY_OPPORTUNISTIC_PATCH_BUDGET: Duration = Duration::from_millis(2);
+/// Keep continuous input bursts from monopolizing the loop and starving render.
+const PRIORITY_INPUT_DRAIN_LIMIT: usize = 64;
 
 // ---------------------------------------------------------------------------
 // Headless server
@@ -1272,14 +1274,19 @@ impl HeadlessServer {
     fn drain_priority_input_events(&mut self) -> bool {
         let mut changed = false;
         let mut pending = None;
+        let mut drained = 0usize;
         loop {
-            let Some(ev) = pending
-                .take()
-                .or_else(|| self.server_input_rx.try_recv().ok())
-            else {
+            let Some(ev) = pending.take().or_else(|| {
+                if drained >= PRIORITY_INPUT_DRAIN_LIMIT {
+                    return None;
+                }
+                let ev = self.server_input_rx.try_recv().ok()?;
+                drained = drained.saturating_add(1);
+                Some(ev)
+            }) else {
                 break;
             };
-            let ev = self.coalesce_priority_input_event(ev, &mut pending);
+            let ev = self.coalesce_priority_input_event(ev, &mut pending, &mut drained);
             changed |= self.handle_server_event(ev);
         }
         changed
@@ -1289,6 +1296,7 @@ impl HeadlessServer {
         &mut self,
         event: ServerEvent,
         pending: &mut Option<ServerEvent>,
+        drained: &mut usize,
     ) -> ServerEvent {
         match event {
             ServerEvent::ClientInput {
@@ -1296,7 +1304,11 @@ impl HeadlessServer {
                 mut data,
                 received_at,
             } => {
-                while let Ok(next) = self.server_input_rx.try_recv() {
+                while *drained < PRIORITY_INPUT_DRAIN_LIMIT {
+                    let Ok(next) = self.server_input_rx.try_recv() else {
+                        break;
+                    };
+                    *drained = (*drained).saturating_add(1);
                     match next {
                         ServerEvent::ClientInput {
                             client_id: next_client_id,
@@ -1325,7 +1337,11 @@ impl HeadlessServer {
                 modifiers,
             } if self.terminal_attach_scroll_uses_host_scroll(client_id) => {
                 let mut total_lines = lines.max(1);
-                while let Ok(next) = self.server_input_rx.try_recv() {
+                while *drained < PRIORITY_INPUT_DRAIN_LIMIT {
+                    let Ok(next) = self.server_input_rx.try_recv() else {
+                        break;
+                    };
+                    *drained = (*drained).saturating_add(1);
                     match next {
                         ServerEvent::ClientAttachScroll {
                             client_id: next_client_id,
@@ -4674,6 +4690,74 @@ next_tab = ""
             12
         );
         assert!(server.app.input_render_bypass_pending);
+
+        drop(_runtime_guard);
+        rt.shutdown_timeout(Duration::from_millis(100));
+    }
+
+    #[test]
+    fn priority_drain_limits_terminal_attach_host_wheel_scroll_burst() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        let _runtime_guard = rt.enter();
+        let mut server = test_headless_server();
+        let terminal_id = crate::terminal::TerminalId::alloc();
+        let terminal_id_string = terminal_id.to_string();
+        let mut bytes = Vec::new();
+        for line in 0..200 {
+            bytes.extend_from_slice(format!("line {line:03}\r\n").as_bytes());
+        }
+        let runtime =
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(20, 5, 16 * 1024, &bytes);
+        server.app.state.terminals.insert(
+            terminal_id.clone(),
+            crate::terminal::TerminalState::new(terminal_id.clone(), "/tmp".into()),
+        );
+        server
+            .app
+            .terminal_runtimes
+            .insert(terminal_id.clone(), runtime);
+        server.clients.insert(
+            7,
+            ClientConnection::new_with_mode(
+                ClientConnectionMode::TerminalAttach {
+                    terminal_id: terminal_id_string,
+                },
+                None,
+                (20, 5),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                false,
+                None,
+            ),
+        );
+
+        for _ in 0..(PRIORITY_INPUT_DRAIN_LIMIT + 10) {
+            server
+                .server_input_tx
+                .send(test_attach_wheel_scroll(7, AttachScrollDirection::Up, 1))
+                .expect("queue scroll");
+        }
+
+        assert!(server.drain_priority_input_events());
+        let runtime = server
+            .app
+            .terminal_runtimes
+            .get(&terminal_id)
+            .expect("runtime after drain");
+        assert_eq!(
+            runtime
+                .scroll_metrics()
+                .expect("scroll metrics")
+                .offset_from_bottom,
+            PRIORITY_INPUT_DRAIN_LIMIT
+        );
+        assert!(server.server_input_rx.try_recv().is_ok());
 
         drop(_runtime_guard);
         rt.shutdown_timeout(Duration::from_millis(100));
