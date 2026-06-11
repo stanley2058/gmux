@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use ratatui::layout::Direction;
 use tokio::sync::{mpsc, Notify};
 use tracing::{error, warn};
@@ -396,7 +397,6 @@ fn restore_tab(
         let imported_runtime = old_pane_id.and_then(|old_id| imported_panes.remove(&old_id));
         let was_imported = imported_runtime.is_some();
 
-        let mut restored_launch_argv = None;
         let runtime_result = if let Some(imported) = imported_runtime {
             TerminalRuntime::from_handoff_fd(
                 crate::handoff_runtime::ImportedHandoffRuntime {
@@ -411,22 +411,46 @@ fn restore_tab(
             )
         } else if runtime_context.restore_processes {
             if let Some(argv) = saved_launch_argv.as_ref().filter(|argv| !argv.is_empty()) {
-                match TerminalRuntime::spawn_argv_command_with_initial_history(
+                match TerminalRuntime::spawn_with_initial_history(
                     *id,
-                    (rows, cols),
+                    rows,
+                    cols,
                     cwd.clone(),
-                    argv,
-                    runtime_context.shell_config.pane_term(),
                     runtime_context.scrollback_limit_bytes,
                     crate::terminal_theme::TerminalTheme::default(),
+                    runtime_context.shell_config,
                     startup.initial_history_ansi,
                     runtime_context.events.clone(),
                     runtime_context.render_notify.clone(),
                     runtime_context.render_dirty.clone(),
                 ) {
                     Ok(runtime) => {
-                        restored_launch_argv = Some(argv.clone());
-                        Ok(runtime)
+                        let command = restored_process_shell_command(argv);
+                        match runtime.try_send_bytes(Bytes::from(format!("{command}\n"))) {
+                            Ok(()) => Ok(runtime),
+                            Err(err) => {
+                                warn!(
+                                    tab = ?snap.custom_name,
+                                    pane_id = id.raw(),
+                                    err = ?err,
+                                    "failed to send restored pane process command, falling back to shell"
+                                );
+                                runtime.shutdown();
+                                TerminalRuntime::spawn_with_initial_history(
+                                    *id,
+                                    rows,
+                                    cols,
+                                    cwd.clone(),
+                                    runtime_context.scrollback_limit_bytes,
+                                    crate::terminal_theme::TerminalTheme::default(),
+                                    runtime_context.shell_config,
+                                    startup.initial_history_ansi,
+                                    runtime_context.events.clone(),
+                                    runtime_context.render_notify.clone(),
+                                    runtime_context.render_dirty.clone(),
+                                )
+                            }
+                        }
                     }
                     Err(err) => {
                         warn!(
@@ -485,9 +509,7 @@ fn restore_tab(
             Ok(runtime) => {
                 let terminal_id = TerminalId::alloc();
                 let mut terminal = TerminalState::new(terminal_id.clone(), cwd.clone());
-                if let Some(argv) = restored_launch_argv
-                    .or_else(|| was_imported.then(|| saved_launch_argv.clone()).flatten())
-                {
+                if let Some(argv) = was_imported.then(|| saved_launch_argv.clone()).flatten() {
                     terminal = terminal.with_launch_argv(argv).with_respawn_shell_on_exit();
                 }
                 if let Some(label) = saved_label {
@@ -569,6 +591,29 @@ fn pane_restore_startup(history: Option<&PaneHistorySnapshot>) -> PaneRestoreSta
     PaneRestoreStartup {
         initial_history_ansi: history.map(|history| history.ansi.as_str()),
     }
+}
+
+fn restored_process_shell_command(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| shell_quote_arg(arg))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_quote_arg(value: &str) -> String {
+    if !value.is_empty()
+        && value.chars().all(|ch| {
+            ch.is_ascii_alphanumeric()
+                || matches!(
+                    ch,
+                    '@' | '%' | '_' | '+' | '=' | ':' | ',' | '.' | '/' | '-'
+                )
+        })
+    {
+        return value.to_string();
+    }
+
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub(super) fn prune_restored_node(node: Node, surviving: &HashSet<PaneId>) -> Option<Node> {
@@ -736,6 +781,22 @@ mod tests {
         assert_eq!(startup.initial_history_ansi, Some("RESTORED_HISTORY\r\n"));
     }
 
+    #[test]
+    fn restored_process_shell_command_quotes_argv() {
+        let argv = vec![
+            "nvim".to_string(),
+            "two words".to_string(),
+            "can't".to_string(),
+            "".to_string(),
+            "$HOME".to_string(),
+        ];
+
+        assert_eq!(
+            restored_process_shell_command(&argv),
+            "nvim 'two words' 'can'\\''t' '' '$HOME'"
+        );
+    }
+
     #[tokio::test]
     async fn restore_seeds_saved_pane_history_into_runtime() {
         let (snapshot, history) = snapshot_with_saved_pane_history();
@@ -805,19 +866,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_relaunches_saved_argv_when_enabled() {
+    async fn restore_runs_saved_argv_through_shell_when_enabled() {
         let (mut snapshot, _history) = snapshot_with_saved_pane_history();
-        let argv = vec![
-            "/bin/sh".to_string(),
-            "-c".to_string(),
-            "sleep 5".to_string(),
-        ];
+        let argv = vec!["printf".to_string(), "GMUX_RESTORED_ARGV".to_string()];
         snapshot.tabs[0].panes.get_mut(&0).unwrap().launch_argv = Some(argv.clone());
         let (events, _events_rx) = mpsc::channel(8);
         let render_notify = Arc::new(Notify::new());
         let render_dirty = Arc::new(AtomicBool::new(false));
 
-        let (_workspaces, terminals, _runtimes) = restore(
+        let (_workspaces, terminals, runtimes) = restore(
             &snapshot,
             None,
             test_restore_options(true),
@@ -827,8 +884,25 @@ mod tests {
         );
 
         let terminal = terminals.values().next().expect("restored terminal");
-        assert_eq!(terminal.launch_argv.as_ref(), Some(&argv));
-        assert!(terminal.respawn_shell_on_exit);
+        assert_eq!(terminal.launch_argv, None);
+        assert!(!terminal.respawn_shell_on_exit);
+
+        let runtime = runtimes.values().next().expect("restored runtime");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !runtime
+            .recent_unwrapped_text(10)
+            .contains("GMUX_RESTORED_ARGV")
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            runtime
+                .recent_unwrapped_text(10)
+                .contains("GMUX_RESTORED_ARGV"),
+            "saved argv should be sent to the restored shell"
+        );
+        let _ = runtime.try_send_bytes(bytes::Bytes::from_static(b"exit\n"));
     }
 
     #[tokio::test]
@@ -858,7 +932,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_falls_back_to_shell_when_saved_argv_fails() {
+    async fn restore_keeps_shell_when_saved_argv_command_is_missing() {
         let (mut snapshot, _history) = snapshot_with_saved_pane_history();
         snapshot.tabs[0].panes.get_mut(&0).unwrap().launch_argv =
             Some(vec!["/definitely/not/a/gmux-test-command".to_string()]);
@@ -879,6 +953,9 @@ mod tests {
         let terminal = terminals.values().next().expect("restored terminal");
         assert_eq!(terminal.launch_argv, None);
         assert!(!terminal.respawn_shell_on_exit);
+
+        let runtime = runtimes.values().next().expect("restored runtime");
+        let _ = runtime.try_send_bytes(bytes::Bytes::from_static(b"exit\n"));
     }
 
     fn test_restore_options(restore_processes: bool) -> RestoreOptions<'static> {
