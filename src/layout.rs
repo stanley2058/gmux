@@ -228,6 +228,17 @@ impl TileLayout {
         ids
     }
 
+    pub fn swap_panes(&mut self, first: PaneId, second: PaneId) -> bool {
+        if first == second {
+            return false;
+        }
+        let ids = self.pane_ids();
+        if !ids.contains(&first) || !ids.contains(&second) {
+            return false;
+        }
+        swap_panes_in_node(&mut self.root, first, second)
+    }
+
     /// Access the tree root for serialization.
     pub fn root(&self) -> &Node {
         &self.root
@@ -379,6 +390,29 @@ fn collect_ids(node: &Node, ids: &mut Vec<PaneId>) {
     }
 }
 
+fn swap_panes_in_node(node: &mut Node, first: PaneId, second: PaneId) -> bool {
+    match node {
+        Node::Pane(id) if *id == first => {
+            *id = second;
+            true
+        }
+        Node::Pane(id) if *id == second => {
+            *id = first;
+            true
+        }
+        Node::Pane(_) => false,
+        Node::Split {
+            first: left,
+            second: right,
+            ..
+        } => {
+            let left_changed = swap_panes_in_node(left, first, second);
+            let right_changed = swap_panes_in_node(right, first, second);
+            left_changed || right_changed
+        }
+    }
+}
+
 fn split_at(node: Node, target: PaneId, direction: Direction, new_id: PaneId) -> Node {
     match node {
         Node::Pane(id) if id == target => Node::Split {
@@ -481,5 +515,32 @@ fn split_rect(area: Rect, direction: Direction, ratio: f32) -> (Rect, Rect) {
                 Rect::new(area.x, area.y + first_h, area.width, second_h),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn swap_panes_reorders_ids_and_keeps_focus_id() {
+        let (mut layout, root) = TileLayout::new();
+        let split = layout.split_focused(Direction::Horizontal);
+        assert_eq!(layout.pane_ids(), vec![root, split]);
+        assert_eq!(layout.focused(), split);
+
+        assert!(layout.swap_panes(root, split));
+
+        assert_eq!(layout.pane_ids(), vec![split, root]);
+        assert_eq!(layout.focused(), split);
+    }
+
+    #[test]
+    fn swap_panes_rejects_missing_pane() {
+        let (mut layout, root) = TileLayout::new();
+        let missing = PaneId::from_raw(root.raw() + 1);
+
+        assert!(!layout.swap_panes(root, missing));
+        assert_eq!(layout.pane_ids(), vec![root]);
     }
 }

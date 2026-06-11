@@ -1008,6 +1008,20 @@ impl AppState {
         }
     }
 
+    pub fn swap_pane(&mut self, reverse: bool) -> bool {
+        self.selection = None;
+        self.selection_autoscroll = None;
+        self.pane_navigation_bias = None;
+        let Some(tab) = self.session_mut().and_then(|ws| ws.active_tab_mut()) else {
+            return false;
+        };
+        if !tab.swap_focused_pane(reverse) {
+            return false;
+        }
+        self.mark_session_dirty();
+        true
+    }
+
     pub fn last_pane(&mut self) {
         let Some(target) = self.previous_pane_focus.clone() else {
             return;
@@ -2591,6 +2605,52 @@ mod tests {
         let mut state = app_with_workspaces(&["test"]);
         state.toggle_zoom();
         assert!(!state.sessions[0].zoomed);
+    }
+
+    #[test]
+    fn swap_pane_next_moves_focused_pane_forward_and_preserves_focus() {
+        let mut state = app_with_workspaces(&["test"]);
+        let first = state.sessions[0].tabs[0].root_pane;
+        let second = state.sessions[0].test_split(Direction::Horizontal);
+        let third = state.sessions[0].test_split(Direction::Horizontal);
+        state.sessions[0].layout.focus_pane(second);
+
+        assert!(state.swap_pane(false));
+
+        assert_eq!(
+            state.sessions[0].tabs[0].layout.pane_ids(),
+            vec![first, third, second]
+        );
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(second));
+        assert!(state.session_dirty);
+    }
+
+    #[test]
+    fn swap_pane_previous_wraps_to_last_pane() {
+        let mut state = app_with_workspaces(&["test"]);
+        let first = state.sessions[0].tabs[0].root_pane;
+        let second = state.sessions[0].test_split(Direction::Horizontal);
+        let third = state.sessions[0].test_split(Direction::Horizontal);
+        state.sessions[0].layout.focus_pane(first);
+
+        assert!(state.swap_pane(true));
+
+        assert_eq!(
+            state.sessions[0].tabs[0].layout.pane_ids(),
+            vec![third, second, first]
+        );
+        assert_eq!(state.sessions[0].focused_pane_id(), Some(first));
+    }
+
+    #[test]
+    fn swap_pane_single_pane_noop() {
+        let mut state = app_with_workspaces(&["test"]);
+        let first = state.sessions[0].tabs[0].root_pane;
+
+        assert!(!state.swap_pane(false));
+
+        assert_eq!(state.sessions[0].tabs[0].layout.pane_ids(), vec![first]);
+        assert!(!state.session_dirty);
     }
 
     #[test]

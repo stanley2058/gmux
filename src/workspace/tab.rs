@@ -325,6 +325,23 @@ impl Tab {
         self.detach_pane(pane_id)
     }
 
+    pub fn swap_focused_pane(&mut self, reverse: bool) -> bool {
+        let ids = self.layout.pane_ids();
+        if ids.len() <= 1 {
+            return false;
+        }
+        let Some(pos) = ids.iter().position(|id| *id == self.layout.focused()) else {
+            return false;
+        };
+        let target = if reverse {
+            ids[(pos + ids.len() - 1) % ids.len()]
+        } else {
+            ids[(pos + 1) % ids.len()]
+        };
+        self.zoomed = false;
+        self.layout.swap_panes(self.layout.focused(), target)
+    }
+
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<DetachedPane> {
         self.detach_pane(pane_id)
     }

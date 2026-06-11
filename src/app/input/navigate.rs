@@ -476,6 +476,8 @@ pub(crate) enum NavigateAction {
     ToggleSidebar,
     CyclePaneNext,
     CyclePanePrevious,
+    SwapPanePrevious,
+    SwapPaneNext,
     LastPane,
     Help,
     Settings,
@@ -561,6 +563,8 @@ fn action_for_key(
         (&kb.last_pane, NavigateAction::LastPane),
         (&kb.cycle_pane_next, NavigateAction::CyclePaneNext),
         (&kb.cycle_pane_previous, NavigateAction::CyclePanePrevious),
+        (&kb.swap_pane_previous, NavigateAction::SwapPanePrevious),
+        (&kb.swap_pane_next, NavigateAction::SwapPaneNext),
         (&kb.split_vertical, NavigateAction::SplitVertical),
         (&kb.split_horizontal, NavigateAction::SplitHorizontal),
         (&kb.close_pane, NavigateAction::ClosePane),
@@ -705,6 +709,14 @@ pub(super) fn execute_navigate_action_in_context(
         }
         NavigateAction::CyclePanePrevious => {
             state.cycle_pane(true);
+            leave_navigate_mode(state);
+        }
+        NavigateAction::SwapPanePrevious => {
+            state.swap_pane(true);
+            leave_navigate_mode(state);
+        }
+        NavigateAction::SwapPaneNext => {
+            state.swap_pane(false);
             leave_navigate_mode(state);
         }
         NavigateAction::LastPane => {

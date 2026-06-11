@@ -273,6 +273,10 @@ pub struct KeysConfig {
     pub cycle_pane_next: BindingConfig,
     /// Cycle to the previous pane. Default: "prefix+shift+tab".
     pub cycle_pane_previous: BindingConfig,
+    /// Swap the focused pane with the previous pane. Default: "prefix+{".
+    pub swap_pane_previous: BindingConfig,
+    /// Swap the focused pane with the next pane. Default: "prefix+}".
+    pub swap_pane_next: BindingConfig,
     /// Focus the last focused pane across tabs. Unset by default.
     pub last_pane: BindingConfig,
     /// Split pane vertically (side by side). Default: "prefix+percent" with "prefix+v" as a legacy alias.
@@ -450,6 +454,8 @@ impl Default for KeysConfig {
             focus_pane_right: BindingConfig::Many(vec!["prefix+l".into(), "prefix+right".into()]),
             cycle_pane_next: BindingConfig::one("prefix+tab"),
             cycle_pane_previous: BindingConfig::one("prefix+shift+tab"),
+            swap_pane_previous: BindingConfig::one("prefix+{"),
+            swap_pane_next: BindingConfig::one("prefix+}"),
             last_pane: BindingConfig::empty(),
             split_vertical: BindingConfig::Many(vec!["prefix+percent".into(), "prefix+v".into()]),
             split_horizontal: BindingConfig::Many(vec![

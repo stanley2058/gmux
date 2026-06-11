@@ -122,6 +122,8 @@ pub(super) fn keybind_help_groups(app: &AppState) -> Vec<HelpGroup> {
             keybind_label(&kb.cycle_pane_previous),
             "cycle pane previous",
         ),
+        help_entry(keybind_label(&kb.swap_pane_previous), "swap pane previous"),
+        help_entry(keybind_label(&kb.swap_pane_next), "swap pane next"),
         help_entry(keybind_label(&kb.last_pane), "last pane"),
     ];
     groups.push(("panes", panes));

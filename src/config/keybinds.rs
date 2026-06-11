@@ -281,6 +281,8 @@ pub struct Keybinds {
     pub focus_pane_right: ActionKeybinds,
     pub cycle_pane_next: ActionKeybinds,
     pub cycle_pane_previous: ActionKeybinds,
+    pub swap_pane_previous: ActionKeybinds,
+    pub swap_pane_next: ActionKeybinds,
     pub last_pane: ActionKeybinds,
     pub split_vertical: ActionKeybinds,
     pub split_horizontal: ActionKeybinds,
@@ -451,6 +453,8 @@ impl Config {
                 "keys.cycle_pane_previous",
                 &self.keys.cycle_pane_previous
             ),
+            swap_pane_previous: action!("keys.swap_pane_previous", &self.keys.swap_pane_previous),
+            swap_pane_next: action!("keys.swap_pane_next", &self.keys.swap_pane_next),
             split_vertical: action!("keys.split_vertical", &self.keys.split_vertical),
             split_horizontal: action!("keys.split_horizontal", &self.keys.split_horizontal),
             close_pane: action!("keys.close_pane", &self.keys.close_pane),
@@ -1292,6 +1296,25 @@ workspaces = "prefix+shift"
             binding_triggers(&kb.copy_mode),
             vec![BindingTrigger::Prefix((
                 KeyCode::Char('['),
+                KeyModifiers::empty()
+            ))]
+        );
+    }
+
+    #[test]
+    fn pane_swap_uses_tmux_prefix_braces_by_default() {
+        let kb = Config::default().keybinds();
+        assert_eq!(
+            binding_triggers(&kb.swap_pane_previous),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('{'),
+                KeyModifiers::empty()
+            ))]
+        );
+        assert_eq!(
+            binding_triggers(&kb.swap_pane_next),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('}'),
                 KeyModifiers::empty()
             ))]
         );
