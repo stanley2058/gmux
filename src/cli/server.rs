@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::api::schema::{EmptyParams, Method, Request, ServerLiveHandoffParams};
 
 pub(super) fn run_server_command(args: &[String]) -> std::io::Result<Option<i32>> {
@@ -43,12 +45,22 @@ fn server_reload_config(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn server_live_handoff(args: &[String]) -> std::io::Result<i32> {
-    let Some(params) = parse_live_handoff_params(args) else {
+    let Some(mut params) = parse_live_handoff_params(args) else {
         eprintln!(
             "usage: gmux server live-handoff [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]"
         );
         return Ok(2);
     };
+
+    if params.import_exe.is_none() {
+        let current_exe = std::env::current_exe().map_err(|err| {
+            std::io::Error::new(
+                err.kind(),
+                format!("failed to determine gmux executable path: {err}"),
+            )
+        })?;
+        apply_default_import_exe(&mut params, &current_exe);
+    }
 
     let response = super::send_request(&Request {
         id: "cli:server:live-handoff".into(),
@@ -97,6 +109,12 @@ fn parse_live_handoff_params(args: &[String]) -> Option<ServerLiveHandoffParams>
     Some(params)
 }
 
+fn apply_default_import_exe(params: &mut ServerLiveHandoffParams, current_exe: &Path) {
+    if params.import_exe.is_none() {
+        params.import_exe = Some(current_exe.display().to_string());
+    }
+}
+
 fn print_server_help() {
     eprintln!("gmux server commands:");
     eprintln!("  gmux server                run as headless server");
@@ -127,5 +145,24 @@ mod tests {
         );
         assert_eq!(params.expected_protocol, Some(9));
         assert_eq!(params.expected_version.as_deref(), Some("0.6.2"));
+    }
+
+    #[test]
+    fn live_handoff_defaults_import_exe_to_invoking_binary() {
+        let mut params = parse_live_handoff_params(&[]).expect("params");
+
+        apply_default_import_exe(&mut params, Path::new("/tmp/gmux-dev"));
+
+        assert_eq!(params.import_exe.as_deref(), Some("/tmp/gmux-dev"));
+    }
+
+    #[test]
+    fn live_handoff_default_import_exe_preserves_explicit_value() {
+        let args = vec!["--import-exe".to_string(), "/tmp/explicit-gmux".to_string()];
+        let mut params = parse_live_handoff_params(&args).expect("params");
+
+        apply_default_import_exe(&mut params, Path::new("/tmp/gmux-dev"));
+
+        assert_eq!(params.import_exe.as_deref(), Some("/tmp/explicit-gmux"));
     }
 }
