@@ -1,6 +1,12 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::api::client::{ApiClient, ConnectionTarget};
 use crate::api::schema::{EmptyParams, Method, Request, ServerLiveHandoffParams};
+
+struct LiveHandoffCliArgs {
+    params: ServerLiveHandoffParams,
+    all_sessions: bool,
+}
 
 pub(super) fn run_server_command(args: &[String]) -> std::io::Result<Option<i32>> {
     let Some(subcommand) = args.first().map(|arg| arg.as_str()) else {
@@ -45,27 +51,28 @@ fn server_reload_config(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn server_live_handoff(args: &[String]) -> std::io::Result<i32> {
-    let Some(mut params) = parse_live_handoff_params(args) else {
+    let Some(mut parsed) = parse_live_handoff_args(args) else {
         eprintln!(
-            "usage: gmux server live-handoff [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]"
+            "usage: gmux server live-handoff [--all-sessions] [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]"
         );
         return Ok(2);
     };
 
-    if params.import_exe.is_none() {
+    if parsed.params.import_exe.is_none() {
         let current_exe = std::env::current_exe().map_err(|err| {
             std::io::Error::new(
                 err.kind(),
                 format!("failed to determine gmux executable path: {err}"),
             )
         })?;
-        apply_default_import_exe(&mut params, &current_exe);
+        apply_default_import_exe(&mut parsed.params, &current_exe);
     }
 
-    let response = super::send_request(&Request {
-        id: "cli:server:live-handoff".into(),
-        method: Method::ServerLiveHandoff(params),
-    })?;
+    if parsed.all_sessions {
+        return server_live_handoff_all_sessions(parsed.params);
+    }
+
+    let response = send_live_handoff_request("cli:server:live-handoff", parsed.params, None)?;
     if response.get("error").is_some() {
         let rendered = serde_json::to_string(&response).unwrap_or_else(|err| {
             format!(
@@ -83,11 +90,80 @@ fn server_live_handoff(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
-fn parse_live_handoff_params(args: &[String]) -> Option<ServerLiveHandoffParams> {
+fn server_live_handoff_all_sessions(params: ServerLiveHandoffParams) -> std::io::Result<i32> {
+    let running_sessions = crate::session::list_sessions()?
+        .into_iter()
+        .filter(|session| session.running)
+        .collect::<Vec<_>>();
+
+    if running_sessions.is_empty() {
+        eprintln!("no running gmux sessions to hand off");
+        return Ok(0);
+    }
+
+    let mut failed = false;
+    for session in running_sessions {
+        let request_id = format!("cli:server:live-handoff:{}", session.name);
+        let target = Some(PathBuf::from(&session.socket_path));
+        let response = match send_live_handoff_request(&request_id, params.clone(), target) {
+            Ok(response) => response,
+            Err(err) => {
+                failed = true;
+                eprintln!("session {}: live handoff failed: {err}", session.name);
+                continue;
+            }
+        };
+        if response.get("error").is_some() {
+            failed = true;
+            let rendered = serde_json::to_string(&response).unwrap_or_else(|err| {
+                format!(
+                    "{{\"error\":{{\"code\":\"render_failed\",\"message\":\"failed to render error response: {err}\"}}}}"
+                )
+            });
+            eprintln!("session {}: {rendered}", session.name);
+        } else {
+            eprintln!(
+                "session {}: live handoff complete; server log: {}",
+                session.name,
+                PathBuf::from(&session.session_dir)
+                    .join("gmux-server.log")
+                    .display()
+            );
+        }
+    }
+
+    Ok(if failed { 1 } else { 0 })
+}
+
+fn send_live_handoff_request(
+    id: &str,
+    params: ServerLiveHandoffParams,
+    socket_path: Option<PathBuf>,
+) -> std::io::Result<serde_json::Value> {
+    let request = Request {
+        id: id.to_string(),
+        method: Method::ServerLiveHandoff(params),
+    };
+    match socket_path {
+        Some(socket_path) => super::send_request_to_client(
+            ApiClient::for_target(ConnectionTarget::SocketPath(socket_path)),
+            &request,
+        ),
+        None => super::send_request(&request),
+    }
+}
+
+fn parse_live_handoff_args(args: &[String]) -> Option<LiveHandoffCliArgs> {
     let mut params = ServerLiveHandoffParams::default();
+    let mut all_sessions = false;
     let mut idx = 0;
     while idx < args.len() {
         let arg = &args[idx];
+        if arg == "--all-sessions" {
+            all_sessions = true;
+            idx += 1;
+            continue;
+        }
         let (flag, value) = if let Some((flag, value)) = arg.split_once('=') {
             (flag, Some(value.to_string()))
         } else {
@@ -106,7 +182,10 @@ fn parse_live_handoff_params(args: &[String]) -> Option<ServerLiveHandoffParams>
         }
         idx += 1;
     }
-    Some(params)
+    Some(LiveHandoffCliArgs {
+        params,
+        all_sessions,
+    })
 }
 
 fn apply_default_import_exe(params: &mut ServerLiveHandoffParams, current_exe: &Path) {
@@ -120,6 +199,7 @@ fn print_server_help() {
     eprintln!("  gmux server                run as headless server");
     eprintln!("  gmux server stop           stop the running server via the API socket");
     eprintln!("  gmux server live-handoff   hand off live panes to a new local server");
+    eprintln!("    --all-sessions           hand off every running local session");
     eprintln!("  gmux server reload-config  reload config.toml in the running server");
 }
 
@@ -137,19 +217,20 @@ mod tests {
             "0.6.2".to_string(),
         ];
 
-        let params = parse_live_handoff_params(&args).expect("params");
+        let parsed = parse_live_handoff_args(&args).expect("params");
 
         assert_eq!(
-            params.import_exe.as_deref(),
+            parsed.params.import_exe.as_deref(),
             Some("/home/me/.local/bin/gmux")
         );
-        assert_eq!(params.expected_protocol, Some(9));
-        assert_eq!(params.expected_version.as_deref(), Some("0.6.2"));
+        assert_eq!(parsed.params.expected_protocol, Some(9));
+        assert_eq!(parsed.params.expected_version.as_deref(), Some("0.6.2"));
+        assert!(!parsed.all_sessions);
     }
 
     #[test]
     fn live_handoff_defaults_import_exe_to_invoking_binary() {
-        let mut params = parse_live_handoff_params(&[]).expect("params");
+        let mut params = parse_live_handoff_args(&[]).expect("params").params;
 
         apply_default_import_exe(&mut params, Path::new("/tmp/gmux-dev"));
 
@@ -159,10 +240,24 @@ mod tests {
     #[test]
     fn live_handoff_default_import_exe_preserves_explicit_value() {
         let args = vec!["--import-exe".to_string(), "/tmp/explicit-gmux".to_string()];
-        let mut params = parse_live_handoff_params(&args).expect("params");
+        let mut params = parse_live_handoff_args(&args).expect("params").params;
 
         apply_default_import_exe(&mut params, Path::new("/tmp/gmux-dev"));
 
         assert_eq!(params.import_exe.as_deref(), Some("/tmp/explicit-gmux"));
+    }
+
+    #[test]
+    fn live_handoff_parses_all_sessions_without_value() {
+        let args = vec![
+            "--all-sessions".to_string(),
+            "--expected-protocol".to_string(),
+            "15".to_string(),
+        ];
+
+        let parsed = parse_live_handoff_args(&args).expect("params");
+
+        assert!(parsed.all_sessions);
+        assert_eq!(parsed.params.expected_protocol, Some(15));
     }
 }

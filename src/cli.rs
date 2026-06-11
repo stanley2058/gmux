@@ -1283,14 +1283,28 @@ pub(super) fn send_ok_request(method: Method) -> std::io::Result<i32> {
 }
 
 pub(super) fn send_request(request: &Request) -> std::io::Result<serde_json::Value> {
-    ApiClient::local()
-        .request_value(request)
-        .map_err(api_client_error_to_io)
+    send_request_to_client(ApiClient::local(), request)
 }
 
-fn api_client_error_to_io(err: ApiClientError) -> std::io::Error {
+pub(super) fn send_request_to_client(
+    client: ApiClient,
+    request: &Request,
+) -> std::io::Result<serde_json::Value> {
+    let socket_path = client.socket_path();
+    client
+        .request_value(request)
+        .map_err(|err| api_client_error_to_io(err, &socket_path))
+}
+
+fn api_client_error_to_io(err: ApiClientError, socket_path: &std::path::Path) -> std::io::Error {
     match err {
-        ApiClientError::Io(err) => err,
+        ApiClientError::Io(err) => std::io::Error::new(
+            err.kind(),
+            format!(
+                "failed to send gmux API request to {}: {err}",
+                socket_path.display()
+            ),
+        ),
         err => std::io::Error::other(err),
     }
 }
@@ -1495,4 +1509,23 @@ fn _print_json<T: Serialize>(value: &T) {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use std::io;
+    use std::path::Path;
+
+    use crate::api::client::ApiClientError;
+
+    #[test]
+    fn api_client_io_errors_include_socket_path() {
+        let err = super::api_client_error_to_io(
+            ApiClientError::Io(io::Error::new(io::ErrorKind::NotFound, "missing socket")),
+            Path::new("/tmp/gmux.sock"),
+        );
+
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert_eq!(
+            err.to_string(),
+            "failed to send gmux API request to /tmp/gmux.sock: missing socket"
+        );
+    }
+}

@@ -63,6 +63,12 @@ macro_rules! server_commands {
     };
 }
 
+macro_rules! server_options {
+    () => {
+        "--all-sessions --import-exe --expected-protocol --expected-version"
+    };
+}
+
 macro_rules! tab_commands {
     () => {
         "list create get focus rename close help"
@@ -165,6 +171,8 @@ _gmux() {
         server)
             COMPREPLY=( $(compgen -W '"#,
     server_commands!(),
+    " ",
+    server_options!(),
     r#"' -- "$cur") )
             ;;
         tab)
@@ -263,7 +271,9 @@ _gmux() {
             ;;
         attach|kill-session) compadd -- -t --target --json $sessions ;;
         new) compadd -- -s --session ;;
-        server) compadd -- $server_commands ;;
+        server) compadd -- $server_commands "#,
+    server_options!(),
+    r#" ;;
         tab) compadd -- $tab_commands --cwd --label --focus --no-focus ;;
         pane) compadd -- $pane_commands --source --lines --format --ansi --raw --direction --cwd --focus --no-focus --clear ;;
         wait) compadd -- $wait_commands --match --source --lines --timeout --regex --raw ;;
@@ -329,6 +339,10 @@ complete -c gmux -l regex
 complete -c gmux -l raw
 complete -c gmux -l ansi
 complete -c gmux -l takeover
+complete -c gmux -n '__fish_seen_subcommand_from server' -l all-sessions
+complete -c gmux -n '__fish_seen_subcommand_from server' -l import-exe -r
+complete -c gmux -n '__fish_seen_subcommand_from server' -l expected-protocol -r
+complete -c gmux -n '__fish_seen_subcommand_from server' -l expected-version -r
 "#
 );
 
@@ -359,5 +373,6 @@ mod tests {
         assert!(script.contains("function __gmux_session_names"));
         assert!(script.contains("complete -c gmux -s t -l target -xa '(__gmux_session_names)'"));
         assert!(script.contains("complete -c gmux -f -n '__fish_is_first_arg'"));
+        assert!(script.contains("-l all-sessions"));
     }
 }
