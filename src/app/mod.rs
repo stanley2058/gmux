@@ -333,6 +333,7 @@ impl App {
             keybind_help: state::KeybindHelpState { scroll: 0 },
             navigator: state::NavigatorState::default(),
             copy_mode: None,
+            copy_mode_search: state::CopyModeSearchState::default(),
             pane_panel_scroll: 0,
             tab_scroll: 0,
             tab_scroll_follow_active: true,

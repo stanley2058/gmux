@@ -671,6 +671,23 @@ pub(crate) enum CopyModeSelection {
     Linewise { anchor_row: u32 },
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct CopyModeSearchState {
+    pub query: String,
+    pub last_query: String,
+    pub active: bool,
+    pub matches: Vec<CopyModeSearchMatch>,
+    pub current_match: Option<usize>,
+    pub invalid_regex: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CopyModeSearchMatch {
+    pub row: u32,
+    pub start_col: u16,
+    pub end_col: u16,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PanePanelScope {
     Current,
@@ -1053,6 +1070,7 @@ pub struct AppState {
     pub keybind_help: KeybindHelpState,
     pub navigator: NavigatorState,
     pub copy_mode: Option<CopyModeState>,
+    pub(crate) copy_mode_search: CopyModeSearchState,
     pub pane_panel_scroll: usize,
     pub tab_scroll: usize,
     pub tab_scroll_follow_active: bool,
@@ -1384,6 +1402,7 @@ impl AppState {
             keybind_help: KeybindHelpState { scroll: 0 },
             navigator: NavigatorState::default(),
             copy_mode: None,
+            copy_mode_search: CopyModeSearchState::default(),
             pane_panel_scroll: 0,
             tab_scroll: 0,
             tab_scroll_follow_active: true,

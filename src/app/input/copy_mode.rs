@@ -1,9 +1,10 @@
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+use regex::Regex;
 use unicode_width::UnicodeWidthChar;
 
 use crate::{
     app::{
-        state::{CopyModeSelection, CopyModeState},
+        state::{CopyModeSearchMatch, CopyModeSelection, CopyModeState},
         App, AppState, Mode,
     },
     input::TerminalKey,
@@ -61,6 +62,7 @@ impl AppState {
             .map_or(0, |metrics| metrics.offset_from_bottom);
 
         self.clear_selection();
+        self.copy_mode_search = Default::default();
         self.copy_mode = Some(CopyModeState {
             pane_id,
             cursor_row: cursor.0.min(info.inner_rect.height.saturating_sub(1)),
@@ -76,6 +78,11 @@ impl AppState {
         terminal_runtimes: &TerminalRuntimeRegistry,
         key: TerminalKey,
     ) {
+        if self.copy_mode_search.active {
+            self.handle_copy_mode_search_key(terminal_runtimes, key);
+            return;
+        }
+
         match key.code {
             KeyCode::Esc => {
                 self.exit_copy_mode(terminal_runtimes, false);
@@ -146,6 +153,9 @@ impl AppState {
             return;
         };
         match ch {
+            '/' => self.begin_copy_mode_search(),
+            'n' => self.repeat_copy_mode_search(terminal_runtimes, SearchDirection::Forward),
+            'N' => self.repeat_copy_mode_search(terminal_runtimes, SearchDirection::Backward),
             'q' => self.exit_copy_mode(terminal_runtimes, false),
             'y' => self.exit_copy_mode(terminal_runtimes, true),
             'v' | ' ' => self.begin_copy_mode_selection(terminal_runtimes),
@@ -168,6 +178,49 @@ impl AppState {
         }
     }
 
+    fn begin_copy_mode_search(&mut self) {
+        self.copy_mode_search.query.clear();
+        self.copy_mode_search.invalid_regex = None;
+        self.copy_mode_search.active = true;
+    }
+
+    fn handle_copy_mode_search_key(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        key: TerminalKey,
+    ) {
+        match key.code {
+            KeyCode::Esc => {
+                self.copy_mode_search.query.clear();
+                self.copy_mode_search.active = false;
+            }
+            KeyCode::Enter => {
+                let query = if self.copy_mode_search.query.is_empty() {
+                    self.copy_mode_search.last_query.clone()
+                } else {
+                    self.copy_mode_search.query.clone()
+                };
+                self.copy_mode_search.query.clear();
+                self.copy_mode_search.active = false;
+                if !query.is_empty() {
+                    self.copy_mode_search.last_query = query;
+                    self.repeat_copy_mode_search(terminal_runtimes, SearchDirection::Forward);
+                }
+            }
+            KeyCode::Backspace => {
+                self.copy_mode_search.query.pop();
+            }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.copy_mode_search.query.clear();
+            }
+            _ => {
+                if let Some(ch) = copy_mode_command_char(key) {
+                    self.copy_mode_search.query.push(ch);
+                }
+            }
+        }
+    }
+
     fn exit_copy_mode(&mut self, terminal_runtimes: &TerminalRuntimeRegistry, copy: bool) {
         let restore_scroll = self
             .copy_mode
@@ -181,6 +234,7 @@ impl AppState {
             self.set_pane_scroll_offset(terminal_runtimes, pane_id, offset_from_bottom);
         }
         self.copy_mode = None;
+        self.copy_mode_search = Default::default();
         self.mode = if self.session().is_some() {
             Mode::Terminal
         } else {
@@ -537,6 +591,201 @@ impl AppState {
             .extract_selection(&row_selection)
     }
 
+    fn copy_mode_absolute_row_text(
+        &self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        copy_mode: CopyModeState,
+        info: &crate::layout::PaneInfo,
+        absolute_row: usize,
+    ) -> Option<String> {
+        let ws_idx = self.session_index()?;
+        if info.inner_rect.width == 0 {
+            return None;
+        }
+        let absolute_row: u32 = absolute_row.try_into().ok()?;
+        let row_selection = Selection::line_range(
+            copy_mode.pane_id,
+            absolute_row,
+            absolute_row,
+            info.inner_rect.width.saturating_sub(1),
+        );
+        self.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, copy_mode.pane_id)?
+            .extract_selection(&row_selection)
+    }
+
+    fn repeat_copy_mode_search(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        direction: SearchDirection,
+    ) {
+        let query = self.copy_mode_search.last_query.clone();
+        if query.is_empty() {
+            return;
+        }
+        let Some(copy_mode) = self.copy_mode else {
+            return;
+        };
+        let Some(info) = self.pane_info_by_id(copy_mode.pane_id).cloned() else {
+            self.exit_copy_mode(terminal_runtimes, false);
+            return;
+        };
+        if info.inner_rect.width == 0 || info.inner_rect.height == 0 {
+            return;
+        }
+
+        let metrics = self.pane_scroll_metrics(terminal_runtimes, copy_mode.pane_id);
+        let current_row = Selection::absolute_row_for_viewport(copy_mode.cursor_row, metrics);
+        let total_rows = copy_mode_total_rows(metrics, info.inner_rect.height);
+        let matches = self.collect_copy_mode_search_matches(
+            terminal_runtimes,
+            copy_mode,
+            &info,
+            total_rows,
+            &query,
+        );
+        let matches = match matches {
+            Ok(matches) => matches,
+            Err(err) => {
+                self.copy_mode_search.matches.clear();
+                self.copy_mode_search.current_match = None;
+                self.copy_mode_search.invalid_regex = Some(err.to_string());
+                return;
+            }
+        };
+        self.copy_mode_search.invalid_regex = None;
+        let context = CopyModeSearchContext {
+            matches: &matches,
+            direction,
+        };
+        let Some(current_match) =
+            self.find_copy_mode_search_match(&context, current_row as usize, copy_mode.cursor_col)
+        else {
+            self.copy_mode_search.matches = matches;
+            self.copy_mode_search.current_match = None;
+            return;
+        };
+        let search_match = matches[current_match];
+        self.copy_mode_search.matches = matches;
+        self.copy_mode_search.current_match = Some(current_match);
+
+        self.move_copy_mode_cursor_to_absolute_row(
+            terminal_runtimes,
+            copy_mode,
+            info,
+            search_match.row as usize,
+            search_match.start_col,
+        );
+    }
+
+    fn find_copy_mode_search_match(
+        &self,
+        context: &CopyModeSearchContext<'_>,
+        current_row: usize,
+        cursor_col: u16,
+    ) -> Option<usize> {
+        if context.matches.is_empty() {
+            return None;
+        }
+        match context.direction {
+            SearchDirection::Forward => context
+                .matches
+                .iter()
+                .position(|search_match| {
+                    (search_match.row as usize) > current_row
+                        || ((search_match.row as usize) == current_row
+                            && search_match.start_col > cursor_col)
+                })
+                .or(Some(0)),
+            SearchDirection::Backward => context
+                .matches
+                .iter()
+                .rposition(|search_match| {
+                    (search_match.row as usize) < current_row
+                        || ((search_match.row as usize) == current_row
+                            && search_match.start_col < cursor_col)
+                })
+                .or_else(|| context.matches.len().checked_sub(1)),
+        }
+    }
+
+    fn collect_copy_mode_search_matches(
+        &self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        copy_mode: CopyModeState,
+        info: &crate::layout::PaneInfo,
+        total_rows: usize,
+        query: &str,
+    ) -> Result<Vec<CopyModeSearchMatch>, regex::Error> {
+        let regex = Regex::new(query)?;
+        let mut matches = Vec::new();
+        for absolute_row in 0..total_rows {
+            let Some(text) =
+                self.copy_mode_absolute_row_text(terminal_runtimes, copy_mode, info, absolute_row)
+            else {
+                continue;
+            };
+            for regex_match in regex.find_iter(&text) {
+                if regex_match.is_empty() {
+                    continue;
+                }
+                let start_col = display_col_for_byte(&text, regex_match.start());
+                let width = display_width_for_text(regex_match.as_str());
+                if width == 0 {
+                    continue;
+                }
+                matches.push(CopyModeSearchMatch {
+                    row: absolute_row.try_into().unwrap_or(u32::MAX),
+                    start_col,
+                    end_col: start_col
+                        .saturating_add(width.saturating_sub(1))
+                        .min(info.inner_rect.width.saturating_sub(1)),
+                });
+            }
+        }
+        Ok(matches)
+    }
+
+    fn move_copy_mode_cursor_to_absolute_row(
+        &mut self,
+        terminal_runtimes: &TerminalRuntimeRegistry,
+        mut copy_mode: CopyModeState,
+        info: crate::layout::PaneInfo,
+        absolute_row: usize,
+        cursor_col: u16,
+    ) {
+        let pane_height = usize::from(info.inner_rect.height);
+        let mut viewport_top = self
+            .pane_scroll_metrics(terminal_runtimes, copy_mode.pane_id)
+            .map(|metrics| {
+                metrics
+                    .max_offset_from_bottom
+                    .saturating_sub(metrics.offset_from_bottom)
+            })
+            .unwrap_or(0);
+
+        if let Some(metrics) = self.pane_scroll_metrics(terminal_runtimes, copy_mode.pane_id) {
+            if absolute_row < viewport_top {
+                viewport_top = absolute_row;
+            } else if absolute_row >= viewport_top.saturating_add(pane_height) {
+                viewport_top = absolute_row.saturating_add(1).saturating_sub(pane_height);
+            }
+            viewport_top = viewport_top.min(metrics.max_offset_from_bottom);
+            self.set_pane_scroll_offset(
+                terminal_runtimes,
+                copy_mode.pane_id,
+                metrics.max_offset_from_bottom.saturating_sub(viewport_top),
+            );
+        }
+
+        copy_mode.cursor_row = absolute_row
+            .saturating_sub(viewport_top)
+            .min(usize::from(info.inner_rect.height.saturating_sub(1)))
+            as u16;
+        copy_mode.cursor_col = cursor_col.min(info.inner_rect.width.saturating_sub(1));
+        self.copy_mode = Some(copy_mode);
+        self.sync_copy_mode_selection(terminal_runtimes);
+    }
+
     fn sync_copy_mode_selection(&mut self, terminal_runtimes: &TerminalRuntimeRegistry) {
         let Some(copy_mode) = self.copy_mode else {
             return;
@@ -571,6 +820,17 @@ impl AppState {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SearchDirection {
+    Forward,
+    Backward,
+}
+
+struct CopyModeSearchContext<'a> {
+    matches: &'a [CopyModeSearchMatch],
+    direction: SearchDirection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -655,6 +915,24 @@ fn word_spans(text: &str) -> Vec<WordSpan> {
 
 fn char_cell_width(ch: char) -> u16 {
     UnicodeWidthChar::width(ch).unwrap_or(1).max(1) as u16
+}
+
+fn display_col_for_byte(text: &str, byte_idx: usize) -> u16 {
+    text[..byte_idx]
+        .chars()
+        .fold(0u16, |col, ch| col.saturating_add(char_cell_width(ch)))
+}
+
+fn display_width_for_text(text: &str) -> u16 {
+    text.chars()
+        .fold(0u16, |width, ch| width.saturating_add(char_cell_width(ch)))
+}
+
+fn copy_mode_total_rows(metrics: Option<crate::pane::ScrollMetrics>, pane_height: u16) -> usize {
+    metrics
+        .map(|metrics| metrics.max_offset_from_bottom + metrics.viewport_rows)
+        .unwrap_or(usize::from(pane_height))
+        .max(1)
 }
 
 fn copy_mode_page_lines(height: u16, half_page: bool) -> usize {
@@ -796,6 +1074,19 @@ mod tests {
             .expect("copy mode scroll metrics")
     }
 
+    fn copy_mode_cursor_absolute_row(app: &App, pane_id: crate::layout::PaneId) -> usize {
+        copy_mode_viewport_top_row(app, pane_id)
+            + usize::from(app.state.copy_mode.expect("copy mode").cursor_row)
+    }
+
+    fn enter_copy_mode_search(app: &mut App, query: &str) {
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('/'), KeyModifiers::empty()));
+        for ch in query.chars() {
+            app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char(ch), KeyModifiers::empty()));
+        }
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Enter, KeyModifiers::empty()));
+    }
+
     #[tokio::test]
     async fn enter_copy_mode_tracks_focused_pane() {
         let (mut app, pane_id) = app_with_copy_screen(b"alpha\nbeta\n");
@@ -851,6 +1142,148 @@ mod tests {
 
         app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('b'), KeyModifiers::empty()));
         assert_eq!(app.state.copy_mode.expect("copy mode").cursor_col, 4);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_slash_search_moves_to_visible_match() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\ngamma\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        enter_copy_mode_search(&mut app, "beta");
+
+        let copy_mode = app.state.copy_mode.expect("copy mode");
+        assert_eq!(copy_mode.cursor_row, 1);
+        assert_eq!(copy_mode.cursor_col, 0);
+        assert_eq!(app.state.copy_mode_search.last_query, "beta");
+        assert_eq!(app.state.copy_mode_search.matches.len(), 1);
+        assert_eq!(app.state.copy_mode_search.current_match, Some(0));
+        assert!(!app.state.copy_mode_search.active);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_slash_search_uses_regex() {
+        let (mut app, _) = app_with_copy_screen(b"task-1\r\ntask-20\r\njob-3\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        enter_copy_mode_search(&mut app, r"task-\d+");
+
+        let copy_mode = app.state.copy_mode.expect("copy mode");
+        assert_eq!(copy_mode.cursor_row, 1);
+        assert_eq!(copy_mode.cursor_col, 0);
+        assert_eq!(app.state.copy_mode_search.matches.len(), 2);
+        assert_eq!(app.state.copy_mode_search.current_match, Some(1));
+    }
+
+    #[tokio::test]
+    async fn copy_mode_invalid_regex_records_error_without_moving() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        enter_copy_mode_search(&mut app, "[");
+
+        let copy_mode = app.state.copy_mode.expect("copy mode");
+        assert_eq!(copy_mode.cursor_row, 0);
+        assert_eq!(copy_mode.cursor_col, 0);
+        assert_eq!(app.state.copy_mode_search.last_query, "[");
+        assert!(app.state.copy_mode_search.matches.is_empty());
+        assert_eq!(app.state.copy_mode_search.current_match, None);
+        assert!(app.state.copy_mode_search.invalid_regex.is_some());
+    }
+
+    #[tokio::test]
+    async fn copy_mode_slash_search_wraps_into_scrollback() {
+        let mut text = String::new();
+        for row in 0..32 {
+            if row == 3 {
+                text.push_str("needle row\r\n");
+            } else {
+                text.push_str(&format!("row {row:02}\r\n"));
+            }
+        }
+        let (mut app, pane_id) = app_with_copy_scrollback(text.as_bytes());
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+
+        enter_copy_mode_search(&mut app, "needle");
+
+        assert_eq!(copy_mode_cursor_absolute_row(&app, pane_id), 3);
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_col, 0);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_n_and_shift_n_repeat_last_search() {
+        let (mut app, _) = app_with_copy_screen(b"one needle\r\ntwo needle\r\nthree needle\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        enter_copy_mode_search(&mut app, "needle");
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_row, 0);
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_col, 4);
+        assert_eq!(app.state.copy_mode_search.matches.len(), 3);
+        assert_eq!(app.state.copy_mode_search.current_match, Some(0));
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('n'), KeyModifiers::empty()));
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_row, 1);
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_col, 4);
+        assert_eq!(app.state.copy_mode_search.current_match, Some(1));
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('n'), KeyModifiers::SHIFT));
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_row, 0);
+        assert_eq!(app.state.copy_mode.expect("copy mode").cursor_col, 4);
+        assert_eq!(app.state.copy_mode_search.current_match, Some(0));
+    }
+
+    #[tokio::test]
+    async fn copy_mode_search_extends_visual_selection() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\ngamma\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('v'), KeyModifiers::empty()));
+        enter_copy_mode_search(&mut app, "gamma");
+
+        let selection = app.state.selection.as_ref().expect("selection");
+        let ((start_row, start_col), (end_row, end_col)) = selection.ordered_cells();
+        assert_eq!((start_row, start_col), (0, 0));
+        assert_eq!((end_row, end_col), (2, 0));
+    }
+
+    #[tokio::test]
+    async fn copy_mode_esc_cancels_search_prompt_without_moving() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('/'), KeyModifiers::empty()));
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('b'), KeyModifiers::empty()));
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Esc, KeyModifiers::empty()));
+
+        let copy_mode = app.state.copy_mode.expect("copy mode");
+        assert_eq!(copy_mode.cursor_row, 0);
+        assert_eq!(copy_mode.cursor_col, 0);
+        assert!(!app.state.copy_mode_search.active);
+        assert!(app.state.copy_mode_search.query.is_empty());
+        assert!(app.state.copy_mode_search.last_query.is_empty());
     }
 
     #[tokio::test]

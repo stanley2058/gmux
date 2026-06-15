@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use super::scrollbar::{render_pane_scrollbar, should_show_scrollbar};
 use super::widgets::panel_contrast_fg;
-use crate::app::state::Palette;
+use crate::app::state::{CopyModeSearchMatch, Palette};
 use crate::app::{AppState, Mode};
 use crate::layout::{PaneInfo, SplitBorder};
 use crate::terminal::{TerminalRuntime, TerminalRuntimeRegistry};
@@ -286,7 +286,9 @@ pub(super) fn render_panes(
                 &app.palette,
                 app.host_terminal_theme,
             );
+            render_copy_mode_search_highlights(app, frame, info, rt.scroll_metrics());
             render_copy_mode_cursor(app, frame, info);
+            render_copy_mode_search_indicator(app, frame, info);
         }
     }
 
@@ -589,6 +591,117 @@ fn render_copy_mode_cursor(app: &AppState, frame: &mut Frame, info: &PaneInfo) {
     );
 }
 
+fn render_copy_mode_search_highlights(
+    app: &AppState,
+    frame: &mut Frame,
+    info: &PaneInfo,
+    scroll_metrics: Option<crate::pane::ScrollMetrics>,
+) {
+    if app.mode != Mode::Copy
+        || !app
+            .copy_mode
+            .is_some_and(|copy_mode| copy_mode.pane_id == info.id)
+    {
+        return;
+    }
+    if app.copy_mode_search.matches.is_empty() {
+        return;
+    }
+
+    let viewport_top = viewport_top_row(scroll_metrics);
+    let normal_style = Style::default()
+        .fg(panel_contrast_fg(&app.palette))
+        .bg(app.palette.yellow);
+    let current_style = Style::default()
+        .fg(panel_contrast_fg(&app.palette))
+        .bg(app.palette.accent)
+        .add_modifier(Modifier::BOLD);
+
+    for (idx, search_match) in app.copy_mode_search.matches.iter().enumerate() {
+        let Some(viewport_row) = search_match_viewport_row(*search_match, viewport_top, info)
+        else {
+            continue;
+        };
+        let style = if Some(idx) == app.copy_mode_search.current_match {
+            current_style
+        } else {
+            normal_style
+        };
+        let y = info.inner_rect.y + viewport_row;
+        let x_start = search_match
+            .start_col
+            .min(info.inner_rect.width.saturating_sub(1));
+        let x_end = search_match
+            .end_col
+            .min(info.inner_rect.width.saturating_sub(1));
+        for x in x_start..=x_end {
+            frame.buffer_mut()[(info.inner_rect.x + x, y)].set_style(style);
+        }
+    }
+}
+
+fn render_copy_mode_search_indicator(app: &AppState, frame: &mut Frame, info: &PaneInfo) {
+    if app.mode != Mode::Copy
+        || !app
+            .copy_mode
+            .is_some_and(|copy_mode| copy_mode.pane_id == info.id)
+        || app.copy_mode_search.last_query.is_empty()
+        || info.inner_rect.width == 0
+        || info.inner_rect.height == 0
+    {
+        return;
+    }
+
+    let total = app.copy_mode_search.matches.len();
+    let current = app
+        .copy_mode_search
+        .current_match
+        .map(|idx| idx.saturating_add(1))
+        .unwrap_or(0);
+    let label = format!("[{current}/{total}]");
+    let width = label
+        .chars()
+        .count()
+        .min(usize::from(info.inner_rect.width));
+    let x = info
+        .inner_rect
+        .x
+        .saturating_add(info.inner_rect.width.saturating_sub(width as u16));
+    let y = info.inner_rect.y;
+    let style = Style::default()
+        .fg(panel_contrast_fg(&app.palette))
+        .bg(app.palette.surface1)
+        .add_modifier(Modifier::BOLD);
+    for (idx, ch) in label
+        .chars()
+        .skip(label.chars().count() - width)
+        .enumerate()
+    {
+        frame.buffer_mut()[(x + idx as u16, y)]
+            .set_symbol(&ch.to_string())
+            .set_style(style);
+    }
+}
+
+fn viewport_top_row(scroll_metrics: Option<crate::pane::ScrollMetrics>) -> u32 {
+    scroll_metrics
+        .map(|metrics| {
+            metrics
+                .max_offset_from_bottom
+                .saturating_sub(metrics.offset_from_bottom)
+        })
+        .unwrap_or(0) as u32
+}
+
+fn search_match_viewport_row(
+    search_match: CopyModeSearchMatch,
+    viewport_top: u32,
+    info: &PaneInfo,
+) -> Option<u16> {
+    let viewport_row = search_match.row.checked_sub(viewport_top)?;
+    (viewport_row < u32::from(info.inner_rect.height)).then_some(viewport_row as u16)
+}
+
 fn render_selection_highlight(
     selection: &Option<crate::selection::Selection>,
     frame: &mut Frame,
@@ -770,8 +883,33 @@ mod tests {
         buffer[(x, y)].style().fg
     }
 
+    fn cell_bg(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> Option<Color> {
+        buffer[(x, y)].style().bg
+    }
+
     fn cell_symbol(buffer: &ratatui::buffer::Buffer, x: u16, y: u16) -> &str {
         buffer[(x, y)].symbol()
+    }
+
+    fn copy_mode_search_app() -> (AppState, PaneInfo) {
+        let pane_id = PaneId::from_raw(1);
+        let mut app = AppState::test_new();
+        app.mode = Mode::Copy;
+        app.copy_mode = Some(crate::app::state::CopyModeState {
+            pane_id,
+            cursor_row: 0,
+            cursor_col: 0,
+            entry_offset_from_bottom: 0,
+            selection: None,
+        });
+        let info = PaneInfo {
+            id: pane_id,
+            rect: Rect::new(0, 0, 20, 3),
+            inner_rect: Rect::new(0, 0, 20, 3),
+            scrollbar_rect: None,
+            is_focused: true,
+        };
+        (app, info)
     }
 
     #[tokio::test]
@@ -908,6 +1046,74 @@ mod tests {
         assert_eq!(app.view.pane_infos.len(), 1);
         assert_eq!(app.view.pane_infos[0].id, focused_pane);
         assert_eq!(cell_symbol(&buffer, 50, app.view.terminal_area.y), " ");
+    }
+
+    #[test]
+    fn copy_mode_search_highlights_visible_matches() {
+        let (mut app, info) = copy_mode_search_app();
+        app.copy_mode_search.matches = vec![
+            CopyModeSearchMatch {
+                row: 0,
+                start_col: 1,
+                end_col: 3,
+            },
+            CopyModeSearchMatch {
+                row: 1,
+                start_col: 2,
+                end_col: 4,
+            },
+        ];
+        app.copy_mode_search.current_match = Some(1);
+        let backend = ratatui::backend::TestBackend::new(20, 3);
+        let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+
+        terminal
+            .draw(|frame| render_copy_mode_search_highlights(&app, frame, &info, None))
+            .expect("draw search highlights");
+        let buffer = terminal.backend().buffer();
+
+        assert_eq!(cell_bg(buffer, 1, 0), Some(app.palette.yellow));
+        assert_eq!(cell_bg(buffer, 3, 0), Some(app.palette.yellow));
+        assert_eq!(cell_bg(buffer, 2, 1), Some(app.palette.accent));
+        assert_eq!(cell_bg(buffer, 4, 1), Some(app.palette.accent));
+        assert_eq!(cell_bg(buffer, 5, 1), Some(Color::Reset));
+    }
+
+    #[test]
+    fn copy_mode_search_indicator_renders_match_position() {
+        let (mut app, info) = copy_mode_search_app();
+        app.copy_mode_search.last_query = "needle".to_string();
+        app.copy_mode_search.matches = vec![
+            CopyModeSearchMatch {
+                row: 0,
+                start_col: 0,
+                end_col: 1,
+            },
+            CopyModeSearchMatch {
+                row: 1,
+                start_col: 0,
+                end_col: 1,
+            },
+            CopyModeSearchMatch {
+                row: 2,
+                start_col: 0,
+                end_col: 1,
+            },
+        ];
+        app.copy_mode_search.current_match = Some(1);
+        let backend = ratatui::backend::TestBackend::new(20, 3);
+        let mut terminal = ratatui::Terminal::new(backend).expect("test terminal");
+
+        terminal
+            .draw(|frame| render_copy_mode_search_indicator(&app, frame, &info))
+            .expect("draw search indicator");
+        let buffer = terminal.backend().buffer();
+
+        assert_eq!(cell_symbol(buffer, 15, 0), "[");
+        assert_eq!(cell_symbol(buffer, 16, 0), "2");
+        assert_eq!(cell_symbol(buffer, 17, 0), "/");
+        assert_eq!(cell_symbol(buffer, 18, 0), "3");
+        assert_eq!(cell_symbol(buffer, 19, 0), "]");
     }
 
     #[test]
