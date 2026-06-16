@@ -218,6 +218,8 @@ pub struct HeadlessServer {
     shutting_down: bool,
     /// Flag set while exporting live PTYs to a replacement server.
     handoff_in_progress: bool,
+    /// True for a replacement server that imported live PTYs from handoff.
+    handoff_restored: bool,
     /// Imported panes get one app-safe resize nudge after the first client attaches.
     pending_handoff_repaint_nudge: bool,
     /// Flag set by Ctrl+C or `server stop` signal.
@@ -367,6 +369,7 @@ impl HeadlessServer {
             last_app_frame: None,
             shutting_down: false,
             handoff_in_progress: false,
+            handoff_restored: false,
             pending_handoff_repaint_nudge: false,
             should_quit,
             server_event_rx,
@@ -1972,9 +1975,29 @@ impl HeadlessServer {
                     self.resize_shared_runtime_to_effective_size_before_input();
                 }
                 let theme_changed = self.update_client_host_theme_from_events(client_id, &events);
-                let route_result = self
-                    .app
-                    .route_client_events(events, self.foreground_client_id == Some(client_id));
+                let route_result = if self.handoff_restored
+                    && data.starts_with(b"\x1b[<")
+                    && matches!(data.last(), Some(b'M' | b'm'))
+                    && self
+                        .app
+                        .state
+                        .focused_pane_requests_mouse_capture_from(&self.app.terminal_runtimes)
+                {
+                    if let Some(terminal_id) = self.app.forward_raw_sgr_mouse_to_focused_pane(&data)
+                    {
+                        let mut route_result = crate::app::ClientInputRouteResult::default();
+                        route_result.record_forwarded_terminal(terminal_id);
+                        route_result
+                    } else {
+                        self.app.route_client_events(
+                            events,
+                            self.foreground_client_id == Some(client_id),
+                        )
+                    }
+                } else {
+                    self.app
+                        .route_client_events(events, self.foreground_client_id == Some(client_id))
+                };
                 if route_result.forwarded_to_pty {
                     if let Some(client) = self.clients.get_mut(&client_id) {
                         client.record_debug_forwarded_terminal_ids(
@@ -3659,6 +3682,7 @@ fn run_handoff_import_server(socket_path: &Path, token: &str) -> io::Result<()> 
         crate::server::handoff::wait_committed(&mut received.stream)?;
         server.app.assume_handoff_ownership();
         server.app.unpause_handoff_readers();
+        server.handoff_restored = true;
         server.pending_handoff_repaint_nudge = true;
         if let Err(err) = crate::server::handoff::report_owned(&mut received.stream) {
             warn!(err = %err, "failed to report handoff ownership; continuing as owner");
@@ -3778,6 +3802,7 @@ mod tests {
             last_app_frame: None,
             shutting_down: false,
             handoff_in_progress: false,
+            handoff_restored: false,
             pending_handoff_repaint_nudge: false,
             should_quit: Arc::new(AtomicBool::new(false)),
             server_event_rx,

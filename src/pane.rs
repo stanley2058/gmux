@@ -181,6 +181,8 @@ pub struct PaneRuntime {
     child_wait_completed: Option<Arc<AtomicBool>>,
     kitty_keyboard_flags: Arc<AtomicU16>,
     #[cfg(unix)]
+    handoff_input_state: Option<InputState>,
+    #[cfg(unix)]
     pty_debug_timings: Arc<Mutex<PtyDebugTimings>>,
     preserve_processes_on_drop: bool,
     // Task handles for deterministic shutdown
@@ -902,6 +904,7 @@ impl PaneRuntime {
         }
         let pane_terminal = GhosttyPaneTerminal::new(terminal, response_tx.clone())?;
         pane_terminal.apply_host_terminal_theme(host_terminal_theme);
+        let handoff_input_state = input_state;
         if let Some(input_state) = input_state {
             pane_terminal.seed_handoff_input_state(input_state);
         }
@@ -986,6 +989,7 @@ impl PaneRuntime {
             child_pid,
             child_wait_completed: None,
             kitty_keyboard_flags,
+            handoff_input_state,
             pty_debug_timings,
             preserve_processes_on_drop: true,
             detect_handle,
@@ -1139,6 +1143,8 @@ impl PaneRuntime {
             child_pid,
             child_wait_completed: Some(child_wait_completed),
             kitty_keyboard_flags,
+            #[cfg(unix)]
+            handoff_input_state: None,
             pty_debug_timings,
             preserve_processes_on_drop: false,
             detect_handle,
@@ -1374,11 +1380,16 @@ impl PaneRuntime {
         row: u16,
         modifiers: crossterm::event::KeyModifiers,
     ) -> Option<Vec<u8>> {
-        if !self.input_state()?.mouse_protocol_mode.reporting_enabled() {
+        let mouse_report = self
+            .input_state()
+            .is_some_and(|state| state.mouse_protocol_mode.reporting_enabled())
+            || self.handoff_mouse_reporting_fallback_enabled();
+        if !mouse_report {
             return None;
         }
         self.terminal
             .encode_mouse_button(kind, column, row, modifiers)
+            .or_else(|| self.encode_handoff_mouse_button(kind, column, row, modifiers))
     }
 
     pub fn encode_mouse_motion(
@@ -1399,11 +1410,89 @@ impl PaneRuntime {
         row: u16,
         modifiers: crossterm::event::KeyModifiers,
     ) -> Option<Vec<u8>> {
-        if self.wheel_routing()? != WheelRouting::MouseReport {
+        let mouse_report = self.wheel_routing() == Some(WheelRouting::MouseReport)
+            || self.handoff_mouse_reporting_fallback_enabled();
+        if !mouse_report {
             return None;
         }
         self.terminal
             .encode_mouse_wheel(kind, column, row, modifiers)
+            .or_else(|| self.encode_handoff_mouse_wheel(kind, column, row, modifiers))
+    }
+
+    #[cfg(unix)]
+    fn handoff_mouse_reporting_fallback_enabled(&self) -> bool {
+        self.handoff_input_state
+            .is_some_and(crate::pane::InputState::mouse_reporting_enabled)
+    }
+
+    #[cfg(not(unix))]
+    fn handoff_mouse_reporting_fallback_enabled(&self) -> bool {
+        false
+    }
+
+    #[cfg(unix)]
+    fn encode_handoff_mouse_button(
+        &self,
+        kind: crossterm::event::MouseEventKind,
+        column: u16,
+        row: u16,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> Option<Vec<u8>> {
+        let input_state = self.handoff_input_state?;
+        if !input_state.mouse_reporting_enabled() {
+            return None;
+        }
+        crate::input::encode_mouse_button(
+            kind,
+            column,
+            row,
+            modifiers,
+            input_state.mouse_protocol_encoding,
+        )
+    }
+
+    #[cfg(not(unix))]
+    fn encode_handoff_mouse_button(
+        &self,
+        _kind: crossterm::event::MouseEventKind,
+        _column: u16,
+        _row: u16,
+        _modifiers: crossterm::event::KeyModifiers,
+    ) -> Option<Vec<u8>> {
+        None
+    }
+
+    #[cfg(unix)]
+    fn encode_handoff_mouse_wheel(
+        &self,
+        kind: crossterm::event::MouseEventKind,
+        column: u16,
+        row: u16,
+        modifiers: crossterm::event::KeyModifiers,
+    ) -> Option<Vec<u8>> {
+        let input_state = self.handoff_input_state?;
+        if !input_state.mouse_reporting_enabled() {
+            return None;
+        }
+        crate::input::encode_mouse_scroll(
+            kind,
+            column,
+            row,
+            modifiers,
+            input_state.mouse_protocol_encoding,
+        )
+    }
+
+    #[cfg(not(unix))]
+    fn encode_handoff_mouse_wheel(
+        &self,
+        _kind: crossterm::event::MouseEventKind,
+        _column: u16,
+        _row: u16,
+        _modifiers: crossterm::event::KeyModifiers,
+    ) -> Option<Vec<u8>> {
+        None
     }
 
     pub fn encode_alternate_scroll(
@@ -1533,6 +1622,7 @@ impl PaneRuntime {
                 child_pid: Arc::new(AtomicU32::new(0)),
                 child_wait_completed: None,
                 kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+                handoff_input_state: None,
                 pty_debug_timings: Arc::new(Mutex::new(PtyDebugTimings::default())),
                 preserve_processes_on_drop: true,
                 detect_handle: tokio::spawn(async {}).abort_handle(),
@@ -1951,6 +2041,7 @@ mod tests {
             child_pid: Arc::new(AtomicU32::new(0)),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+            handoff_input_state: None,
             pty_debug_timings: Arc::new(Mutex::new(PtyDebugTimings::default())),
             preserve_processes_on_drop: true,
             detect_handle: tokio::spawn(async {}).abort_handle(),
@@ -1978,6 +2069,7 @@ mod tests {
             child_pid: Arc::new(AtomicU32::new(0)),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+            handoff_input_state: None,
             pty_debug_timings: Arc::new(Mutex::new(PtyDebugTimings::default())),
             preserve_processes_on_drop: true,
             detect_handle: tokio::spawn(async {}).abort_handle(),

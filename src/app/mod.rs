@@ -58,7 +58,7 @@ pub(crate) struct ClientInputRouteResult {
 }
 
 impl ClientInputRouteResult {
-    fn record_forwarded_terminal(&mut self, terminal_id: String) {
+    pub(crate) fn record_forwarded_terminal(&mut self, terminal_id: String) {
         self.forwarded_to_pty = true;
         if !self.forwarded_terminal_ids.contains(&terminal_id) {
             self.forwarded_terminal_ids.push(terminal_id);
@@ -1294,6 +1294,31 @@ impl App {
             .session()
             .and_then(|ws| ws.terminal_id(pane_id))
             .map(ToString::to_string)
+    }
+
+    pub(crate) fn forward_raw_sgr_mouse_to_focused_pane(&mut self, data: &[u8]) -> Option<String> {
+        if !data.starts_with(b"\x1b[<") || !matches!(data.last(), Some(b'M' | b'm')) {
+            return None;
+        }
+        if self.state.mode != Mode::Terminal {
+            return None;
+        }
+        let ws_idx = self.state.session_index()?;
+        let pane_id = self.state.session().and_then(|ws| ws.focused_pane_id())?;
+        let terminal_id = self
+            .state
+            .session()
+            .and_then(|ws| ws.terminal_id(pane_id))
+            .map(ToString::to_string)?;
+        let runtime =
+            self.state
+                .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)?;
+        runtime.scroll_reset();
+        runtime
+            .try_send_bytes(bytes::Bytes::copy_from_slice(data))
+            .ok()?;
+        self.arm_input_render_bypass();
+        Some(terminal_id)
     }
 
     fn mouse_event_target_terminal_id(

@@ -2549,6 +2549,76 @@ mod tests {
     }
 
     #[test]
+    fn ghostty_seed_handoff_captured_alternate_screen_ansi_preserves_mouse_modes() {
+        let (source_tx, _source_rx) = mpsc::channel(4);
+        let mut source_terminal = crate::ghostty::Terminal::new(40, 5, 0).unwrap();
+        source_terminal.write(b"\x1b[?1049h\x1b[2JHANDOFF-ALT\x1b[?1002h\x1b[?1006h");
+        let source = GhosttyPaneTerminal::new(source_terminal, source_tx).unwrap();
+        let input_state = source.input_state().expect("source input state");
+        let ansi = source.visible_ansi();
+
+        let (restored_tx, _restored_rx) = mpsc::channel(4);
+        let restored_terminal = crate::ghostty::Terminal::new(40, 5, 0).unwrap();
+        let restored = GhosttyPaneTerminal::new(restored_terminal, restored_tx).unwrap();
+        restored.seed_handoff_input_state(input_state);
+        restored.seed_handoff_alternate_screen_ansi(&ansi);
+
+        assert!(restored.visible_text().contains("HANDOFF-ALT"));
+        assert_eq!(restored.input_state(), Some(input_state));
+        assert!(restored
+            .encode_mouse_button(
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                1,
+                1,
+                crossterm::event::KeyModifiers::empty(),
+            )
+            .is_some());
+    }
+
+    #[test]
+    fn ghostty_handoff_seeded_mouse_modes_survive_resize() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(80, 24, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+        let input_state = InputState {
+            alternate_screen: true,
+            application_cursor: false,
+            bracketed_paste: false,
+            focus_reporting: false,
+            mouse_protocol_mode: crate::input::MouseProtocolMode::ButtonMotion,
+            mouse_protocol_encoding: crate::input::MouseProtocolEncoding::Sgr,
+            mouse_alternate_scroll: false,
+            modify_other_keys: false,
+        };
+
+        pane.seed_handoff_input_state(input_state);
+        pane.seed_handoff_alternate_screen_ansi("HANDOFF-ALT");
+        let _ = pane.resize(18, 54, 8, 16);
+
+        let restored_state = pane.input_state().expect("input state after resize");
+        assert_eq!(
+            restored_state.mouse_protocol_mode,
+            input_state.mouse_protocol_mode
+        );
+        assert_eq!(
+            restored_state.mouse_protocol_encoding,
+            input_state.mouse_protocol_encoding
+        );
+        assert_eq!(
+            restored_state.alternate_screen,
+            input_state.alternate_screen
+        );
+        assert!(pane
+            .encode_mouse_button(
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                1,
+                1,
+                crossterm::event::KeyModifiers::empty(),
+            )
+            .is_some());
+    }
+
+    #[test]
     fn ghostty_key_encoder_updates_after_terminal_mode_changes() {
         let (tx, _rx) = mpsc::channel(4);
         let terminal = crate::ghostty::Terminal::new(80, 24, 0).unwrap();

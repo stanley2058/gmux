@@ -11,9 +11,11 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
+use serde::Deserialize;
 use support::{
-    cleanup_test_base, client_handshake, register_runtime_dir, register_spawned_gmux_pid,
-    send_input, unregister_spawned_gmux_pid, wait_for_disconnect, wait_for_socket,
+    cleanup_test_base, client_handshake, read_server_message, register_runtime_dir,
+    register_spawned_gmux_pid, send_input, unregister_spawned_gmux_pid, wait_for_disconnect,
+    wait_for_socket,
 };
 
 struct SpawnedGmux {
@@ -24,6 +26,57 @@ struct SpawnedGmux {
 struct RequestError {
     retryable: bool,
     message: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct FrameWire {
+    cells: Vec<CellWire>,
+    width: u16,
+    height: u16,
+    cursor: Option<CursorWire>,
+    hyperlinks: Vec<String>,
+    graphics: Vec<u8>,
+    debug_timing: Option<FrameDebugTimingWire>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct CellWire {
+    symbol: String,
+    fg: u32,
+    bg: u32,
+    modifier: u16,
+    underline_color: u32,
+    underline_style: u8,
+    overline: bool,
+    skip: bool,
+    hyperlink: Option<u32>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct CursorWire {
+    x: u16,
+    y: u16,
+    visible: bool,
+    shape: u8,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct FrameDebugTimingWire {
+    server_input_queue_us: u64,
+    server_input_to_frame_us: u64,
+    server_pty_dirty_to_frame_us: Option<u64>,
+    server_render_us: Option<u64>,
+    server_frame_build_us: Option<u64>,
+    server_graphics_us: Option<u64>,
+    server_prepare_us: Option<u64>,
+    server_target_count: u16,
+    server_active_only: bool,
+    server_mirror_flush: bool,
+    server_pending_mirror: bool,
 }
 
 impl Drop for SpawnedGmux {
@@ -295,6 +348,28 @@ fn wait_for_file_contains(path: &Path, needle: &str, timeout: Duration) -> Strin
         "{} did not contain {needle:?}; last text was {last_text:?}",
         path.display()
     );
+}
+
+fn decode_frame_payload(payload: &[u8]) -> FrameWire {
+    let (frame, consumed): (FrameWire, usize) =
+        bincode::serde::decode_from_slice(payload, bincode::config::standard())
+            .expect("decode frame payload");
+    assert_eq!(consumed, payload.len(), "frame payload had trailing bytes");
+    frame
+}
+
+fn find_text_in_frame(frame: &FrameWire, needle: &str) -> Option<(u16, u16)> {
+    let width = usize::from(frame.width.max(1));
+    for (row_idx, row) in frame.cells.chunks(width).enumerate() {
+        let mut line = String::new();
+        for cell in row {
+            line.push_str(&cell.symbol);
+        }
+        if let Some(col_idx) = line.find(needle) {
+            return Some((col_idx as u16, row_idx as u16));
+        }
+    }
+    None
 }
 
 #[cfg(target_os = "linux")]
@@ -701,6 +776,130 @@ fn live_handoff_preserves_pane_process_io() {
         serde_json::json!({"id":"test:stop","method":"server.stop","params":{}}),
     );
     let _ = client_socket;
+    cleanup_test_base(&base);
+}
+
+#[test]
+fn live_handoff_preserves_alternate_screen_mouse_forwarding() {
+    let _lock = test_lock();
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let api_socket = runtime_dir.join("gmux.sock");
+    let client_socket = runtime_dir.join("gmux-client.sock");
+    let pre_mouse_marker = base.join("pre-mouse-bytes");
+    let mouse_marker = base.join("mouse-bytes");
+
+    let spawned = spawn_server(&config_home, &runtime_dir, &api_socket);
+    wait_for_socket(&api_socket, Duration::from_secs(10));
+    register_runtime_dir(&runtime_dir);
+
+    let created = request(
+        &api_socket,
+        serde_json::json!({
+            "id": "test:tab:create",
+            "method": "tab.create",
+            "params": {"cwd": "/tmp", "focus": true}
+        }),
+    );
+    let pane_id = created["result"]["root_pane"]["pane_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let command = format!(
+        "python3 -u -c 'import os, sys, tty; tty.setraw(0); sys.stdout.write(\"\\x1b[?1049h\\x1b[2J\\x1b[?1002h\\x1b[?1006hREADY\"); sys.stdout.flush();\nfor path in [{:?}, {:?}]:\n data = os.read(0, 64); open(path, \"wb\").write(data)'",
+        pre_mouse_marker,
+        mouse_marker
+    );
+    assert_ok(request(
+        &api_socket,
+        serde_json::json!({
+            "id": "test:mouse-app",
+            "method": "pane.send_input",
+            "params": {"pane_id": pane_id, "text": command, "keys": ["Enter"]}
+        }),
+    ));
+    wait_for_output(&api_socket, &pane_id, "READY");
+
+    let protocol = request(
+        &api_socket,
+        serde_json::json!({"id":"test:protocol","method":"ping","params":{}}),
+    )["result"]["protocol"]
+        .as_u64()
+        .unwrap() as u32;
+    let mut pre_client_stream = UnixStream::connect(&client_socket).unwrap();
+    let (server_protocol, error) =
+        client_handshake(&mut pre_client_stream, protocol, 80, 24).unwrap();
+    assert_eq!(server_protocol, protocol);
+    assert!(error.is_none(), "client handshake failed: {error:?}");
+    thread::sleep(Duration::from_millis(300));
+    send_input(&mut pre_client_stream, b"\x1b[<0;1;6M").unwrap();
+    let pre_mouse_bytes =
+        wait_for_file_contains(&pre_mouse_marker, "\x1b[<0;", Duration::from_secs(5));
+    assert!(
+        pre_mouse_bytes.contains("\x1b[<0;"),
+        "pre-handoff mouse bytes were not forwarded: {pre_mouse_bytes:?}"
+    );
+
+    assert_ok(request(
+        &api_socket,
+        serde_json::json!({"id":"test:handoff","method":"server.live_handoff","params":{}}),
+    ));
+    drop(spawned);
+    assert!(
+        wait_for_disconnect(&mut pre_client_stream, Duration::from_secs(5)).unwrap(),
+        "pre-handoff test client should disconnect during live handoff"
+    );
+    wait_for_api(&api_socket, Duration::from_secs(10));
+    wait_for_socket(&client_socket, Duration::from_secs(5));
+
+    let mut client_stream = UnixStream::connect(&client_socket).unwrap();
+    let (server_protocol, error) = client_handshake(&mut client_stream, protocol, 80, 24).unwrap();
+    assert_eq!(server_protocol, protocol);
+    assert!(error.is_none(), "client handshake failed: {error:?}");
+    client_stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
+    let mut mouse_capture_payload = None;
+    let mut initial_frame = None;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        match read_server_message(&mut client_stream) {
+            Ok((8, payload)) => {
+                mouse_capture_payload = Some(payload);
+            }
+            Ok((1, payload)) => initial_frame = Some(decode_frame_payload(&payload)),
+            Ok(_) => {}
+            Err(_) => break,
+        }
+        if mouse_capture_payload.is_some() && initial_frame.is_some() {
+            break;
+        }
+    }
+    assert_eq!(mouse_capture_payload.as_deref(), Some(&[1][..]));
+    let initial_frame =
+        initial_frame.expect("client did not receive an initial frame before mouse input");
+    let (ready_col, ready_row) = find_text_in_frame(&initial_frame, "READY")
+        .expect("initial frame should contain READY from the alternate-screen app");
+    thread::sleep(Duration::from_millis(200));
+
+    send_input(
+        &mut client_stream,
+        format!("\x1b[<0;{};{}M", ready_col + 1, ready_row + 1).as_bytes(),
+    )
+    .unwrap();
+
+    let mouse_bytes = wait_for_file_contains(&mouse_marker, "\x1b[<0;", Duration::from_secs(5));
+    assert!(
+        mouse_bytes.contains("\x1b[<0;"),
+        "mouse bytes were not forwarded as an SGR mouse report: {mouse_bytes:?}"
+    );
+
+    let _ = request(
+        &api_socket,
+        serde_json::json!({"id":"test:stop","method":"server.stop","params":{}}),
+    );
     cleanup_test_base(&base);
 }
 
