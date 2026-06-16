@@ -50,10 +50,20 @@ use crate::events::AppEvent;
 
 pub use state::{AppState, Mode, ToastKind, ViewState};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct ClientInputRouteResult {
     pub(crate) visual_change: bool,
     pub(crate) forwarded_to_pty: bool,
+    pub(crate) forwarded_terminal_ids: Vec<String>,
+}
+
+impl ClientInputRouteResult {
+    fn record_forwarded_terminal(&mut self, terminal_id: String) {
+        self.forwarded_to_pty = true;
+        if !self.forwarded_terminal_ids.contains(&terminal_id) {
+            self.forwarded_terminal_ids.push(terminal_id);
+        }
+    }
 }
 
 /// Full application: AppState + runtime concerns (event channels, async I/O).
@@ -1058,8 +1068,8 @@ impl App {
                             if self.state.mode == Mode::Terminal {
                                 self.suppressed_repeat_keys.remove(&key_id);
                                 match self.handle_terminal_key_headless(key) {
-                                    input::TerminalInputDispatch::Forwarded => {
-                                        result.forwarded_to_pty = true;
+                                    input::TerminalInputDispatch::Forwarded { terminal_id } => {
+                                        result.record_forwarded_terminal(terminal_id);
                                     }
                                     input::TerminalInputDispatch::HandledByApp => {
                                         result.visual_change = true;
@@ -1077,8 +1087,8 @@ impl App {
                                 && !self.suppressed_repeat_keys.contains(&key_id)
                             {
                                 match self.handle_terminal_key_headless(key) {
-                                    input::TerminalInputDispatch::Forwarded => {
-                                        result.forwarded_to_pty = true;
+                                    input::TerminalInputDispatch::Forwarded { terminal_id } => {
+                                        result.record_forwarded_terminal(terminal_id);
                                     }
                                     input::TerminalInputDispatch::HandledByApp => {
                                         result.visual_change = true;
@@ -1103,17 +1113,19 @@ impl App {
                         continue;
                     }
 
-                    let forwarded_to_pty = if self.state.mouse_capture {
-                        let forwarded_to_pty = self.mouse_event_would_forward_to_pty(mouse);
+                    let forwarded_terminal_id = if self.state.mouse_capture {
+                        let forwarded_terminal_id = self.mouse_event_forwarded_terminal_id(mouse);
                         self.handle_mouse_event_headless(mouse);
-                        forwarded_to_pty
+                        forwarded_terminal_id
                     } else {
                         self.state
                             .handle_pane_mouse_only(&self.terminal_runtimes, mouse)
+                            .then(|| self.mouse_event_target_terminal_id(mouse))
+                            .flatten()
                     };
-                    if forwarded_to_pty {
+                    if let Some(terminal_id) = forwarded_terminal_id {
                         self.arm_input_render_bypass();
-                        result.forwarded_to_pty = true;
+                        result.record_forwarded_terminal(terminal_id);
                     } else {
                         result.visual_change = true;
                     }
@@ -1137,7 +1149,11 @@ impl App {
                             ));
                             if sent.is_ok() {
                                 self.arm_input_render_bypass();
-                                result.forwarded_to_pty = true;
+                                if let Some(terminal_id) = self.focused_terminal_id_string() {
+                                    result.record_forwarded_terminal(terminal_id);
+                                } else {
+                                    result.forwarded_to_pty = true;
+                                }
                             }
                         }
                     }
@@ -1264,11 +1280,38 @@ impl App {
         self.handle_mouse(mouse);
     }
 
-    fn mouse_event_would_forward_to_pty(&self, mouse: crossterm::event::MouseEvent) -> bool {
+    fn focused_terminal_id_string(&self) -> Option<String> {
+        let pane_id = self.state.session().and_then(|ws| ws.focused_pane_id())?;
+        self.state
+            .session()
+            .and_then(|ws| ws.terminal_id(pane_id))
+            .map(ToString::to_string)
+    }
+
+    fn mouse_event_target_terminal_id(
+        &self,
+        mouse: crossterm::event::MouseEvent,
+    ) -> Option<String> {
+        let info = self.state.view.pane_infos.iter().find(|pane| {
+            mouse.column >= pane.inner_rect.x
+                && mouse.column < pane.inner_rect.x + pane.inner_rect.width
+                && mouse.row >= pane.inner_rect.y
+                && mouse.row < pane.inner_rect.y + pane.inner_rect.height
+        })?;
+        self.state
+            .session()
+            .and_then(|ws| ws.terminal_id(info.id))
+            .map(ToString::to_string)
+    }
+
+    fn mouse_event_forwarded_terminal_id(
+        &self,
+        mouse: crossterm::event::MouseEvent,
+    ) -> Option<String> {
         use crossterm::event::{MouseButton, MouseEventKind};
 
         if self.state.mode != Mode::Terminal {
-            return false;
+            return None;
         }
 
         if self.state.selection.is_some()
@@ -1277,30 +1320,28 @@ impl App {
                 MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
             )
         {
-            return false;
+            return None;
         }
 
-        let Some(info) = self.state.view.pane_infos.iter().find(|pane| {
+        let info = self.state.view.pane_infos.iter().find(|pane| {
             mouse.column >= pane.inner_rect.x
                 && mouse.column < pane.inner_rect.x + pane.inner_rect.width
                 && mouse.row >= pane.inner_rect.y
                 && mouse.row < pane.inner_rect.y + pane.inner_rect.height
-        }) else {
-            return false;
-        };
-        let Some(ws_idx) = self.state.session_index() else {
-            return false;
-        };
-        let Some(runtime) =
+        })?;
+        let terminal_id = self
+            .state
+            .session()
+            .and_then(|ws| ws.terminal_id(info.id))
+            .map(ToString::to_string)?;
+        let ws_idx = self.state.session_index()?;
+        let runtime =
             self.state
-                .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, info.id)
-        else {
-            return false;
-        };
+                .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, info.id)?;
         let column = mouse.column.saturating_sub(info.inner_rect.x);
         let row = mouse.row.saturating_sub(info.inner_rect.y);
 
-        match mouse.kind {
+        let forwards = match mouse.kind {
             MouseEventKind::ScrollUp
             | MouseEventKind::ScrollDown
             | MouseEventKind::ScrollLeft
@@ -1319,7 +1360,8 @@ impl App {
             MouseEventKind::Moved => runtime
                 .encode_mouse_motion(mouse.kind, column, row, mouse.modifiers)
                 .is_some(),
-        }
+        };
+        forwards.then_some(terminal_id)
     }
 }
 

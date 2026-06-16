@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 15;
+pub const PROTOCOL_VERSION: u32 = 16;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -257,6 +257,8 @@ pub struct FrameDebugTiming {
     pub server_input_to_frame_us: u64,
     /// Time from the server first observing PTY dirty output after input to queuing the frame.
     pub server_pty_dirty_to_frame_us: Option<u64>,
+    /// Time from writing user input to the PTY to reading the first resulting PTY output.
+    pub server_app_response_us: Option<u64>,
     /// Time spent rendering the shared app view or terminal view for this frame.
     pub server_render_us: Option<u64>,
     /// Time spent collecting visible hyperlinks and building the wire frame.

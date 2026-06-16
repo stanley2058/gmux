@@ -126,12 +126,34 @@ impl ClientConnection {
             received_at,
             handled_at,
             pty_dirty_at: None,
+            app_response: None,
+            terminal_ids: Vec::new(),
         });
     }
 
-    pub(crate) fn record_debug_pty_dirty(&mut self, dirty_at: Instant) {
+    pub(crate) fn record_debug_forwarded_terminal_ids(&mut self, terminal_ids: Vec<String>) {
+        if let Some(timing) = &mut self.debug_timing {
+            timing.terminal_ids = terminal_ids;
+        }
+    }
+
+    pub(crate) fn pending_debug_terminal_ids(&self) -> &[String] {
+        self.debug_timing
+            .as_ref()
+            .map(|timing| timing.terminal_ids.as_slice())
+            .unwrap_or(&[])
+    }
+
+    pub(crate) fn record_debug_pty_dirty(
+        &mut self,
+        dirty_at: Instant,
+        app_response: Option<Duration>,
+    ) {
         if let Some(timing) = &mut self.debug_timing {
             timing.pty_dirty_at.get_or_insert(dirty_at);
+            if let Some(app_response) = app_response {
+                timing.app_response.get_or_insert(app_response);
+            }
         }
     }
 
@@ -152,6 +174,7 @@ impl ClientConnection {
             server_pty_dirty_to_frame_us: timing
                 .pty_dirty_at
                 .map(|dirty_at| duration_us(queued_at.saturating_duration_since(dirty_at))),
+            server_app_response_us: timing.app_response.map(duration_us),
             server_render_us: None,
             server_frame_build_us: None,
             server_graphics_us: None,
@@ -221,6 +244,8 @@ pub(crate) struct ClientDebugTiming {
     received_at: Instant,
     handled_at: Instant,
     pty_dirty_at: Option<Instant>,
+    app_response: Option<Duration>,
+    terminal_ids: Vec<String>,
 }
 
 fn duration_us(duration: Duration) -> u64 {

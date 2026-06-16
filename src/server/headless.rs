@@ -1913,15 +1913,22 @@ impl HeadlessServer {
                 if let Some(client) = self.clients.get_mut(&client_id) {
                     client.record_debug_input_received(received_at, Instant::now());
                 }
-                if let Some(ClientConnection {
-                    mode: ClientConnectionMode::TerminalAttach { terminal_id },
-                    ..
-                }) = self.clients.get(&client_id)
-                {
-                    if let Some(runtime) = self.runtime_for_terminal_id_string(terminal_id) {
+                let terminal_attach_id = self.clients.get(&client_id).and_then(|client| {
+                    if let ClientConnectionMode::TerminalAttach { terminal_id } = &client.mode {
+                        Some(terminal_id.clone())
+                    } else {
+                        None
+                    }
+                });
+                if let Some(terminal_id) = terminal_attach_id {
+                    if let Some(runtime) = self.runtime_for_terminal_id_string(&terminal_id) {
                         if let Err(err) = apply_terminal_attach_input(runtime, data) {
                             warn!(client_id, terminal_id = %terminal_id, err = %err);
                         } else {
+                            if let Some(client) = self.clients.get_mut(&client_id) {
+                                client
+                                    .record_debug_forwarded_terminal_ids(vec![terminal_id.clone()]);
+                            }
                             self.app.arm_input_render_bypass();
                         }
                     }
@@ -1968,6 +1975,13 @@ impl HeadlessServer {
                 let route_result = self
                     .app
                     .route_client_events(events, self.foreground_client_id == Some(client_id));
+                if route_result.forwarded_to_pty {
+                    if let Some(client) = self.clients.get_mut(&client_id) {
+                        client.record_debug_forwarded_terminal_ids(
+                            route_result.forwarded_terminal_ids.clone(),
+                        );
+                    }
+                }
                 if route_result.forwarded_to_pty
                     && self
                         .clients
@@ -2125,8 +2139,40 @@ impl HeadlessServer {
     }
 
     fn record_debug_pty_dirty_for_pending_inputs(&mut self, dirty_at: Instant) {
-        for client in self.clients.values_mut() {
-            client.record_debug_pty_dirty(dirty_at);
+        let client_ids = self.clients.keys().copied().collect::<Vec<_>>();
+        for client_id in client_ids {
+            let terminal_ids = self
+                .clients
+                .get(&client_id)
+                .map(|client| client.pending_debug_terminal_ids().to_vec())
+                .unwrap_or_default();
+            let app_response = self.take_latest_pty_app_response_duration(&terminal_ids);
+            if let Some(client) = self.clients.get_mut(&client_id) {
+                client.record_debug_pty_dirty(dirty_at, app_response);
+            }
+        }
+    }
+
+    fn take_latest_pty_app_response_duration(&self, terminal_ids: &[String]) -> Option<Duration> {
+        if terminal_ids.is_empty() {
+            return None;
+        }
+        #[cfg(unix)]
+        {
+            self.app
+                .terminal_runtimes
+                .iter()
+                .filter(|(terminal_id, _)| {
+                    terminal_ids.iter().any(|id| id == &terminal_id.to_string())
+                })
+                .map(|(_, runtime)| runtime)
+                .filter_map(|runtime| runtime.take_pty_app_response_timing())
+                .max_by_key(|timing| timing.read_at)
+                .map(|timing| timing.duration)
+        }
+        #[cfg(not(unix))]
+        {
+            None
         }
     }
 
@@ -4039,6 +4085,7 @@ mod tests {
         let mut total_loop_us = Vec::with_capacity(frames);
         let mut input_queue_us = Vec::with_capacity(frames);
         let mut input_to_frame_us = Vec::with_capacity(frames);
+        let mut app_response_us = Vec::with_capacity(frames);
         let mut dirty_to_frame_us = Vec::with_capacity(frames);
         let mut render_us = Vec::with_capacity(frames);
         let mut frame_build_us = Vec::with_capacity(frames);
@@ -4070,6 +4117,9 @@ mod tests {
             total_loop_us.push(debug_duration_us(loop_started.elapsed()));
             input_queue_us.push(timing.server_input_queue_us);
             input_to_frame_us.push(timing.server_input_to_frame_us);
+            if let Some(value) = timing.server_app_response_us {
+                app_response_us.push(value);
+            }
             if let Some(value) = timing.server_pty_dirty_to_frame_us {
                 dirty_to_frame_us.push(value);
             }
@@ -4093,6 +4143,7 @@ mod tests {
         print_latency_bench_stats("total_loop", &total_loop_us);
         print_latency_bench_stats("server_input_queue", &input_queue_us);
         print_latency_bench_stats("server_input_to_frame", &input_to_frame_us);
+        print_latency_bench_stats("server_app_response", &app_response_us);
         print_latency_bench_stats("server_pty_dirty_to_frame", &dirty_to_frame_us);
         print_latency_bench_stats("server_render", &render_us);
         print_latency_bench_stats("server_frame_build", &frame_build_us);

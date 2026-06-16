@@ -44,6 +44,27 @@ impl PtyReadResult {
 type ReadCallback = Box<dyn FnMut(&[u8]) -> PtyReadResult + Send + 'static>;
 type ReaderExitCallback = Box<dyn FnOnce() + Send + 'static>;
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PtyAppResponseTiming {
+    pub(crate) read_at: Instant,
+    pub(crate) duration: Duration,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct PtyDebugTimings {
+    last_app_response: Option<PtyAppResponseTiming>,
+}
+
+impl PtyDebugTimings {
+    fn record_app_response(&mut self, read_at: Instant, duration: Duration) {
+        self.last_app_response = Some(PtyAppResponseTiming { read_at, duration });
+    }
+
+    pub(crate) fn take_app_response_timing(&mut self) -> Option<PtyAppResponseTiming> {
+        self.last_app_response.take()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PtyResize {
     rows: u16,
@@ -68,12 +89,25 @@ pub(crate) struct PtyIoActorConfig {
     pub pane_id: u32,
     pub master_fd: OwnedFd,
     pub initially_quiesced: bool,
+    pub debug_timings: Arc<Mutex<PtyDebugTimings>>,
     pub on_read: ReadCallback,
     pub on_reader_exit: Option<ReaderExitCallback>,
 }
 
 enum PtyIoDataCommand {
     WriteUserInput(Bytes),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingWriteSource {
+    UserInput,
+    TerminalResponse,
+}
+
+#[derive(Debug)]
+struct PendingWrite {
+    bytes: Bytes,
+    source: PendingWriteSource,
 }
 
 enum PtyIoControlCommand {
@@ -373,6 +407,8 @@ impl PtyIoActor {
             current_write_offset: 0,
             wake_read_fd: wake_pipe.read_fd,
             controls,
+            debug_timings: config.debug_timings,
+            pending_user_input_written_at: None,
             on_read: config.on_read,
             on_reader_exit: config.on_reader_exit,
             poll_observer,
@@ -400,10 +436,12 @@ struct PtyIoActorRunner {
     data_rx: mpsc::Receiver<PtyIoDataCommand>,
     control_rx: std_mpsc::Receiver<PtyIoControlCommand>,
     state: ActorState,
-    pending_writes: VecDeque<Bytes>,
+    pending_writes: VecDeque<PendingWrite>,
     current_write_offset: usize,
     wake_read_fd: OwnedFd,
     controls: Arc<Mutex<SharedPtyControls>>,
+    debug_timings: Arc<Mutex<PtyDebugTimings>>,
+    pending_user_input_written_at: Option<Instant>,
     on_read: ReadCallback,
     on_reader_exit: Option<ReaderExitCallback>,
     poll_observer: Option<std_mpsc::Sender<()>>,
@@ -521,7 +559,10 @@ impl PtyIoActorRunner {
         match command {
             PtyIoDataCommand::WriteUserInput(bytes) => {
                 if self.state == ActorState::Running && !bytes.is_empty() {
-                    self.pending_writes.push_back(bytes);
+                    self.pending_writes.push_back(PendingWrite {
+                        bytes,
+                        source: PendingWriteSource::UserInput,
+                    });
                 }
             }
         }
@@ -598,7 +639,10 @@ impl PtyIoActorRunner {
     fn drain_pre_quiesce_commands(&mut self) {
         while let Ok(PtyIoDataCommand::WriteUserInput(bytes)) = self.data_rx.try_recv() {
             if self.state != ActorState::Released && !bytes.is_empty() {
-                self.pending_writes.push_back(bytes);
+                self.pending_writes.push_back(PendingWrite {
+                    bytes,
+                    source: PendingWriteSource::UserInput,
+                });
             }
         }
     }
@@ -634,6 +678,14 @@ impl PtyIoActorRunner {
                 false
             }
             Ok(n) => {
+                if let Some(written_at) = self.pending_user_input_written_at.take() {
+                    let read_at = Instant::now();
+                    let duration = read_at.saturating_duration_since(written_at);
+                    if let Ok(mut debug_timings) = self.debug_timings.lock() {
+                        debug_timings.record_app_response(read_at, duration);
+                        crate::render_prof::duration("pty.app_response", duration);
+                    }
+                }
                 let result = (self.on_read)(&buf[..n]);
                 self.enqueue_terminal_responses(result.terminal_responses);
                 true
@@ -648,15 +700,19 @@ impl PtyIoActorRunner {
         self.pending_writes.extend(
             terminal_responses
                 .into_iter()
-                .filter(|bytes| !bytes.is_empty()),
+                .filter(|bytes| !bytes.is_empty())
+                .map(|bytes| PendingWrite {
+                    bytes,
+                    source: PendingWriteSource::TerminalResponse,
+                }),
         );
     }
 
     fn flush_pending_writes_once(&mut self) {
         let mut completed_chunks = 0usize;
         let mut written_bytes = 0usize;
-        while let Some(bytes) = self.pending_writes.front() {
-            if self.current_write_offset >= bytes.len() {
+        while let Some(write) = self.pending_writes.front() {
+            if self.current_write_offset >= write.bytes.len() {
                 self.pending_writes.pop_front();
                 self.current_write_offset = 0;
                 continue;
@@ -668,16 +724,21 @@ impl PtyIoActorRunner {
                 return;
             }
 
-            let chunk = &bytes[self.current_write_offset..];
+            let chunk = &write.bytes[self.current_write_offset..];
+            let record_user_input_write =
+                self.current_write_offset == 0 && write.source == PendingWriteSource::UserInput;
             match self.file.write(chunk) {
                 Ok(0) => {
                     warn!(pane = self.pane_id, "PTY actor write returned zero bytes");
                     return;
                 }
                 Ok(written) => {
+                    if record_user_input_write {
+                        self.pending_user_input_written_at = Some(Instant::now());
+                    }
                     written_bytes = written_bytes.saturating_add(written);
                     self.current_write_offset += written;
-                    if self.current_write_offset >= bytes.len() {
+                    if self.current_write_offset >= write.bytes.len() {
                         self.pending_writes.pop_front();
                         self.current_write_offset = 0;
                         completed_chunks += 1;
@@ -776,6 +837,10 @@ mod tests {
         (pipe.writer, pipe.read_fd)
     }
 
+    fn test_debug_timings() -> Arc<Mutex<PtyDebugTimings>> {
+        Arc::new(Mutex::new(PtyDebugTimings::default()))
+    }
+
     fn actor_with_socket_pair(
         initially_quiesced: bool,
     ) -> (PtyIoActorHandle, UnixStream, std_mpsc::Receiver<Bytes>) {
@@ -786,6 +851,20 @@ mod tests {
         initially_quiesced: bool,
         poll_observer: Option<std_mpsc::Sender<()>>,
     ) -> (PtyIoActorHandle, UnixStream, std_mpsc::Receiver<Bytes>) {
+        let (handle, peer, read_rx, _) =
+            actor_with_socket_pair_and_poll_observer_and_timings(initially_quiesced, poll_observer);
+        (handle, peer, read_rx)
+    }
+
+    fn actor_with_socket_pair_and_poll_observer_and_timings(
+        initially_quiesced: bool,
+        poll_observer: Option<std_mpsc::Sender<()>>,
+    ) -> (
+        PtyIoActorHandle,
+        UnixStream,
+        std_mpsc::Receiver<Bytes>,
+        Arc<Mutex<PtyDebugTimings>>,
+    ) {
         let (actor_socket, peer) = UnixStream::pair().expect("socket pair");
         actor_socket
             .set_nonblocking(true)
@@ -794,10 +873,12 @@ mod tests {
             .expect("peer timeout");
         let owned = unsafe { OwnedFd::from_raw_fd(actor_socket.into_raw_fd()) };
         let (read_tx, read_rx) = std_mpsc::channel();
+        let debug_timings = test_debug_timings();
         let config = PtyIoActorConfig {
             pane_id: 1,
             master_fd: owned,
             initially_quiesced,
+            debug_timings: debug_timings.clone(),
             on_read: Box::new(move |bytes| {
                 read_tx
                     .send(Bytes::copy_from_slice(bytes))
@@ -812,7 +893,7 @@ mod tests {
             PtyIoActor::spawn(config)
         }
         .expect("actor spawn");
-        (handle, peer, read_rx)
+        (handle, peer, read_rx, debug_timings)
     }
 
     #[test]
@@ -893,6 +974,34 @@ mod tests {
     }
 
     #[test]
+    fn actor_records_app_response_after_user_input_write() {
+        let (handle, mut peer, read_rx, debug_timings) =
+            actor_with_socket_pair_and_poll_observer_and_timings(false, None);
+
+        handle
+            .try_write_user_input(Bytes::from_static(b"x"))
+            .expect("write command accepted");
+        let mut input = [0u8; 1];
+        peer.read_exact(&mut input)
+            .expect("peer receives user input");
+        assert_eq!(&input, b"x");
+
+        peer.write_all(b"echo").expect("peer writes app output");
+        let read = read_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("actor read callback");
+        assert_eq!(read, Bytes::from_static(b"echo"));
+
+        let timing = debug_timings
+            .lock()
+            .expect("debug timings lock")
+            .take_app_response_timing()
+            .expect("app response timing");
+        assert!(timing.duration < Duration::from_secs(1));
+        handle.shutdown();
+    }
+
+    #[test]
     fn flush_pending_writes_uses_bounded_quantum() {
         let (actor_socket, mut peer) = UnixStream::pair().expect("socket pair");
         actor_socket
@@ -912,12 +1021,17 @@ mod tests {
             current_write_offset: 0,
             wake_read_fd: fd::create_wake_pipe().expect("wake pipe").read_fd,
             controls: Arc::new(Mutex::new(SharedPtyControls::default())),
+            debug_timings: test_debug_timings(),
+            pending_user_input_written_at: None,
             on_read: Box::new(|_| PtyReadResult::empty()),
             on_reader_exit: None,
             poll_observer: None,
         };
         for _ in 0..=ACTOR_WRITE_CHUNK_BUDGET_PER_TURN {
-            runner.pending_writes.push_back(Bytes::from_static(b"x"));
+            runner.pending_writes.push_back(PendingWrite {
+                bytes: Bytes::from_static(b"x"),
+                source: PendingWriteSource::UserInput,
+            });
         }
 
         runner.flush_pending_writes_once();
@@ -950,12 +1064,20 @@ mod tests {
             current_write_offset: 0,
             wake_read_fd: fd::create_wake_pipe().expect("wake pipe").read_fd,
             controls: Arc::new(Mutex::new(SharedPtyControls::default())),
+            debug_timings: test_debug_timings(),
+            pending_user_input_written_at: None,
             on_read: Box::new(|_| PtyReadResult::empty()),
             on_reader_exit: None,
             poll_observer: None,
         };
-        runner.pending_writes.push_back(Bytes::new());
-        runner.pending_writes.push_back(Bytes::from_static(b"x"));
+        runner.pending_writes.push_back(PendingWrite {
+            bytes: Bytes::new(),
+            source: PendingWriteSource::TerminalResponse,
+        });
+        runner.pending_writes.push_back(PendingWrite {
+            bytes: Bytes::from_static(b"x"),
+            source: PendingWriteSource::UserInput,
+        });
 
         runner.flush_pending_writes_once();
 
@@ -1244,6 +1366,8 @@ mod tests {
             current_write_offset: 0,
             wake_read_fd: fd::create_wake_pipe().expect("wake pipe").read_fd,
             controls: Arc::new(Mutex::new(SharedPtyControls::default())),
+            debug_timings: test_debug_timings(),
+            pending_user_input_written_at: None,
             on_read: Box::new(|_| PtyReadResult::empty()),
             on_reader_exit: None,
             poll_observer: None,

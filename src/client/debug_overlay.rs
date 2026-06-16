@@ -257,6 +257,7 @@ impl ClientDebugOverlay {
                 fmt_duration(self.report.max_input_latency),
                 self.pending_inputs.len()
             ),
+            self.round_trip_line(),
             format!(
                 "frame dt avg {} max {} age {} total {}",
                 fmt_duration(self.report.avg_frame_interval),
@@ -271,7 +272,7 @@ impl ClientDebugOverlay {
                 fmt_duration(self.last_encode_duration)
             ),
             format!(
-                "server q {} handle->frame {} dirty->frame {}",
+                "server q {} handle->frame {}",
                 fmt_server_us(
                     self.last_server_timing
                         .map(|timing| timing.server_input_queue_us)
@@ -279,6 +280,13 @@ impl ClientDebugOverlay {
                 fmt_server_us(
                     self.last_server_timing
                         .map(|timing| timing.server_input_to_frame_us)
+                )
+            ),
+            format!(
+                "app response {} dirty->frame {}",
+                fmt_server_us(
+                    self.last_server_timing
+                        .and_then(|timing| timing.server_app_response_us)
                 ),
                 fmt_server_us(
                     self.last_server_timing
@@ -331,6 +339,32 @@ impl ClientDebugOverlay {
                 self.total_inputs
             ),
         ]
+    }
+
+    fn round_trip_line(&self) -> String {
+        let Some(total) = self.last_input_latency else {
+            return "r_total -- (gmux --, --%)".to_string();
+        };
+        let Some(app_response) = self
+            .last_server_timing
+            .and_then(|timing| timing.server_app_response_us)
+            .map(Duration::from_micros)
+        else {
+            return format!("r_total {} (gmux --, --%)", fmt_duration(Some(total)));
+        };
+
+        let gmux = total.saturating_sub(app_response);
+        let percent = if total.is_zero() {
+            0.0
+        } else {
+            gmux.as_secs_f64() / total.as_secs_f64() * 100.0
+        };
+        format!(
+            "r_total {} (gmux {}, {:.0}%)",
+            fmt_duration(Some(total)),
+            fmt_duration(Some(gmux)),
+            percent
+        )
     }
 
     fn frame_kind_label(&self) -> String {

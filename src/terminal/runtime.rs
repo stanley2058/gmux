@@ -322,6 +322,13 @@ impl TerminalRuntime {
         self.0.try_send_bytes(bytes)
     }
 
+    #[cfg(unix)]
+    pub(crate) fn take_pty_app_response_timing(
+        &self,
+    ) -> Option<crate::pty::actor::PtyAppResponseTiming> {
+        self.0.take_pty_app_response_timing()
+    }
+
     pub async fn send_paste(&self, text: String) -> Result<(), mpsc::error::SendError<Bytes>> {
         self.0.send_paste(text).await
     }

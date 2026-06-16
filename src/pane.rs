@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 
 use bytes::Bytes;
@@ -19,7 +19,10 @@ use tracing::{debug, error, info, warn};
 use crate::events::AppEvent;
 use crate::layout::PaneId;
 #[cfg(unix)]
-use crate::pty::actor::{PtyIoActor, PtyIoActorConfig, PtyIoActorHandle, PtyReadResult};
+use crate::pty::actor::{
+    PtyAppResponseTiming, PtyDebugTimings, PtyIoActor, PtyIoActorConfig, PtyIoActorHandle,
+    PtyReadResult,
+};
 
 mod input;
 mod kitty_keyboard;
@@ -177,6 +180,8 @@ pub struct PaneRuntime {
     child_pid: Arc<AtomicU32>,
     child_wait_completed: Option<Arc<AtomicBool>>,
     kitty_keyboard_flags: Arc<AtomicU16>,
+    #[cfg(unix)]
+    pty_debug_timings: Arc<Mutex<PtyDebugTimings>>,
     preserve_processes_on_drop: bool,
     // Task handles for deterministic shutdown
     detect_handle: tokio::task::AbortHandle,
@@ -894,6 +899,7 @@ impl PaneRuntime {
         let terminal = Arc::new(PaneTerminal::new(pane_terminal));
         let child_pid = Arc::new(AtomicU32::new(child_pid));
         let kitty_keyboard_flags = Arc::new(AtomicU16::new(keyboard_protocol_flags));
+        let pty_debug_timings = Arc::new(Mutex::new(PtyDebugTimings::default()));
 
         let io = {
             let terminal = terminal.clone();
@@ -943,6 +949,7 @@ impl PaneRuntime {
                 pane_id: pane_id.raw(),
                 master_fd,
                 initially_quiesced: true,
+                debug_timings: pty_debug_timings.clone(),
                 on_read,
                 on_reader_exit: Some(on_reader_exit),
             })?)
@@ -959,6 +966,7 @@ impl PaneRuntime {
             child_pid,
             child_wait_completed: None,
             kitty_keyboard_flags,
+            pty_debug_timings,
             preserve_processes_on_drop: true,
             detect_handle,
         })
@@ -997,6 +1005,7 @@ impl PaneRuntime {
         }
         let terminal = Arc::new(PaneTerminal::new(pane_terminal));
         let kitty_keyboard_flags = Arc::new(AtomicU16::new(0));
+        let pty_debug_timings = Arc::new(Mutex::new(PtyDebugTimings::default()));
 
         let spawned = crate::pty::backend::spawn_with_portable_pty(rows, cols, cmd)
             .inspect_err(|err| error!(pane = pane_id.raw(), err = %err, "{spawn_error_message}"))?;
@@ -1072,6 +1081,7 @@ impl PaneRuntime {
                 pane_id: pane_id.raw(),
                 master_fd: spawned.master_fd,
                 initially_quiesced: false,
+                debug_timings: pty_debug_timings.clone(),
                 on_read,
                 on_reader_exit: None,
             })?)
@@ -1109,6 +1119,7 @@ impl PaneRuntime {
             child_pid,
             child_wait_completed: Some(child_wait_completed),
             kitty_keyboard_flags,
+            pty_debug_timings,
             preserve_processes_on_drop: false,
             detect_handle,
         })
@@ -1284,6 +1295,14 @@ impl PaneRuntime {
 
     pub fn try_send_bytes(&self, bytes: Bytes) -> Result<(), mpsc::error::TrySendError<Bytes>> {
         self.io.try_send_bytes(bytes)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn take_pty_app_response_timing(&self) -> Option<PtyAppResponseTiming> {
+        self.pty_debug_timings
+            .lock()
+            .ok()
+            .and_then(|mut timings| timings.take_app_response_timing())
     }
 
     pub async fn send_paste(&self, text: String) -> Result<(), mpsc::error::SendError<Bytes>> {
@@ -1494,6 +1513,7 @@ impl PaneRuntime {
                 child_pid: Arc::new(AtomicU32::new(0)),
                 child_wait_completed: None,
                 kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+                pty_debug_timings: Arc::new(Mutex::new(PtyDebugTimings::default())),
                 preserve_processes_on_drop: true,
                 detect_handle: tokio::spawn(async {}).abort_handle(),
             },
@@ -1890,6 +1910,7 @@ mod tests {
             child_pid: Arc::new(AtomicU32::new(0)),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+            pty_debug_timings: Arc::new(Mutex::new(PtyDebugTimings::default())),
             preserve_processes_on_drop: true,
             detect_handle: tokio::spawn(async {}).abort_handle(),
         };
@@ -1916,6 +1937,7 @@ mod tests {
             child_pid: Arc::new(AtomicU32::new(0)),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
+            pty_debug_timings: Arc::new(Mutex::new(PtyDebugTimings::default())),
             preserve_processes_on_drop: true,
             detect_handle: tokio::spawn(async {}).abort_handle(),
         };

@@ -10,11 +10,12 @@ use crate::{
 struct PreparedPaneInput {
     ws_idx: usize,
     pane_id: crate::layout::PaneId,
+    terminal_id: String,
     bytes: Bytes,
 }
 
 pub(crate) enum TerminalInputDispatch {
-    Forwarded,
+    Forwarded { terminal_id: String },
     HandledByApp,
     Ignored,
 }
@@ -42,7 +43,9 @@ impl App {
         if let Some(runtime) = self.lookup_runtime_sender(input.ws_idx, input.pane_id) {
             if runtime.try_send_bytes(input.bytes).is_ok() {
                 self.arm_input_render_bypass();
-                return TerminalInputDispatch::Forwarded;
+                return TerminalInputDispatch::Forwarded {
+                    terminal_id: input.terminal_id,
+                };
             }
         }
         TerminalInputDispatch::Ignored
@@ -113,6 +116,9 @@ impl App {
             return PreparedTerminalInput::Ignored;
         };
         let Some(pane_id) = ws.focused_pane_id() else {
+            return PreparedTerminalInput::Ignored;
+        };
+        let Some(terminal_id) = ws.terminal_id(pane_id).map(ToString::to_string) else {
             return PreparedTerminalInput::Ignored;
         };
         let rt = match self.state.runtime_for_pane_in_session_at(
@@ -209,6 +215,7 @@ impl App {
         PreparedTerminalInput::Forward(PreparedPaneInput {
             ws_idx,
             pane_id,
+            terminal_id,
             bytes: Bytes::from(bytes),
         })
     }
