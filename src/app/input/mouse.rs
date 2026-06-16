@@ -1503,6 +1503,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn routed_terminal_single_wheel_tick_uses_host_scrollback_scroll() {
+        let mut app = app_for_mouse_test();
+        let mut ws = Workspace::test_new("test");
+        let pane_id = ws.tabs[0].root_pane;
+        let pane_infos = ws.tabs[0].layout.panes(Rect::new(26, 2, 80, 18));
+        let info = pane_infos[0].clone();
+        ws.tabs[0].runtimes.insert(
+            pane_id,
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
+                info.inner_rect.width,
+                info.inner_rect.height,
+                16 * 1024,
+                &numbered_lines_bytes(64),
+            ),
+        );
+
+        app.state.sessions = vec![ws];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+        app.state.view.pane_infos = pane_infos;
+        app.state.mouse_scroll_lines = 7;
+
+        let result = app.route_client_events(
+            vec![crate::raw_input::RawInputEvent::Mouse(mouse(
+                MouseEventKind::ScrollUp,
+                info.inner_rect.x + 1,
+                info.inner_rect.y + 1,
+            ))],
+            true,
+        );
+
+        assert!(result.visual_change);
+        let metrics = app
+            .state
+            .runtime_for_pane_in_session_at(&app.terminal_runtimes, 0, pane_id)
+            .and_then(crate::terminal::TerminalRuntime::scroll_metrics)
+            .expect("scroll metrics after single wheel tick");
+        assert_eq!(metrics.offset_from_bottom, 7);
+    }
+
+    #[tokio::test]
     async fn routed_terminal_wheel_burst_coalesces_host_scrollback_scroll() {
         let mut app = app_for_mouse_test();
         let mut ws = Workspace::test_new("test");

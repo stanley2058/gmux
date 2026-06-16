@@ -1199,16 +1199,24 @@ impl App {
             notches = notches.saturating_add(1);
         }
 
-        if notches == 1 {
-            return false;
-        }
-
         self.state.selection = None;
         self.state.selection_autoscroll = None;
         self.selection_autoscroll_deadline = None;
         let lines = self.state.mouse_scroll_lines.saturating_mul(notches).max(1);
-        self.state
-            .handle_terminal_wheel_with_lines(&self.terminal_runtimes, first, lines);
+        if self.state.session().and_then(|ws| ws.focused_pane_id()) != Some(pane_id) {
+            self.state.focus_session_pane(pane_id);
+        }
+        match first.kind {
+            crossterm::event::MouseEventKind::ScrollUp => {
+                self.state
+                    .scroll_pane_up(&self.terminal_runtimes, pane_id, lines);
+            }
+            crossterm::event::MouseEventKind::ScrollDown => {
+                self.state
+                    .scroll_pane_down(&self.terminal_runtimes, pane_id, lines);
+            }
+            _ => {}
+        }
         true
     }
 

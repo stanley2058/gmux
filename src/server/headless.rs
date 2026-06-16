@@ -4056,6 +4056,246 @@ mod tests {
         );
     }
 
+    fn scrollback_bench_screen(lines: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for line in 0..lines {
+            bytes.extend_from_slice(format!("scroll bench line {line:05}\r\n").as_bytes());
+        }
+        bytes
+    }
+
+    struct HostScrollBenchStats {
+        total_loop_us: Vec<u64>,
+        handle_event_us: Vec<u64>,
+        render_and_stream_us: Vec<u64>,
+        recv_frame_us: Vec<u64>,
+        input_to_frame_us: Vec<u64>,
+        render_us: Vec<u64>,
+        frame_build_us: Vec<u64>,
+        prepare_us: Vec<u64>,
+        checksum: usize,
+    }
+
+    impl HostScrollBenchStats {
+        fn with_capacity(frames: usize) -> Self {
+            Self {
+                total_loop_us: Vec::with_capacity(frames),
+                handle_event_us: Vec::with_capacity(frames),
+                render_and_stream_us: Vec::with_capacity(frames),
+                recv_frame_us: Vec::with_capacity(frames),
+                input_to_frame_us: Vec::with_capacity(frames),
+                render_us: Vec::with_capacity(frames),
+                frame_build_us: Vec::with_capacity(frames),
+                prepare_us: Vec::with_capacity(frames),
+                checksum: 0,
+            }
+        }
+    }
+
+    fn run_host_scrollback_input_bench_case(
+        label: &str,
+        input_for_pane: impl FnOnce(Rect) -> Vec<u8>,
+        cols: u16,
+        rows: u16,
+        frames: usize,
+        history_lines: usize,
+        scrollback_limit_bytes: usize,
+        initial_offset_from_bottom: usize,
+    ) -> HostScrollBenchStats {
+        let initial_screen = scrollback_bench_screen(history_lines);
+        let mut server = test_headless_server();
+        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        let (runtime, _pane_input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
+                cols,
+                rows,
+                scrollback_limit_bytes,
+                &initial_screen,
+                1024,
+            );
+        workspace.insert_test_runtime(pane_id, runtime);
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        server.app.state.mode = crate::app::Mode::Terminal;
+        server.app.state.mouse_capture = true;
+
+        let (client_tx, _client_control_rx, client_rx) = test_client_writer();
+        server.clients.insert(
+            1,
+            ClientConnection::new(
+                (cols, rows),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                Some(client_tx),
+            ),
+        );
+        server.foreground_client_id = Some(1);
+        server.clients.get_mut(&1).unwrap().terminal_size = (cols, rows);
+        server.sync_foreground_client_state();
+        server.resize_shared_runtime_to_effective_size();
+
+        server.render_and_stream();
+        let _ = recv_server_frame_within(
+            &client_rx,
+            Duration::from_secs(1),
+            "initial host scroll benchmark frame",
+        );
+        let pane_rect = server
+            .app
+            .state
+            .view
+            .pane_infos
+            .first()
+            .expect("host scroll benchmark pane geometry")
+            .inner_rect;
+        let input = input_for_pane(pane_rect);
+        let runtime = server
+            .app
+            .state
+            .runtime_for_pane_in_session_at(&server.app.terminal_runtimes, 0, pane_id)
+            .expect("runtime");
+        runtime.set_scroll_offset_from_bottom(initial_offset_from_bottom);
+        server.render_and_stream();
+        let _ = recv_server_frame_within(
+            &client_rx,
+            Duration::from_secs(1),
+            "scrolled host scroll benchmark baseline",
+        );
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_secs(1))
+            .expect("scrolled host scroll benchmark baseline");
+
+        let mut stats = HostScrollBenchStats::with_capacity(frames);
+        for frame_index in 0..frames {
+            let loop_started = Instant::now();
+            let handle_started = Instant::now();
+            assert!(
+                server.handle_server_event(test_client_input(1, input.clone())),
+                "{label} frame {frame_index} should change host scrollback"
+            );
+            stats
+                .handle_event_us
+                .push(debug_duration_us(handle_started.elapsed()));
+
+            let render_started = Instant::now();
+            server.render_and_stream();
+            stats
+                .render_and_stream_us
+                .push(debug_duration_us(render_started.elapsed()));
+
+            let recv_started = Instant::now();
+            let frame_label = format!("{label} host scroll benchmark frame {frame_index}");
+            let frame = recv_server_frame_within(&client_rx, Duration::from_secs(1), &frame_label);
+            stats
+                .recv_frame_us
+                .push(debug_duration_us(recv_started.elapsed()));
+            stats
+                .total_loop_us
+                .push(debug_duration_us(loop_started.elapsed()));
+
+            let timing = frame
+                .debug_timing
+                .expect("host scroll benchmark frame should include debug timing");
+            stats
+                .input_to_frame_us
+                .push(timing.server_input_to_frame_us);
+            if let Some(value) = timing.server_render_us {
+                stats.render_us.push(value);
+            }
+            if let Some(value) = timing.server_frame_build_us {
+                stats.frame_build_us.push(value);
+            }
+            if let Some(value) = timing.server_prepare_us {
+                stats.prepare_us.push(value);
+            }
+            stats.checksum ^= frame.cells.len();
+        }
+        stats
+    }
+
+    fn print_host_scroll_bench_stats(label: &str, stats: &HostScrollBenchStats) {
+        println!("{label}:");
+        print_latency_bench_stats("  total_loop", &stats.total_loop_us);
+        print_latency_bench_stats("  handle_event", &stats.handle_event_us);
+        print_latency_bench_stats("  render_and_stream", &stats.render_and_stream_us);
+        print_latency_bench_stats("  recv_frame", &stats.recv_frame_us);
+        print_latency_bench_stats("  server_input_to_frame", &stats.input_to_frame_us);
+        print_latency_bench_stats("  server_render", &stats.render_us);
+        print_latency_bench_stats("  server_frame_build", &stats.frame_build_us);
+        print_latency_bench_stats("  server_prepare", &stats.prepare_us);
+        std::hint::black_box(stats.checksum);
+    }
+
+    #[tokio::test]
+    #[ignore = "host scrollback benchmark; run with `cargo test --release --locked host_scrollback_input_latency_benchmark -- --ignored --nocapture`"]
+    async fn host_scrollback_input_latency_benchmark() {
+        let cols = bench_env_u16("GMUX_SCROLL_BENCH_COLS", 160);
+        let rows = bench_env_u16("GMUX_SCROLL_BENCH_ROWS", 48);
+        let frames = bench_env_usize("GMUX_SCROLL_BENCH_FRAMES", 240);
+        let history_lines = bench_env_usize("GMUX_SCROLL_BENCH_HISTORY_LINES", 20_000);
+        let scrollback_limit_bytes =
+            bench_env_usize("GMUX_SCROLL_BENCH_SCROLLBACK_LIMIT_BYTES", 64 * 1024 * 1024);
+        let page_lines = rows.saturating_sub(2).max(1) as usize;
+        let initial_offset_from_bottom = frames
+            .saturating_mul(page_lines)
+            .saturating_add(usize::from(rows) * 4);
+
+        let wheel = run_host_scrollback_input_bench_case(
+            "wheel_scroll_down_tick",
+            |pane_rect| {
+                let mouse_col = pane_rect.x + pane_rect.width.min(2).saturating_sub(1);
+                let mouse_row = pane_rect.y + pane_rect.height.min(2).saturating_sub(1);
+                format!("\x1b[<65;{};{}M", mouse_col + 1, mouse_row + 1).into_bytes()
+            },
+            cols,
+            rows,
+            frames,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom,
+        );
+        let page_down = run_host_scrollback_input_bench_case(
+            "pagedown_repeat",
+            |_| b"\x1b[6;1:2~".to_vec(),
+            cols,
+            rows,
+            frames,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom,
+        );
+
+        println!(
+            "host_scrollback_input_latency: frames={} cols={} rows={} history_lines={} scrollback_limit_bytes={} initial_offset_from_bottom={}",
+            frames, cols, rows, history_lines, scrollback_limit_bytes, initial_offset_from_bottom
+        );
+        print_host_scroll_bench_stats("wheel_scroll_down_tick", &wheel);
+        print_host_scroll_bench_stats("pagedown_repeat", &page_down);
+        let wheel_avg = bench_average(&wheel.total_loop_us);
+        let page_down_avg = bench_average(&page_down.total_loop_us);
+        println!(
+            "comparison: wheel_avg={}us pagedown_avg={}us wheel/pagedown={:.2}x",
+            wheel_avg,
+            page_down_avg,
+            if page_down_avg == 0 {
+                0.0
+            } else {
+                wheel_avg as f64 / page_down_avg as f64
+            }
+        );
+    }
+
     #[tokio::test]
     #[ignore = "interaction benchmark; run with `just bench-input-latency`"]
     async fn held_key_interaction_latency_benchmark() {
