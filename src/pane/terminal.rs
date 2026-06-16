@@ -588,6 +588,22 @@ impl GhosttyPaneTerminal {
         }
     }
 
+    pub fn seed_handoff_alternate_screen_ansi(&self, ansi: &str) {
+        if ansi.is_empty() {
+            return;
+        }
+        let Ok(mut core) = self.core.lock() else {
+            return;
+        };
+        if core.terminal.active_screen().ok() != Some(crate::ghostty::ActiveScreen::Alternate) {
+            core.terminal.write(b"\x1b[?1049h");
+        }
+        core.terminal.write(ansi.as_bytes());
+        if let Ok(mut key_encoder) = self.key_encoder.lock() {
+            key_encoder.set_from_terminal(&core.terminal);
+        }
+    }
+
     pub fn seed_handoff_input_state(&self, input_state: InputState) {
         let Ok(mut core) = self.core.lock() else {
             return;
@@ -2498,6 +2514,38 @@ mod tests {
         let key = crate::input::parse_terminal_key_sequence("\x1b[13;2u").unwrap();
         let encoded = pane.encode_terminal_key(key, crate::input::KeyboardProtocol::Legacy);
         assert_eq!(encoded, b"\x1b[27;2;13~");
+    }
+
+    #[test]
+    fn ghostty_seed_handoff_alternate_screen_ansi_restores_visible_content() {
+        let (tx, _rx) = mpsc::channel(4);
+        let terminal = crate::ghostty::Terminal::new(40, 5, 0).unwrap();
+        let pane = GhosttyPaneTerminal::new(terminal, tx).unwrap();
+
+        pane.seed_handoff_input_state(InputState {
+            alternate_screen: true,
+            application_cursor: false,
+            bracketed_paste: false,
+            focus_reporting: false,
+            mouse_protocol_mode: crate::input::MouseProtocolMode::ButtonMotion,
+            mouse_protocol_encoding: crate::input::MouseProtocolEncoding::Sgr,
+            mouse_alternate_scroll: false,
+            modify_other_keys: false,
+        });
+        pane.seed_handoff_alternate_screen_ansi("HANDOFF-ALT");
+
+        assert!(pane
+            .input_state()
+            .is_some_and(|input_state| input_state.alternate_screen));
+        assert!(pane.visible_text().contains("HANDOFF-ALT"));
+        assert!(pane
+            .encode_mouse_button(
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                1,
+                1,
+                crossterm::event::KeyModifiers::empty(),
+            )
+            .is_some());
     }
 
     #[test]

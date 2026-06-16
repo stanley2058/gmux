@@ -656,7 +656,23 @@ impl PaneRuntime {
             keyboard_protocol_ansi: self.terminal.kitty_keyboard_state_ansi(),
             input_state: self.input_state(),
             initial_history_ansi: None,
+            initial_alternate_screen_ansi: self.handoff_alternate_screen_ansi(),
         }
+    }
+
+    #[cfg(unix)]
+    pub fn handoff_alternate_screen_ansi(&self) -> Option<String> {
+        if !self
+            .terminal
+            .input_state()
+            .is_some_and(|input_state| input_state.alternate_screen)
+        {
+            return None;
+        }
+        let ansi = self.terminal.visible_ansi();
+        (!ansi.trim().is_empty()).then(|| {
+            truncate_handoff_history(ansi, crate::server::handoff::MAX_REPLAY_BYTES_PER_PANE)
+        })
     }
 
     #[cfg(unix)]
@@ -866,6 +882,7 @@ impl PaneRuntime {
             keyboard_protocol_ansi,
             input_state,
             initial_history_ansi,
+            initial_alternate_screen_ansi,
         } = state;
         let pane_id = PaneId::from_raw(pane_id);
         use std::os::fd::FromRawFd;
@@ -895,6 +912,9 @@ impl PaneRuntime {
         }
         if let Some(ansi) = initial_history_ansi.as_deref() {
             pane_terminal.seed_history_ansi(ansi);
+        }
+        if let Some(ansi) = initial_alternate_screen_ansi.as_deref() {
+            pane_terminal.seed_handoff_alternate_screen_ansi(ansi);
         }
         let terminal = Arc::new(PaneTerminal::new(pane_terminal));
         let child_pid = Arc::new(AtomicU32::new(child_pid));
@@ -1842,6 +1862,27 @@ mod tests {
         );
 
         assert!(runtime.handoff_history_ansi().is_none());
+    }
+
+    #[tokio::test]
+    async fn handoff_runtime_state_captures_alternate_screen_contents() {
+        let runtime = PaneRuntime::test_with_scrollback_bytes(
+            40,
+            5,
+            4096,
+            b"primary\r\n\x1b[?1049h\x1b[2JHANDOFF-ALT\x1b[?1002h\x1b[?1006h",
+        );
+
+        let pane = runtime.handoff_runtime_state(12);
+
+        assert!(pane
+            .input_state
+            .is_some_and(|input_state| input_state.alternate_screen));
+        assert_eq!(pane.initial_history_ansi, None);
+        assert!(pane
+            .initial_alternate_screen_ansi
+            .as_deref()
+            .is_some_and(|ansi| ansi.contains("HANDOFF-ALT")));
     }
 
     #[tokio::test]

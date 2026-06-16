@@ -18,6 +18,8 @@ pub(crate) struct HandoffRuntimeState {
     pub input_state: Option<crate::pane::InputState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_history_ansi: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_alternate_screen_ansi: Option<String>,
 }
 
 #[cfg(unix)]
