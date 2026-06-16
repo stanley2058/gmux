@@ -372,6 +372,21 @@ fn find_text_in_frame(frame: &FrameWire, needle: &str) -> Option<(u16, u16)> {
     None
 }
 
+fn parse_sgr_mouse_report(text: &str) -> Option<(u16, u16, u16, char)> {
+    let start = text.find("\x1b[<")?;
+    let rest = &text[start + 3..];
+    let terminator_idx = rest.find(['M', 'm'])?;
+    let terminator = rest.as_bytes().get(terminator_idx).copied()? as char;
+    let mut parts = rest[..terminator_idx].split(';');
+    let button = parts.next()?.parse().ok()?;
+    let x = parts.next()?.parse().ok()?;
+    let y = parts.next()?.parse().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((button, x, y, terminator))
+}
+
 #[cfg(target_os = "linux")]
 fn server_ptmx_fd_count(pid: u32) -> usize {
     let Ok(entries) = fs::read_dir(format!("/proc/{pid}/fd")) else {
@@ -841,6 +856,10 @@ fn live_handoff_preserves_alternate_screen_mouse_forwarding() {
         pre_mouse_bytes.contains("\x1b[<0;"),
         "pre-handoff mouse bytes were not forwarded: {pre_mouse_bytes:?}"
     );
+    let (_, pre_mouse_x, pre_mouse_y, _) =
+        parse_sgr_mouse_report(&pre_mouse_bytes).expect("pre-handoff SGR mouse report");
+    let pane_left = 1_i32 - i32::from(pre_mouse_x);
+    let pane_top = 6_i32 - i32::from(pre_mouse_y);
 
     assert_ok(request(
         &api_socket,
@@ -884,9 +903,11 @@ fn live_handoff_preserves_alternate_screen_mouse_forwarding() {
         .expect("initial frame should contain READY from the alternate-screen app");
     thread::sleep(Duration::from_millis(200));
 
+    let ready_screen_x = ready_col + 1;
+    let ready_screen_y = ready_row + 1;
     send_input(
         &mut client_stream,
-        format!("\x1b[<0;{};{}M", ready_col + 1, ready_row + 1).as_bytes(),
+        format!("\x1b[<0;{ready_screen_x};{ready_screen_y}M").as_bytes(),
     )
     .unwrap();
 
@@ -895,6 +916,11 @@ fn live_handoff_preserves_alternate_screen_mouse_forwarding() {
         mouse_bytes.contains("\x1b[<0;"),
         "mouse bytes were not forwarded as an SGR mouse report: {mouse_bytes:?}"
     );
+    let (_, mouse_x, mouse_y, terminator) =
+        parse_sgr_mouse_report(&mouse_bytes).expect("post-handoff SGR mouse report");
+    assert_eq!(terminator, 'M');
+    assert_eq!(i32::from(mouse_x), i32::from(ready_screen_x) - pane_left);
+    assert_eq!(i32::from(mouse_y), i32::from(ready_screen_y) - pane_top);
 
     let _ = request(
         &api_socket,

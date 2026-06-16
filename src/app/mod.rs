@@ -66,6 +66,44 @@ impl ClientInputRouteResult {
     }
 }
 
+fn translate_raw_sgr_mouse_to_pane(data: &[u8], inner_rect: Rect) -> Option<Vec<u8>> {
+    if !data.starts_with(b"\x1b[<") {
+        return None;
+    }
+    let terminator = *data.last()?;
+    if !matches!(terminator, b'M' | b'm') {
+        return None;
+    }
+
+    let body = std::str::from_utf8(&data[3..data.len().saturating_sub(1)]).ok()?;
+    let mut parts = body.split(';');
+    let button = parts.next()?;
+    let _ = button.parse::<u16>().ok()?;
+    let x = parts.next()?.parse::<u32>().ok()?;
+    let y = parts.next()?.parse::<u32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+
+    let screen_col = x.checked_sub(1)?;
+    let screen_row = y.checked_sub(1)?;
+    let pane_left = u32::from(inner_rect.x);
+    let pane_top = u32::from(inner_rect.y);
+    let pane_right = pane_left + u32::from(inner_rect.width);
+    let pane_bottom = pane_top + u32::from(inner_rect.height);
+    if screen_col < pane_left
+        || screen_col >= pane_right
+        || screen_row < pane_top
+        || screen_row >= pane_bottom
+    {
+        return None;
+    }
+
+    let pane_x = screen_col - pane_left + 1;
+    let pane_y = screen_row - pane_top + 1;
+    Some(format!("\x1b[<{button};{pane_x};{pane_y}{}", terminator as char).into_bytes())
+}
+
 /// Full application: AppState + runtime concerns (event channels, async I/O).
 #[derive(Debug, Clone)]
 pub(crate) struct OverlayPaneState {
@@ -1297,14 +1335,13 @@ impl App {
     }
 
     pub(crate) fn forward_raw_sgr_mouse_to_focused_pane(&mut self, data: &[u8]) -> Option<String> {
-        if !data.starts_with(b"\x1b[<") || !matches!(data.last(), Some(b'M' | b'm')) {
-            return None;
-        }
         if self.state.mode != Mode::Terminal {
             return None;
         }
         let ws_idx = self.state.session_index()?;
         let pane_id = self.state.session().and_then(|ws| ws.focused_pane_id())?;
+        let pane_info = self.state.pane_info_by_id(pane_id)?;
+        let translated = translate_raw_sgr_mouse_to_pane(data, pane_info.inner_rect)?;
         let terminal_id = self
             .state
             .session()
@@ -1314,9 +1351,7 @@ impl App {
             self.state
                 .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)?;
         runtime.scroll_reset();
-        runtime
-            .try_send_bytes(bytes::Bytes::copy_from_slice(data))
-            .ok()?;
+        runtime.try_send_bytes(bytes::Bytes::from(translated)).ok()?;
         self.arm_input_render_bypass();
         Some(terminal_id)
     }
@@ -1428,6 +1463,28 @@ mod tests {
             api_rx,
             crate::api::EventHub::default(),
         )
+    }
+
+    #[test]
+    fn raw_sgr_mouse_translation_subtracts_pane_inner_offset() {
+        let pane = Rect::new(3, 2, 20, 10);
+        assert_eq!(
+            translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;7M", pane),
+            Some(b"\x1b[<0;5;5M".to_vec())
+        );
+        assert_eq!(
+            translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;7m", pane),
+            Some(b"\x1b[<0;5;5m".to_vec())
+        );
+    }
+
+    #[test]
+    fn raw_sgr_mouse_translation_rejects_points_outside_pane() {
+        let pane = Rect::new(3, 2, 20, 10);
+        assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;2;7M", pane), None);
+        assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;2M", pane), None);
+        assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;24;7M", pane), None);
+        assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;13M", pane), None);
     }
 
     #[derive(Clone, Default)]
