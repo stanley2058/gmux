@@ -91,6 +91,10 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # xterm-ghostty terminfo, set this to "xterm-256color".
 # term = "xterm-ghostty"
 
+# Commands used for scrollback snapshots. Empty means $EDITOR/$PAGER, then fallback.
+# editor = ""
+# pager = ""
+
 # Executable used for new interactive panes.
 # Empty means $SHELL, then /bin/sh.
 # default_shell = ""
@@ -125,7 +129,7 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # settings = "prefix+s"
 # detach = ["prefix+d", "prefix+q"]
 # reload_config = "prefix+shift+r"
-# open_notification_target = "prefix+o"
+# open_notification_target = ""
 # goto = "prefix+g"
 # new_tab = "prefix+c"
 # rename_tab = ["prefix+comma", "prefix+shift+t"]
@@ -134,7 +138,8 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # switch_tab = "prefix+1..9"
 # close_tab = ["prefix+ampersand", "prefix+shift+x"]
 # rename_pane = "prefix+shift+p"
-# edit_scrollback = "prefix+e"
+# view_scrollback = "prefix+o"
+# edit_scrollback = "prefix+shift+o"
 # focus_pane_left = ["prefix+h", "prefix+left"]
 # focus_pane_down = ["prefix+j", "prefix+down"]
 # focus_pane_up = ["prefix+k", "prefix+up"]

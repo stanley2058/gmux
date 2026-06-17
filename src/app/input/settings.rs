@@ -252,6 +252,15 @@ fn edit_action(field: SettingsEditField, input: &str) -> Result<SettingsAction, 
                 "pane TERM",
             ))
         }
+        SettingsEditField::TerminalEditor => Ok(save_value(
+            "terminal",
+            "editor",
+            toml_string(input),
+            "editor",
+        )),
+        SettingsEditField::TerminalPager => {
+            Ok(save_value("terminal", "pager", toml_string(input), "pager"))
+        }
         SettingsEditField::DefaultShell => Ok(save_value(
             "terminal",
             "default_shell",
@@ -482,7 +491,7 @@ mod tests {
     fn settings_text_editor_saves_default_shell() {
         let mut state = state_with_workspaces(&["test"]);
         open_settings_at_page(&mut state, SettingsPage::Terminal);
-        state.settings.list.selected = 1;
+        state.settings.list.selected = 3;
 
         let action = update_settings_state(
             &mut state,
@@ -506,6 +515,72 @@ mod tests {
                 key: "default_shell",
                 value: "\"/bin/zsh\"".to_string(),
                 context: "default shell",
+            })
+        );
+        assert!(state.settings.edit.is_none());
+    }
+
+    #[test]
+    fn settings_text_editor_saves_terminal_editor() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_settings_at_page(&mut state, SettingsPage::Terminal);
+        state.settings.list.selected = 1;
+
+        let action = update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+        assert_eq!(action, None);
+        assert!(state.settings.edit.is_some());
+
+        if let Some(edit) = &mut state.settings.edit {
+            edit.input = "nvim -R".to_string();
+        }
+        let action = update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(
+            action,
+            Some(SettingsAction::SaveSectionValue {
+                section: "terminal",
+                key: "editor",
+                value: "\"nvim -R\"".to_string(),
+                context: "editor",
+            })
+        );
+        assert!(state.settings.edit.is_none());
+    }
+
+    #[test]
+    fn settings_text_editor_saves_terminal_pager() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_settings_at_page(&mut state, SettingsPage::Terminal);
+        state.settings.list.selected = 2;
+
+        let action = update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+        assert_eq!(action, None);
+        assert!(state.settings.edit.is_some());
+
+        if let Some(edit) = &mut state.settings.edit {
+            edit.input = "less -S".to_string();
+        }
+        let action = update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(
+            action,
+            Some(SettingsAction::SaveSectionValue {
+                section: "terminal",
+                key: "pager",
+                value: "\"less -S\"".to_string(),
+                context: "pager",
             })
         );
         assert!(state.settings.edit.is_none());

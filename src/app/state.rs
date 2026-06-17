@@ -768,6 +768,8 @@ impl SettingsPage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsEditField {
     PaneTerm,
+    TerminalEditor,
+    TerminalPager,
     DefaultShell,
     NewTerminalCwdPath,
     SidebarWidth,
@@ -1125,6 +1127,8 @@ pub struct AppState {
     pub switch_ascii_input_source_in_prefix: bool,
     pub kitty_graphics_enabled: bool,
     pub pane_term: String,
+    pub terminal_editor: String,
+    pub terminal_pager: String,
     pub default_shell: String,
     pub shell_mode: crate::config::ShellModeConfig,
     pub new_terminal_cwd: NewTerminalCwdConfig,
@@ -1458,6 +1462,8 @@ impl AppState {
             switch_ascii_input_source_in_prefix: false,
             kitty_graphics_enabled: false,
             pane_term: crate::config::DEFAULT_TERMINAL_TERM.to_string(),
+            terminal_editor: String::new(),
+            terminal_pager: String::new(),
             default_shell: String::new(),
             shell_mode: crate::config::ShellModeConfig::Auto,
             new_terminal_cwd: NewTerminalCwdConfig::Follow,

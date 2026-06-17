@@ -177,6 +177,8 @@ pub(crate) fn settings_rows(state: &AppState) -> Vec<SettingsRow> {
 pub(crate) fn edit_field_label(field: SettingsEditField) -> &'static str {
     match field {
         SettingsEditField::PaneTerm => "pane TERM",
+        SettingsEditField::TerminalEditor => "editor",
+        SettingsEditField::TerminalPager => "pager",
         SettingsEditField::DefaultShell => "default shell",
         SettingsEditField::NewTerminalCwdPath => "new terminal cwd path",
         SettingsEditField::SidebarWidth => "sidebar width",
@@ -191,6 +193,8 @@ pub(crate) fn edit_field_label(field: SettingsEditField) -> &'static str {
 pub(crate) fn edit_field_initial_value(state: &AppState, field: SettingsEditField) -> String {
     match field {
         SettingsEditField::PaneTerm => state.pane_term.clone(),
+        SettingsEditField::TerminalEditor => state.terminal_editor.clone(),
+        SettingsEditField::TerminalPager => state.terminal_pager.clone(),
         SettingsEditField::DefaultShell => state.default_shell.clone(),
         SettingsEditField::NewTerminalCwdPath => match &state.new_terminal_cwd {
             NewTerminalCwdConfig::Path(path) => path.clone(),
@@ -311,6 +315,18 @@ fn terminal_rows(state: &AppState) -> Vec<SettingsRow> {
             SettingsEditField::PaneTerm,
         ),
         SettingsRow::edit(
+            "editor",
+            opener_setting_label(&state.terminal_editor, "EDITOR", "vi"),
+            "scrollback",
+            SettingsEditField::TerminalEditor,
+        ),
+        SettingsRow::edit(
+            "pager",
+            opener_setting_label(&state.terminal_pager, "PAGER", "less -R"),
+            "scrollback",
+            SettingsEditField::TerminalPager,
+        ),
+        SettingsRow::edit(
             "default shell",
             if state.default_shell.is_empty() {
                 "SHELL"
@@ -399,6 +415,16 @@ fn new_terminal_cwd_rows(state: &AppState) -> Vec<SettingsRow> {
             action: SettingsRowAction::Edit(SettingsEditField::NewTerminalCwdPath),
         },
     ]
+}
+
+fn opener_setting_label(configured: &str, env_var: &str, fallback: &str) -> String {
+    if !configured.is_empty() {
+        return configured.to_string();
+    }
+    match std::env::var(env_var) {
+        Ok(value) if !value.is_empty() => format!("${env_var}: {value}"),
+        _ => fallback.to_string(),
+    }
 }
 
 fn interface_rows(state: &AppState) -> Vec<SettingsRow> {

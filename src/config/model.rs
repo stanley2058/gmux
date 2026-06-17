@@ -138,6 +138,10 @@ pub struct TerminalConfig {
     /// TERM advertised to pane applications. Default: "xterm-ghostty".
     #[serde(default = "default_terminal_term")]
     pub term: String,
+    /// Command used to edit scrollback snapshots. Empty means EDITOR, then vi.
+    pub editor: String,
+    /// Command used to page scrollback snapshots. Empty means PAGER, then less -R.
+    pub pager: String,
     /// Executable used for new interactive panes. Empty means SHELL, then /bin/sh.
     pub default_shell: String,
     /// Startup mode for new interactive pane shells.
@@ -152,6 +156,8 @@ impl Default for TerminalConfig {
     fn default() -> Self {
         Self {
             term: default_terminal_term(),
+            editor: String::new(),
+            pager: String::new(),
             default_shell: String::new(),
             shell_mode: ShellModeConfig::Auto,
             new_cwd: NewTerminalCwdConfig::Follow,
@@ -235,7 +241,7 @@ pub struct KeysConfig {
     pub detach: BindingConfig,
     /// Reload config.toml in the running app/server. Default: "prefix+shift+r".
     pub reload_config: BindingConfig,
-    /// Focus the currently visible notification target. Default: "prefix+o".
+    /// Focus the currently visible notification target. Unset by default.
     pub open_notification_target: BindingConfig,
     /// Focus the previous pane shown in the pane panel. Unset by default.
     pub previous_pane_panel_entry: BindingConfig,
@@ -257,7 +263,9 @@ pub struct KeysConfig {
     pub close_tab: BindingConfig,
     /// Rename the focused pane. Default: "prefix+shift+p".
     pub rename_pane: BindingConfig,
-    /// Open the focused pane scrollback in $EDITOR. Default: "prefix+e".
+    /// Open the focused pane scrollback in a pager. Default: "prefix+o".
+    pub view_scrollback: BindingConfig,
+    /// Open the focused pane scrollback in an editor. Default: "prefix+shift+o".
     pub edit_scrollback: BindingConfig,
     /// Enter keyboard copy mode for the focused pane. Default: "prefix+[".
     pub copy_mode: BindingConfig,
@@ -432,7 +440,7 @@ impl Default for KeysConfig {
             navigate_pane_right: BindingConfig::one("l"),
             detach: BindingConfig::Many(vec!["prefix+d".into(), "prefix+q".into()]),
             reload_config: BindingConfig::one("prefix+shift+r"),
-            open_notification_target: BindingConfig::one("prefix+o"),
+            open_notification_target: BindingConfig::empty(),
             previous_pane_panel_entry: BindingConfig::empty(),
             next_pane_panel_entry: BindingConfig::empty(),
             focus_pane_panel_entry: BindingConfig::empty(),
@@ -446,7 +454,8 @@ impl Default for KeysConfig {
                 "prefix+shift+x".into(),
             ]),
             rename_pane: BindingConfig::one("prefix+shift+p"),
-            edit_scrollback: BindingConfig::one("prefix+e"),
+            view_scrollback: BindingConfig::one("prefix+o"),
+            edit_scrollback: BindingConfig::one("prefix+shift+o"),
             copy_mode: BindingConfig::one("prefix+["),
             focus_pane_left: BindingConfig::Many(vec!["prefix+h".into(), "prefix+left".into()]),
             focus_pane_down: BindingConfig::Many(vec!["prefix+j".into(), "prefix+down".into()]),

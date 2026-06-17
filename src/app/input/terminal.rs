@@ -65,8 +65,8 @@ impl App {
                 action = ?action,
                 "intercepted terminal direct keybinding before forwarding to pane"
             );
-            if action == super::navigate::NavigateAction::EditScrollback {
-                self.launch_focused_scrollback_editor();
+            if let Some(opener) = action.scrollback_opener() {
+                self.launch_focused_scrollback(opener);
             } else {
                 super::navigate::execute_navigate_action_in_context(
                     &mut self.state,

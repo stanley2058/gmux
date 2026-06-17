@@ -17,6 +17,21 @@ impl App {
         if key.kind == KeyEventKind::Release {
             return;
         }
+        if !self.state.copy_mode_search.active {
+            match copy_mode_command_char(key) {
+                Some('o') => {
+                    self.state.exit_copy_mode(&self.terminal_runtimes, false);
+                    self.launch_focused_scrollback(super::navigate::ScrollbackOpener::Pager);
+                    return;
+                }
+                Some('O') => {
+                    self.state.exit_copy_mode(&self.terminal_runtimes, false);
+                    self.launch_focused_scrollback(super::navigate::ScrollbackOpener::Editor);
+                    return;
+                }
+                _ => {}
+            }
+        }
         self.state
             .handle_copy_mode_key(&self.terminal_runtimes, key);
         if let Some(content) = self.state.request_clipboard_write.take() {
@@ -994,7 +1009,7 @@ fn shifted_ascii_char(ch: char) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{app_for_mouse_test, numbered_lines_bytes};
+    use super::super::{app_for_mouse_test, numbered_lines_bytes, unique_temp_path, wait_for_file};
     use super::*;
     use crate::{events::AppEvent, workspace::Workspace};
     use ratatui::layout::Rect;
@@ -1540,5 +1555,41 @@ mod tests {
         }
         assert_eq!(app.state.mode, Mode::Terminal);
         assert!(app.state.copy_mode.is_none());
+    }
+
+    #[tokio::test]
+    async fn copy_mode_o_opens_scrollback_in_pager() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        let output_path = unique_temp_path("copy-mode-pager");
+        app.state.terminal_pager = format!("sh -c 'cp \"$1\" {}' sh", output_path.display());
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('o'), KeyModifiers::empty()));
+
+        let content = wait_for_file(&output_path);
+        assert!(content.contains("alpha"));
+        assert!(content.contains("beta"));
+        assert_eq!(app.state.mode, Mode::Terminal);
+        assert!(app.state.copy_mode.is_none());
+
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_shift_o_opens_scrollback_in_editor() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        let output_path = unique_temp_path("copy-mode-editor");
+        app.state.terminal_editor = format!("sh -c 'cp \"$1\" {}' sh", output_path.display());
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('O'), KeyModifiers::SHIFT));
+
+        let content = wait_for_file(&output_path);
+        assert!(content.contains("alpha"));
+        assert!(content.contains("beta"));
+        assert_eq!(app.state.mode, Mode::Terminal);
+        assert!(app.state.copy_mode.is_none());
+
+        let _ = std::fs::remove_file(output_path);
     }
 }

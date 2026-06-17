@@ -273,6 +273,7 @@ pub struct Keybinds {
     pub switch_tab: Vec<IndexedKeybind>,
     pub close_tab: ActionKeybinds,
     pub rename_pane: ActionKeybinds,
+    pub view_scrollback: ActionKeybinds,
     pub edit_scrollback: ActionKeybinds,
     pub copy_mode: ActionKeybinds,
     pub focus_pane_left: ActionKeybinds,
@@ -441,6 +442,7 @@ impl Config {
             switch_tab: indexed!("keys.switch_tab", &self.keys.switch_tab),
             close_tab: action!("keys.close_tab", &self.keys.close_tab),
             rename_pane: action!("keys.rename_pane", &self.keys.rename_pane),
+            view_scrollback: action!("keys.view_scrollback", &self.keys.view_scrollback),
             edit_scrollback: action!("keys.edit_scrollback", &self.keys.edit_scrollback),
             copy_mode: action!("keys.copy_mode", &self.keys.copy_mode),
             focus_pane_left: action!("keys.focus_pane_left", &self.keys.focus_pane_left),
@@ -1299,6 +1301,26 @@ workspaces = "prefix+shift"
                 KeyModifiers::empty()
             ))]
         );
+    }
+
+    #[test]
+    fn scrollback_openers_use_prefix_o_by_default() {
+        let kb = Config::default().keybinds();
+        assert_eq!(
+            binding_triggers(&kb.view_scrollback),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('o'),
+                KeyModifiers::empty()
+            ))]
+        );
+        assert_eq!(
+            binding_triggers(&kb.edit_scrollback),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('o'),
+                KeyModifiers::SHIFT
+            ))]
+        );
+        assert!(kb.open_notification_target.bindings.is_empty());
     }
 
     #[test]

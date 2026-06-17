@@ -33,6 +33,12 @@ pub(crate) enum ActionContext {
     Navigate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ScrollbackOpener {
+    Pager,
+    Editor,
+}
+
 impl App {
     pub(crate) fn handle_prefix_key(&mut self, raw_key: TerminalKey) {
         let key = raw_key.as_key_event();
@@ -50,9 +56,9 @@ impl App {
         }
 
         if let Some(action) = action_for_key(&self.state, raw_key, BindingDispatch::Prefix) {
-            if action == NavigateAction::EditScrollback {
+            if let Some(opener) = action.scrollback_opener() {
                 let previous_mode = self.state.mode;
-                self.launch_focused_scrollback_editor();
+                self.launch_focused_scrollback(opener);
                 finish_action_context(&mut self.state, ActionContext::Prefix, previous_mode);
             } else {
                 execute_navigate_action_in_context(
@@ -87,8 +93,8 @@ impl App {
         }
 
         if let Some(action) = navigate_mode_action_for_key(&self.state, raw_key) {
-            if action == NavigateAction::EditScrollback {
-                self.launch_focused_scrollback_editor();
+            if let Some(opener) = action.scrollback_opener() {
+                self.launch_focused_scrollback(opener);
             } else {
                 execute_navigate_action_in_context(
                     &mut self.state,
@@ -211,14 +217,14 @@ impl App {
         Ok(())
     }
 
-    pub(super) fn launch_focused_scrollback_editor(&mut self) {
+    pub(super) fn launch_focused_scrollback(&mut self, opener: ScrollbackOpener) {
         let previous_toast = self.state.toast.clone();
-        match self.open_focused_scrollback_in_editor() {
+        match self.open_focused_scrollback(opener) {
             Ok(()) => self.sync_toast_deadline(previous_toast),
             Err(err) => {
                 self.state.toast = Some(crate::app::state::ToastNotification {
                     kind: crate::app::state::ToastKind::NeedsAttention,
-                    title: "edit scrollback failed".to_string(),
+                    title: format!("{} scrollback failed", opener.verb()),
                     context: err.to_string(),
                     target: None,
                 });
@@ -227,7 +233,7 @@ impl App {
         }
     }
 
-    fn open_focused_scrollback_in_editor(&mut self) -> std::io::Result<()> {
+    fn open_focused_scrollback(&mut self, opener: ScrollbackOpener) -> std::io::Result<()> {
         let ws_idx = self
             .state
             .session_index()
@@ -239,17 +245,18 @@ impl App {
         let pane_id = ws
             .focused_pane_id()
             .ok_or_else(|| std::io::Error::other("no focused pane"))?;
-        let scrollback = self
+        let runtime = self
             .state
             .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)
-            .ok_or_else(|| std::io::Error::other("focused pane has no scrollback runtime"))?
-            .recent_text(usize::MAX);
+            .ok_or_else(|| std::io::Error::other("focused pane has no scrollback runtime"))?;
+        let scrollback = focused_scrollback_snapshot(runtime);
 
         let path = write_scrollback_temp_file(&scrollback)?;
 
         let quoted_path = shell_quote(&path.display().to_string());
+        let opener_command = opener_command(&self.state, opener);
         let command = format!(
-            r#"scrollback_file={quoted_path}; eval "${{EDITOR:-vi}} \"\$scrollback_file\""; status=$?; rm -f "$scrollback_file"; exit $status"#
+            r#"scrollback_file={quoted_path}; opener={opener_command}; eval "$opener \"\$scrollback_file\""; status=$?; rm -f "$scrollback_file"; exit $status"#
         );
         if let Err(err) = self.spawn_pane_command(&command, vec![path.clone()]) {
             let _ = fs::remove_file(&path);
@@ -259,7 +266,7 @@ impl App {
         if let Some(public_pane_id) = self.public_pane_id(ws_idx, pane_id) {
             self.state.toast = Some(crate::app::state::ToastNotification {
                 kind: crate::app::state::ToastKind::Finished,
-                title: "opened scrollback".to_string(),
+                title: format!("{} scrollback", opener.opened_title()),
                 context: format!("focused pane {public_pane_id}"),
                 target: None,
             });
@@ -462,6 +469,7 @@ pub(crate) enum NavigateAction {
     NextTab,
     CloseTab,
     RenamePane,
+    ViewScrollback,
     FocusPaneLeft,
     FocusPaneDown,
     FocusPaneUp,
@@ -485,6 +493,32 @@ pub(crate) enum NavigateAction {
     OpenNotificationTarget,
     Detach,
     OpenNavigator,
+}
+
+impl NavigateAction {
+    pub(super) fn scrollback_opener(self) -> Option<ScrollbackOpener> {
+        match self {
+            Self::ViewScrollback => Some(ScrollbackOpener::Pager),
+            Self::EditScrollback => Some(ScrollbackOpener::Editor),
+            _ => None,
+        }
+    }
+}
+
+impl ScrollbackOpener {
+    fn verb(self) -> &'static str {
+        match self {
+            Self::Pager => "view",
+            Self::Editor => "edit",
+        }
+    }
+
+    fn opened_title(self) -> &'static str {
+        match self {
+            Self::Pager => "viewing",
+            Self::Editor => "editing",
+        }
+    }
 }
 
 fn indexed_navigation_action(
@@ -554,6 +588,7 @@ fn action_for_key(
         (&kb.next_tab, NavigateAction::NextTab),
         (&kb.close_tab, NavigateAction::CloseTab),
         (&kb.rename_pane, NavigateAction::RenamePane),
+        (&kb.view_scrollback, NavigateAction::ViewScrollback),
         (&kb.edit_scrollback, NavigateAction::EditScrollback),
         (&kb.copy_mode, NavigateAction::CopyMode),
         (&kb.focus_pane_left, NavigateAction::FocusPaneLeft),
@@ -693,7 +728,7 @@ pub(super) fn execute_navigate_action_in_context(
                 leave_navigate_mode(state);
             }
         }
-        NavigateAction::EditScrollback => {}
+        NavigateAction::ViewScrollback | NavigateAction::EditScrollback => {}
         NavigateAction::CopyMode => state.enter_copy_mode(terminal_runtimes),
         NavigateAction::Zoom => {
             state.toggle_zoom();
@@ -777,6 +812,29 @@ fn leave_command_mode(state: &mut AppState) {
     } else {
         Mode::Navigate
     };
+}
+
+fn focused_scrollback_snapshot(runtime: &crate::terminal::TerminalRuntime) -> String {
+    if runtime
+        .input_state()
+        .is_some_and(|input_state| input_state.alternate_screen)
+    {
+        runtime.recent_text(usize::MAX)
+    } else {
+        runtime.recent_unwrapped_text(usize::MAX)
+    }
+}
+
+fn opener_command(state: &AppState, opener: ScrollbackOpener) -> String {
+    let (configured, env_var, fallback) = match opener {
+        ScrollbackOpener::Pager => (&state.terminal_pager, "PAGER", "less -R"),
+        ScrollbackOpener::Editor => (&state.terminal_editor, "EDITOR", "vi"),
+    };
+    if configured.is_empty() {
+        format!("${{{env_var}:-{fallback}}}")
+    } else {
+        shell_quote(configured)
+    }
 }
 
 fn write_scrollback_temp_file(content: &str) -> io::Result<std::path::PathBuf> {
@@ -1677,10 +1735,10 @@ last_pane = "prefix+tab"
         workspace.tabs[0].runtimes.insert(
             root_pane,
             crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
-                20,
+                5,
                 5,
                 4096,
-                b"alpha\nbeta\n",
+                b"ABCDEFGHIJ\r\nbeta\r\n",
             ),
         );
         app.state.sessions = vec![workspace];
@@ -1689,11 +1747,7 @@ last_pane = "prefix+tab"
         app.state.mode = Mode::Terminal;
 
         let output_path = unique_temp_path("edit-scrollback");
-        let previous_editor = std::env::var_os("EDITOR");
-        std::env::set_var(
-            "EDITOR",
-            format!("sh -c 'cp \"$1\" {}' sh", output_path.display()),
-        );
+        app.state.terminal_editor = format!("sh -c 'cp \"$1\" {}' sh", output_path.display());
         app.state.keybinds.edit_scrollback = crate::config::ActionKeybinds::prefix("g");
 
         app.handle_key(TerminalKey::new(
@@ -1704,10 +1758,52 @@ last_pane = "prefix+tab"
         app.handle_key(TerminalKey::new(KeyCode::Char('g'), KeyModifiers::empty()))
             .await;
 
-        match previous_editor {
-            Some(value) => std::env::set_var("EDITOR", value),
-            None => std::env::remove_var("EDITOR"),
-        }
+        let content = wait_for_file(&output_path);
+        assert!(content.contains("ABCDEFGHIJ"));
+        assert!(!content.contains("ABCDE\nFGHIJ"));
+        assert!(content.contains("beta"));
+        assert_eq!(app.state.mode, Mode::Terminal);
+
+        let _ = std::fs::remove_file(output_path);
+    }
+
+    #[tokio::test]
+    async fn view_scrollback_key_opens_focused_runtime_scrollback_in_pager_pane() {
+        let (_api_tx, api_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(
+            &Config::default(),
+            true,
+            None,
+            api_rx,
+            crate::api::EventHub::default(),
+        );
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        workspace.tabs[0].runtimes.insert(
+            root_pane,
+            crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
+                20,
+                5,
+                4096,
+                b"alpha\r\nbeta\r\n",
+            ),
+        );
+        app.state.sessions = vec![workspace];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::Terminal;
+
+        let output_path = unique_temp_path("view-scrollback");
+        app.state.terminal_pager = format!("sh -c 'cp \"$1\" {}' sh", output_path.display());
+        app.state.keybinds.view_scrollback = crate::config::ActionKeybinds::prefix("g");
+
+        app.handle_key(TerminalKey::new(
+            app.state.prefix_code,
+            app.state.prefix_mods,
+        ))
+        .await;
+        app.handle_key(TerminalKey::new(KeyCode::Char('g'), KeyModifiers::empty()))
+            .await;
 
         let content = wait_for_file(&output_path);
         assert!(content.contains("alpha"));
@@ -1715,6 +1811,25 @@ last_pane = "prefix+tab"
         assert_eq!(app.state.mode, Mode::Terminal);
 
         let _ = std::fs::remove_file(output_path);
+    }
+
+    #[tokio::test]
+    async fn scrollback_snapshot_uses_rendered_text_for_alternate_screen() {
+        let runtime = crate::terminal::TerminalRuntime::test_with_scrollback_bytes(
+            5,
+            3,
+            4096,
+            b"\x1b[?1049hABCDEFGHIJ",
+        );
+
+        assert!(runtime
+            .input_state()
+            .is_some_and(|input_state| input_state.alternate_screen));
+        assert_eq!(
+            focused_scrollback_snapshot(&runtime),
+            runtime.recent_text(usize::MAX)
+        );
+        assert!(focused_scrollback_snapshot(&runtime).contains("ABCDE\nFGHIJ"));
     }
 
     #[test]

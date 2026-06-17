@@ -10,8 +10,8 @@
 )]
 pub mod bindings;
 
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fmt;
 use std::hash::{Hash, Hasher};

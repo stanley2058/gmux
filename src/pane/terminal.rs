@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::{Frame, layout::Rect};
+use ratatui::{layout::Rect, Frame};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::{debug, error};
@@ -21,10 +21,10 @@ use super::{
     },
     kitty_keyboard::KittyKeyboardTracker,
     osc::{
-        DefaultColorEvent, DefaultColorEventTracker, DefaultColorOscTracker, DefaultColorQuery,
-        DefaultColorTrackedEvent, Osc52Forwarder, contains_scrollback_clear_sequence,
-        current_transient_default_color_owner, maybe_filter_primary_screen_scrollback_clear,
-        restore_host_terminal_theme_if_needed, write_host_terminal_theme,
+        contains_scrollback_clear_sequence, current_transient_default_color_owner,
+        maybe_filter_primary_screen_scrollback_clear, restore_host_terminal_theme_if_needed,
+        write_host_terminal_theme, DefaultColorEvent, DefaultColorEventTracker,
+        DefaultColorOscTracker, DefaultColorQuery, DefaultColorTrackedEvent, Osc52Forwarder,
     },
     xtgettcap::{XtgettcapQueryTracker, XtgettcapResponse},
 };
@@ -2546,20 +2546,18 @@ mod tests {
         });
         pane.seed_handoff_alternate_screen_ansi("HANDOFF-ALT");
 
-        assert!(
-            pane.input_state()
-                .is_some_and(|input_state| input_state.alternate_screen)
-        );
+        assert!(pane
+            .input_state()
+            .is_some_and(|input_state| input_state.alternate_screen));
         assert!(pane.visible_text().contains("HANDOFF-ALT"));
-        assert!(
-            pane.encode_mouse_button(
+        assert!(pane
+            .encode_mouse_button(
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
                 1,
                 1,
                 crossterm::event::KeyModifiers::empty(),
             )
-            .is_some()
-        );
+            .is_some());
     }
 
     #[test]
@@ -2579,16 +2577,14 @@ mod tests {
 
         assert!(restored.visible_text().contains("HANDOFF-ALT"));
         assert_eq!(restored.input_state(), Some(input_state));
-        assert!(
-            restored
-                .encode_mouse_button(
-                    crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
-                    1,
-                    1,
-                    crossterm::event::KeyModifiers::empty(),
-                )
-                .is_some()
-        );
+        assert!(restored
+            .encode_mouse_button(
+                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                1,
+                1,
+                crossterm::event::KeyModifiers::empty(),
+            )
+            .is_some());
     }
 
     #[test]
@@ -2624,15 +2620,14 @@ mod tests {
             restored_state.alternate_screen,
             input_state.alternate_screen
         );
-        assert!(
-            pane.encode_mouse_button(
+        assert!(pane
+            .encode_mouse_button(
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
                 1,
                 1,
                 crossterm::event::KeyModifiers::empty(),
             )
-            .is_some()
-        );
+            .is_some());
     }
 
     #[test]

@@ -2,18 +2,18 @@ use std::cell::Cell;
 use std::io;
 use std::path::Path;
 use std::sync::{
-    Arc, Mutex,
     atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
+    Arc, Mutex,
 };
 
 use bytes::Bytes;
 use portable_pty::CommandBuilder;
 #[cfg(test)]
-use portable_pty::{PtySize, native_pty_system};
-use ratatui::{Frame, layout::Rect};
+use portable_pty::{native_pty_system, PtySize};
+use ratatui::{layout::Rect, Frame};
 #[cfg(test)]
 use tokio::sync::watch;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{mpsc, Notify};
 use tracing::{debug, error, info, warn};
 
 use crate::events::AppEvent;
@@ -1995,16 +1995,14 @@ mod tests {
 
         let pane = runtime.handoff_runtime_state(12);
 
-        assert!(
-            pane.input_state
-                .is_some_and(|input_state| input_state.alternate_screen)
-        );
+        assert!(pane
+            .input_state
+            .is_some_and(|input_state| input_state.alternate_screen));
         assert_eq!(pane.initial_history_ansi, None);
-        assert!(
-            pane.initial_alternate_screen_ansi
-                .as_deref()
-                .is_some_and(|ansi| ansi.contains("HANDOFF-ALT"))
-        );
+        assert!(pane
+            .initial_alternate_screen_ansi
+            .as_deref()
+            .is_some_and(|ansi| ansi.contains("HANDOFF-ALT")));
     }
 
     #[tokio::test]

@@ -439,6 +439,8 @@ impl App {
                 .switch_ascii_input_source_in_prefix,
             kitty_graphics_enabled: config.experimental.kitty_graphics,
             pane_term: config.terminal.term.clone(),
+            terminal_editor: config.terminal.editor.clone(),
+            terminal_pager: config.terminal.pager.clone(),
             default_shell: config.terminal.default_shell.clone(),
             shell_mode: config.terminal.shell_mode,
             new_terminal_cwd: config.terminal.new_cwd.clone(),
@@ -1015,6 +1017,8 @@ impl App {
 
         if !invalid_section("terminal") {
             self.state.pane_term = config.terminal.term.clone();
+            self.state.terminal_editor = config.terminal.editor.clone();
+            self.state.terminal_pager = config.terminal.pager.clone();
             self.state.default_shell = config.terminal.default_shell.clone();
             self.state.shell_mode = config.terminal.shell_mode;
             self.state.new_terminal_cwd = config.terminal.new_cwd.clone();
@@ -1351,7 +1355,9 @@ impl App {
             self.state
                 .runtime_for_pane_in_session_at(&self.terminal_runtimes, ws_idx, pane_id)?;
         runtime.scroll_reset();
-        runtime.try_send_bytes(bytes::Bytes::from(translated)).ok()?;
+        runtime
+            .try_send_bytes(bytes::Bytes::from(translated))
+            .ok()?;
         self.arm_input_render_bypass();
         Some(terminal_id)
     }
@@ -1483,8 +1489,14 @@ mod tests {
         let pane = Rect::new(3, 2, 20, 10);
         assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;2;7M", pane), None);
         assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;2M", pane), None);
-        assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;24;7M", pane), None);
-        assert_eq!(translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;13M", pane), None);
+        assert_eq!(
+            translate_raw_sgr_mouse_to_pane(b"\x1b[<0;24;7M", pane),
+            None
+        );
+        assert_eq!(
+            translate_raw_sgr_mouse_to_pane(b"\x1b[<0;8;13M", pane),
+            None
+        );
     }
 
     #[derive(Clone, Default)]

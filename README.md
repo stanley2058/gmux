@@ -88,7 +88,7 @@ gmux kill-session -t api
 
 **Sessions, tabs, panes.** A session contains tabs, and a tab contains panes. Panes are real PTYs running shells or commands.
 
-**Copy mode.** Press `ctrl+b [` for keyboard copy mode. Move with `h/j/k/l`, `w/b/e`, and `{`/`}`. Start selection with `v` or Space, copy with `y` or Enter, and exit with `q` or Esc. Mouse selection inside panes is supported too.
+**Copy mode.** Press `ctrl+b [` for keyboard copy mode. Move with `h/j/k/l`, `w/b/e`, and `{`/`}`. Start selection with `v` or Space, copy with `y` or Enter, open a frozen scrollback snapshot with `o`/`O` for pager/editor, and exit with `q` or Esc. Mouse selection inside panes is supported too.
 
 **Remote attach.** gmux can run on a remote host over SSH while preserving the local terminal experience:
 
@@ -155,6 +155,7 @@ The default prefix is `ctrl+b`.
 | `prefix+z`              | zoom pane           |
 | `prefix+r`              | resize mode         |
 | `prefix+[`              | copy mode           |
+| `prefix+o` / `prefix+O` | page / edit scrollback |
 | `prefix+d`              | detach              |
 
 Mouse is supported for pane focus, pane resizing, tab selection, and scrollback. Resize mode uses `h/j/k/l` and Esc exits.

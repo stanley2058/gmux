@@ -101,6 +101,8 @@ pub(super) fn render_copy_mode_overlay(app: &AppState, frame: &mut Frame, area: 
             Span::styled(format!(" {select}  "), dim),
             Span::styled("y/enter", key),
             Span::styled(" copy  ", dim),
+            Span::styled("o/O", key),
+            Span::styled(" page/edit  ", dim),
             Span::styled("q/esc", key),
             Span::styled(" exit", dim),
         ])
