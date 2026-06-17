@@ -478,34 +478,8 @@ fn main() -> io::Result<()> {
             std::process::exit(1);
         }
         if !arg.starts_with('-')
-            && ![
-                "server",
-                "client",
-                "remote-client-bridge",
-                "new",
-                "attach",
-                "ls",
-                "kill-session",
-                "detach",
-                "list-tabs",
-                "new-tab",
-                "select-tab",
-                "rename-tab",
-                "kill-tab",
-                "capture-pane",
-                "select-pane",
-                "resize-pane",
-                "send-text",
-                "send-keys",
-                "split-pane",
-                "kill-pane",
-                "status",
-                "config",
-                "pane",
-                "wait",
-                "session",
-            ]
-            .contains(&arg.as_str())
+            && !matches!(arg.as_str(), "client" | "remote-client-bridge")
+            && !cli::is_known_top_level_command(arg)
         {
             eprintln!("unknown command: {arg}");
             eprintln!("run 'gmux --help' for usage");

@@ -12,8 +12,13 @@ use crate::api::schema::{
 mod completions;
 mod pane;
 mod server;
+pub(crate) mod spec;
 mod status;
 mod tab;
+
+pub(crate) fn is_known_top_level_command(command: &str) -> bool {
+    spec::is_top_level_command(command)
+}
 
 pub enum CommandOutcome {
     Handled(i32),
