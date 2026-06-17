@@ -211,6 +211,239 @@ pub struct Config {
     pub remote: RemoteConfig,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ConfigFieldPath {
+    TopLevel(&'static str),
+    Section {
+        section: &'static str,
+        key: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConfigUiPage {
+    Theme,
+    ThemePicker,
+    ThemeCustom,
+    ToastDelivery,
+    Notifications,
+    Terminal,
+    ShellMode,
+    NewTerminalCwd,
+    Interface,
+    PanePanelScope,
+    Mouse,
+    RightClickPassthroughModifier,
+    Remote,
+    Advanced,
+    Experiments,
+    CjkImeCursorShape,
+    Main,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConfigFieldEditor {
+    Bool,
+    Text,
+    Subpage(ConfigUiPage),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ConfigFieldUi {
+    Editable(ConfigFieldEditor),
+    Readonly {
+        value: &'static str,
+        reason: &'static str,
+    },
+    Hidden {
+        reason: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ConfigFieldSpec {
+    pub path: ConfigFieldPath,
+    pub page: ConfigUiPage,
+    pub label: &'static str,
+    pub hint: &'static str,
+    pub context: &'static str,
+    pub ui: ConfigFieldUi,
+}
+
+macro_rules! field {
+    (top $key:literal, $page:ident, $label:literal, $hint:literal, $context:literal, $ui:expr) => {
+        ConfigFieldSpec {
+            path: ConfigFieldPath::TopLevel($key),
+            page: ConfigUiPage::$page,
+            label: $label,
+            hint: $hint,
+            context: $context,
+            ui: $ui,
+        }
+    };
+    ($section:literal.$key:literal, $page:ident, $label:literal, $hint:literal, $context:literal, $ui:expr) => {
+        ConfigFieldSpec {
+            path: ConfigFieldPath::Section {
+                section: $section,
+                key: $key,
+            },
+            page: ConfigUiPage::$page,
+            label: $label,
+            hint: $hint,
+            context: $context,
+            ui: $ui,
+        }
+    };
+}
+
+macro_rules! text_field {
+    ($section:literal.$key:literal, $page:ident, $label:literal, $hint:literal) => {
+        field!(
+            $section.$key,
+            $page,
+            $label,
+            $hint,
+            $label,
+            ConfigFieldUi::Editable(ConfigFieldEditor::Text)
+        )
+    };
+}
+
+macro_rules! bool_field {
+    ($section:literal.$key:literal, $page:ident, $label:literal, $hint:literal, $context:literal) => {
+        field!(
+            $section.$key,
+            $page,
+            $label,
+            $hint,
+            $context,
+            ConfigFieldUi::Editable(ConfigFieldEditor::Bool)
+        )
+    };
+}
+
+macro_rules! subpage_field {
+    ($section:literal.$key:literal, $page:ident, $label:literal, $hint:literal, $subpage:ident) => {
+        field!(
+            $section.$key,
+            $page,
+            $label,
+            $hint,
+            $label,
+            ConfigFieldUi::Editable(ConfigFieldEditor::Subpage(ConfigUiPage::$subpage))
+        )
+    };
+}
+
+macro_rules! readonly_field {
+    ($section:literal.$key:literal, $page:ident, $label:literal, $value:literal, $hint:literal, $reason:literal) => {
+        field!(
+            $section.$key,
+            $page,
+            $label,
+            $hint,
+            $label,
+            ConfigFieldUi::Readonly {
+                value: $value,
+                reason: $reason,
+            }
+        )
+    };
+}
+
+macro_rules! hidden_field {
+    ($section:literal.$key:literal, $reason:literal) => {
+        field!(
+            $section.$key,
+            Main,
+            $key,
+            "",
+            $key,
+            ConfigFieldUi::Hidden { reason: $reason }
+        )
+    };
+    (top $key:literal, $reason:literal) => {
+        field!(
+            top $key,
+            Main,
+            $key,
+            "",
+            $key,
+            ConfigFieldUi::Hidden { reason: $reason }
+        )
+    };
+}
+
+pub(crate) const CONFIG_FIELD_SPECS: &[ConfigFieldSpec] = &[
+    field!(
+        top "onboarding",
+        Interface,
+        "show onboarding on next launch",
+        "next launch",
+        "onboarding setting",
+        ConfigFieldUi::Editable(ConfigFieldEditor::Bool)
+    ),
+    subpage_field!("theme"."name", Theme, "theme", "live", ThemePicker),
+    subpage_field!(
+        "theme"."custom",
+        Theme,
+        "custom colors",
+        "edit config.toml",
+        ThemeCustom
+    ),
+    readonly_field!("theme.custom"."accent", ThemeCustom, "accent", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."panel_bg", ThemeCustom, "panel_bg", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."surface0", ThemeCustom, "surface0", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."surface1", ThemeCustom, "surface1", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."surface_dim", ThemeCustom, "surface_dim", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."overlay0", ThemeCustom, "overlay0", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."overlay1", ThemeCustom, "overlay1", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."text", ThemeCustom, "text", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."subtext0", ThemeCustom, "subtext0", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."mauve", ThemeCustom, "mauve", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."green", ThemeCustom, "green", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."yellow", ThemeCustom, "yellow", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."red", ThemeCustom, "red", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."blue", ThemeCustom, "blue", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."teal", ThemeCustom, "teal", "readonly", "edit config.toml", "structured color override"),
+    readonly_field!("theme.custom"."peach", ThemeCustom, "peach", "readonly", "edit config.toml", "structured color override"),
+    subpage_field!("ui.toast"."delivery", Notifications, "notification popups", "live", ToastDelivery),
+    hidden_field!("ui.toast"."enabled", "legacy toast setting normalized to ui.toast.delivery"),
+    text_field!("terminal"."term", Terminal, "pane TERM", "new panes"),
+    text_field!("terminal"."editor", Terminal, "editor", "scrollback"),
+    text_field!("terminal"."pager", Terminal, "pager", "scrollback"),
+    text_field!("terminal"."default_shell", Terminal, "default shell", "new panes"),
+    subpage_field!("terminal"."shell_mode", Terminal, "shell mode", "new panes", ShellMode),
+    subpage_field!("terminal"."new_cwd", Terminal, "new terminal cwd", "new panes", NewTerminalCwd),
+    bool_field!("terminal"."restore_processes", Terminal, "restore running processes", "next restore", "process restore setting"),
+    text_field!("ui"."sidebar_width", Interface, "sidebar width", "live"),
+    text_field!("ui"."sidebar_min_width", Interface, "sidebar min width", "live"),
+    text_field!("ui"."sidebar_max_width", Interface, "sidebar max width", "live"),
+    text_field!("ui"."mobile_width_threshold", Interface, "mobile width threshold", "live"),
+    subpage_field!("ui"."pane_panel_scope", Interface, "pane panel scope", "live", PanePanelScope),
+    bool_field!("ui"."confirm_close", Interface, "confirm close", "live", "confirm close setting"),
+    bool_field!("ui"."prompt_new_tab_name", Interface, "prompt new tab name", "live", "new tab prompt setting"),
+    bool_field!("ui"."redraw_on_focus_gained", Interface, "redraw on focus gained", "live", "focus redraw setting"),
+    readonly_field!("ui"."accent", Interface, "legacy accent", "readonly", "edit config.toml", "legacy compatibility setting"),
+    bool_field!("ui"."mouse_capture", Mouse, "mouse capture", "live", "mouse capture setting"),
+    subpage_field!("ui"."right_click_passthrough_modifier", Mouse, "right-click passthrough modifier", "live", RightClickPassthroughModifier),
+    text_field!("ui"."mouse_scroll_lines", Mouse, "mouse scroll lines", "live"),
+    bool_field!("remote"."manage_ssh_config", Remote, "manage ssh config", "remote only", "remote ssh config setting"),
+    text_field!("advanced"."scrollback_limit_bytes", Advanced, "scrollback limit bytes", "new panes"),
+    hidden_field!("advanced"."scrollback_lines", "legacy alias for advanced.scrollback_limit_bytes"),
+    bool_field!("experimental"."allow_nested", Experiments, "allow nested gmux", "next launch", "nested gmux setting"),
+    bool_field!("experimental"."kitty_graphics", Experiments, "kitty graphics", "live", "kitty graphics setting"),
+    bool_field!("experimental"."pane_history", Experiments, "pane screen history", "live", "pane screen history"),
+    bool_field!("experimental"."reveal_hidden_cursor_for_cjk_ime", Experiments, "reveal hidden cursor for CJK IME", "live", "CJK IME cursor setting"),
+    subpage_field!("experimental"."cjk_ime_cursor_shape", Experiments, "CJK IME cursor shape", "live", CjkImeCursorShape),
+    bool_field!("experimental"."switch_ascii_input_source_in_prefix", Experiments, "switch to ascii input source in prefix (macOS)", "live", "prefix ascii input source"),
+    hidden_field!("session"."*", "reserved structured section"),
+    hidden_field!(top "keys", "inline keys table is structured"),
+    hidden_field!("keys"."prefix", "keybindings are managed in the keybinding help/config flow"),
+    hidden_field!("keys"."command", "custom commands are structured arrays"),
+    hidden_field!("keys.indexed"."tabs", "legacy indexed keybinding config"),
+];
+
 #[derive(Debug)]
 pub struct LoadedConfig {
     pub config: Config,

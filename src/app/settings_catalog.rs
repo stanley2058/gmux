@@ -1,5 +1,8 @@
 use crate::app::state::{AppState, PanePanelScope, SettingsEditField, SettingsPage, THEME_NAMES};
-use crate::config::{NewTerminalCwdConfig, ShellModeConfig, ToastDelivery};
+use crate::config::{
+    ConfigFieldEditor, ConfigFieldPath, ConfigFieldSpec, ConfigFieldUi, ConfigUiPage,
+    NewTerminalCwdConfig, ShellModeConfig, ToastDelivery, CONFIG_FIELD_SPECS,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SettingsRowAction {
@@ -81,57 +84,18 @@ impl SettingsRow {
         }
     }
 
-    fn readonly(label: &'static str, value: impl Into<String>) -> Self {
+    fn readonly_with_hint(
+        label: &'static str,
+        value: impl Into<String>,
+        hint: &'static str,
+    ) -> Self {
         Self {
             label: label.to_string(),
             value: Some(value.into()),
-            hint: "edit config.toml",
+            hint,
             selected: false,
             readonly: true,
             action: SettingsRowAction::Readonly,
-        }
-    }
-
-    fn top_bool(
-        label: &'static str,
-        enabled: bool,
-        key: &'static str,
-        context: &'static str,
-    ) -> Self {
-        Self {
-            label: label.to_string(),
-            value: Some(on_off(enabled)),
-            hint: "next launch",
-            selected: false,
-            readonly: false,
-            action: SettingsRowAction::SaveTopLevelBool {
-                key,
-                value: !enabled,
-                context,
-            },
-        }
-    }
-
-    fn section_bool(
-        label: &'static str,
-        enabled: bool,
-        hint: &'static str,
-        section: &'static str,
-        key: &'static str,
-        context: &'static str,
-    ) -> Self {
-        Self {
-            label: label.to_string(),
-            value: Some(on_off(enabled)),
-            hint,
-            selected: false,
-            readonly: false,
-            action: SettingsRowAction::SaveSectionBool {
-                section,
-                key,
-                value: !enabled,
-                context,
-            },
         }
     }
 
@@ -155,21 +119,21 @@ impl SettingsRow {
 pub(crate) fn settings_rows(state: &AppState) -> Vec<SettingsRow> {
     match state.settings.page {
         SettingsPage::Main => main_rows(),
-        SettingsPage::Theme => theme_rows(state),
+        SettingsPage::Theme => scalar_setting_rows(state, SettingsPage::Theme),
         SettingsPage::ThemePicker => theme_picker_rows(state),
-        SettingsPage::ThemeCustom => theme_custom_rows(),
-        SettingsPage::Notifications => notifications_rows(state),
+        SettingsPage::ThemeCustom => scalar_setting_rows(state, SettingsPage::ThemeCustom),
+        SettingsPage::Notifications => scalar_setting_rows(state, SettingsPage::Notifications),
         SettingsPage::ToastDelivery => toast_delivery_rows(state),
-        SettingsPage::Terminal => terminal_rows(state),
+        SettingsPage::Terminal => scalar_setting_rows(state, SettingsPage::Terminal),
         SettingsPage::ShellMode => shell_mode_rows(state),
         SettingsPage::NewTerminalCwd => new_terminal_cwd_rows(state),
-        SettingsPage::Interface => interface_rows(state),
+        SettingsPage::Interface => scalar_setting_rows(state, SettingsPage::Interface),
         SettingsPage::PanePanelScope => pane_panel_scope_rows(state),
-        SettingsPage::Mouse => mouse_rows(state),
+        SettingsPage::Mouse => scalar_setting_rows(state, SettingsPage::Mouse),
         SettingsPage::RightClickPassthroughModifier => right_click_modifier_rows(state),
-        SettingsPage::Remote => remote_rows(state),
-        SettingsPage::Advanced => advanced_rows(state),
-        SettingsPage::Experiments => experiments_rows(state),
+        SettingsPage::Remote => scalar_setting_rows(state, SettingsPage::Remote),
+        SettingsPage::Advanced => scalar_setting_rows(state, SettingsPage::Advanced),
+        SettingsPage::Experiments => scalar_setting_rows(state, SettingsPage::Experiments),
         SettingsPage::CjkImeCursorShape => cjk_ime_cursor_shape_rows(state),
     }
 }
@@ -209,6 +173,175 @@ pub(crate) fn edit_field_initial_value(state: &AppState, field: SettingsEditFiel
     }
 }
 
+fn bool_setting_value(state: &AppState, path: ConfigFieldPath) -> Option<bool> {
+    match path {
+        ConfigFieldPath::TopLevel("onboarding") => Some(state.show_onboarding_on_next_launch),
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "restore_processes",
+        } => Some(state.restore_processes),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "confirm_close",
+        } => Some(state.confirm_close),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "prompt_new_tab_name",
+        } => Some(state.prompt_new_tab_name),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "redraw_on_focus_gained",
+        } => Some(state.redraw_on_focus_gained),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "mouse_capture",
+        } => Some(state.mouse_capture),
+        ConfigFieldPath::Section {
+            section: "remote",
+            key: "manage_ssh_config",
+        } => Some(state.remote_manage_ssh_config),
+        ConfigFieldPath::Section {
+            section: "experimental",
+            key: "allow_nested",
+        } => Some(state.allow_nested_gmux),
+        ConfigFieldPath::Section {
+            section: "experimental",
+            key: "kitty_graphics",
+        } => Some(state.kitty_graphics_enabled),
+        ConfigFieldPath::Section {
+            section: "experimental",
+            key: "pane_history",
+        } => Some(state.pane_history_persistence),
+        ConfigFieldPath::Section {
+            section: "experimental",
+            key: "reveal_hidden_cursor_for_cjk_ime",
+        } => Some(state.reveal_hidden_cursor_for_cjk_ime),
+        ConfigFieldPath::Section {
+            section: "experimental",
+            key: "switch_ascii_input_source_in_prefix",
+        } => Some(state.switch_ascii_input_source_in_prefix),
+        _ => None,
+    }
+}
+
+fn text_setting_value(
+    state: &AppState,
+    path: ConfigFieldPath,
+) -> Option<(SettingsEditField, String)> {
+    match path {
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "term",
+        } => Some((SettingsEditField::PaneTerm, state.pane_term.clone())),
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "editor",
+        } => Some((
+            SettingsEditField::TerminalEditor,
+            opener_setting_label(&state.terminal_editor, "EDITOR", "vi"),
+        )),
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "pager",
+        } => Some((
+            SettingsEditField::TerminalPager,
+            opener_setting_label(&state.terminal_pager, "PAGER", "less -R"),
+        )),
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "default_shell",
+        } => Some((
+            SettingsEditField::DefaultShell,
+            if state.default_shell.is_empty() {
+                "SHELL".to_string()
+            } else {
+                state.default_shell.clone()
+            },
+        )),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "sidebar_width",
+        } => Some((
+            SettingsEditField::SidebarWidth,
+            state.default_sidebar_width.to_string(),
+        )),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "sidebar_min_width",
+        } => Some((
+            SettingsEditField::SidebarMinWidth,
+            state.sidebar_min_width.to_string(),
+        )),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "sidebar_max_width",
+        } => Some((
+            SettingsEditField::SidebarMaxWidth,
+            state.sidebar_max_width.to_string(),
+        )),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "mobile_width_threshold",
+        } => Some((
+            SettingsEditField::MobileWidthThreshold,
+            state.mobile_width_threshold.to_string(),
+        )),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "mouse_scroll_lines",
+        } => Some((
+            SettingsEditField::MouseScrollLines,
+            state.mouse_scroll_lines.to_string(),
+        )),
+        ConfigFieldPath::Section {
+            section: "advanced",
+            key: "scrollback_limit_bytes",
+        } => Some((
+            SettingsEditField::ScrollbackLimitBytes,
+            state.pane_scrollback_limit_bytes.to_string(),
+        )),
+        _ => None,
+    }
+}
+
+fn subpage_setting_value(state: &AppState, path: ConfigFieldPath) -> Option<String> {
+    match path {
+        ConfigFieldPath::Section {
+            section: "theme",
+            key: "name",
+        } => Some(state.theme_name.clone()),
+        ConfigFieldPath::Section {
+            section: "theme",
+            key: "custom",
+        } => Some("readonly".to_string()),
+        ConfigFieldPath::Section {
+            section: "ui.toast",
+            key: "delivery",
+        } => Some(toast_delivery_label(state.toast_delivery()).to_string()),
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "shell_mode",
+        } => Some(shell_mode_label(state.shell_mode).to_string()),
+        ConfigFieldPath::Section {
+            section: "terminal",
+            key: "new_cwd",
+        } => Some(new_terminal_cwd_label(&state.new_terminal_cwd)),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "pane_panel_scope",
+        } => Some(pane_panel_scope_label(state.pane_panel_scope).to_string()),
+        ConfigFieldPath::Section {
+            section: "ui",
+            key: "right_click_passthrough_modifier",
+        } => Some(right_click_modifier_label(state)),
+        ConfigFieldPath::Section {
+            section: "experimental",
+            key: "cjk_ime_cursor_shape",
+        } => Some(cjk_ime_cursor_shape_label(state.cjk_ime_cursor_shape).to_string()),
+        _ => None,
+    }
+}
+
 fn main_rows() -> Vec<SettingsRow> {
     vec![
         SettingsRow::category("theme", SettingsPage::Theme),
@@ -222,21 +355,86 @@ fn main_rows() -> Vec<SettingsRow> {
     ]
 }
 
-fn theme_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![
-        SettingsRow::open(
-            "theme",
-            &state.theme_name,
-            "live",
-            SettingsPage::ThemePicker,
-        ),
-        SettingsRow::open(
-            "custom colors",
-            "readonly",
-            "edit config.toml",
-            SettingsPage::ThemeCustom,
-        ),
-    ]
+fn scalar_setting_rows(state: &AppState, page: SettingsPage) -> Vec<SettingsRow> {
+    CONFIG_FIELD_SPECS
+        .iter()
+        .filter(|spec| settings_page(spec.page) == page)
+        .filter_map(|spec| setting_row(state, spec))
+        .collect()
+}
+
+fn setting_row(state: &AppState, spec: &ConfigFieldSpec) -> Option<SettingsRow> {
+    match spec.ui {
+        ConfigFieldUi::Hidden { reason } => {
+            let _ = reason;
+            None
+        }
+        ConfigFieldUi::Readonly { value, reason } => {
+            let _ = reason;
+            Some(SettingsRow::readonly_with_hint(
+                spec.label, value, spec.hint,
+            ))
+        }
+        ConfigFieldUi::Editable(ConfigFieldEditor::Bool) => {
+            let enabled = bool_setting_value(state, spec.path)?;
+            let action = match spec.path {
+                ConfigFieldPath::TopLevel(key) => SettingsRowAction::SaveTopLevelBool {
+                    key,
+                    value: !enabled,
+                    context: spec.context,
+                },
+                ConfigFieldPath::Section { section, key } => SettingsRowAction::SaveSectionBool {
+                    section,
+                    key,
+                    value: !enabled,
+                    context: spec.context,
+                },
+            };
+            Some(SettingsRow {
+                label: spec.label.to_string(),
+                value: Some(on_off(enabled)),
+                hint: spec.hint,
+                selected: false,
+                readonly: false,
+                action,
+            })
+        }
+        ConfigFieldUi::Editable(ConfigFieldEditor::Text) => {
+            let (field, value) = text_setting_value(state, spec.path)?;
+            Some(SettingsRow::edit(spec.label, value, spec.hint, field))
+        }
+        ConfigFieldUi::Editable(ConfigFieldEditor::Subpage(subpage)) => {
+            let value = subpage_setting_value(state, spec.path)?;
+            Some(SettingsRow::open(
+                spec.label,
+                value,
+                spec.hint,
+                settings_page(subpage),
+            ))
+        }
+    }
+}
+
+fn settings_page(page: ConfigUiPage) -> SettingsPage {
+    match page {
+        ConfigUiPage::Main => SettingsPage::Main,
+        ConfigUiPage::Theme => SettingsPage::Theme,
+        ConfigUiPage::ThemePicker => SettingsPage::ThemePicker,
+        ConfigUiPage::ThemeCustom => SettingsPage::ThemeCustom,
+        ConfigUiPage::Notifications => SettingsPage::Notifications,
+        ConfigUiPage::ToastDelivery => SettingsPage::ToastDelivery,
+        ConfigUiPage::Terminal => SettingsPage::Terminal,
+        ConfigUiPage::ShellMode => SettingsPage::ShellMode,
+        ConfigUiPage::NewTerminalCwd => SettingsPage::NewTerminalCwd,
+        ConfigUiPage::Interface => SettingsPage::Interface,
+        ConfigUiPage::PanePanelScope => SettingsPage::PanePanelScope,
+        ConfigUiPage::Mouse => SettingsPage::Mouse,
+        ConfigUiPage::RightClickPassthroughModifier => SettingsPage::RightClickPassthroughModifier,
+        ConfigUiPage::Remote => SettingsPage::Remote,
+        ConfigUiPage::Advanced => SettingsPage::Advanced,
+        ConfigUiPage::Experiments => SettingsPage::Experiments,
+        ConfigUiPage::CjkImeCursorShape => SettingsPage::CjkImeCursorShape,
+    }
 }
 
 fn theme_picker_rows(state: &AppState) -> Vec<SettingsRow> {
@@ -252,39 +450,6 @@ fn theme_picker_rows(state: &AppState) -> Vec<SettingsRow> {
             )
         })
         .collect()
-}
-
-fn theme_custom_rows() -> Vec<SettingsRow> {
-    [
-        "accent",
-        "panel_bg",
-        "surface0",
-        "surface1",
-        "surface_dim",
-        "overlay0",
-        "overlay1",
-        "text",
-        "subtext0",
-        "mauve",
-        "green",
-        "yellow",
-        "red",
-        "blue",
-        "teal",
-        "peach",
-    ]
-    .into_iter()
-    .map(|label| SettingsRow::readonly(label, "readonly"))
-    .collect()
-}
-
-fn notifications_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![SettingsRow::open(
-        "notification popups",
-        toast_delivery_label(state.toast_delivery()),
-        "live",
-        SettingsPage::ToastDelivery,
-    )]
 }
 
 fn toast_delivery_rows(state: &AppState) -> Vec<SettingsRow> {
@@ -304,59 +469,6 @@ fn toast_delivery_rows(state: &AppState) -> Vec<SettingsRow> {
         )
     })
     .collect()
-}
-
-fn terminal_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![
-        SettingsRow::edit(
-            "pane TERM",
-            &state.pane_term,
-            "new panes",
-            SettingsEditField::PaneTerm,
-        ),
-        SettingsRow::edit(
-            "editor",
-            opener_setting_label(&state.terminal_editor, "EDITOR", "vi"),
-            "scrollback",
-            SettingsEditField::TerminalEditor,
-        ),
-        SettingsRow::edit(
-            "pager",
-            opener_setting_label(&state.terminal_pager, "PAGER", "less -R"),
-            "scrollback",
-            SettingsEditField::TerminalPager,
-        ),
-        SettingsRow::edit(
-            "default shell",
-            if state.default_shell.is_empty() {
-                "SHELL"
-            } else {
-                &state.default_shell
-            },
-            "new panes",
-            SettingsEditField::DefaultShell,
-        ),
-        SettingsRow::open(
-            "shell mode",
-            shell_mode_label(state.shell_mode),
-            "new panes",
-            SettingsPage::ShellMode,
-        ),
-        SettingsRow::open(
-            "new terminal cwd",
-            new_terminal_cwd_label(&state.new_terminal_cwd),
-            "new panes",
-            SettingsPage::NewTerminalCwd,
-        ),
-        SettingsRow::section_bool(
-            "restore running processes",
-            state.restore_processes,
-            "next restore",
-            "terminal",
-            "restore_processes",
-            "process restore setting",
-        ),
-    ]
 }
 
 fn shell_mode_rows(state: &AppState) -> Vec<SettingsRow> {
@@ -427,72 +539,6 @@ fn opener_setting_label(configured: &str, env_var: &str, fallback: &str) -> Stri
     }
 }
 
-fn interface_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![
-        SettingsRow::edit(
-            "sidebar width",
-            state.default_sidebar_width.to_string(),
-            "live",
-            SettingsEditField::SidebarWidth,
-        ),
-        SettingsRow::edit(
-            "sidebar min width",
-            state.sidebar_min_width.to_string(),
-            "live",
-            SettingsEditField::SidebarMinWidth,
-        ),
-        SettingsRow::edit(
-            "sidebar max width",
-            state.sidebar_max_width.to_string(),
-            "live",
-            SettingsEditField::SidebarMaxWidth,
-        ),
-        SettingsRow::edit(
-            "mobile width threshold",
-            state.mobile_width_threshold.to_string(),
-            "live",
-            SettingsEditField::MobileWidthThreshold,
-        ),
-        SettingsRow::open(
-            "pane panel scope",
-            pane_panel_scope_label(state.pane_panel_scope),
-            "live",
-            SettingsPage::PanePanelScope,
-        ),
-        SettingsRow::section_bool(
-            "confirm close",
-            state.confirm_close,
-            "live",
-            "ui",
-            "confirm_close",
-            "confirm close setting",
-        ),
-        SettingsRow::section_bool(
-            "prompt new tab name",
-            state.prompt_new_tab_name,
-            "live",
-            "ui",
-            "prompt_new_tab_name",
-            "new tab prompt setting",
-        ),
-        SettingsRow::section_bool(
-            "redraw on focus gained",
-            state.redraw_on_focus_gained,
-            "live",
-            "ui",
-            "redraw_on_focus_gained",
-            "focus redraw setting",
-        ),
-        SettingsRow::top_bool(
-            "show onboarding on next launch",
-            state.show_onboarding_on_next_launch,
-            "onboarding",
-            "onboarding setting",
-        ),
-        SettingsRow::readonly("legacy accent", "readonly"),
-    ]
-}
-
 fn pane_panel_scope_rows(state: &AppState) -> Vec<SettingsRow> {
     [
         ("current session", PanePanelScope::Current, "current"),
@@ -513,31 +559,6 @@ fn pane_panel_scope_rows(state: &AppState) -> Vec<SettingsRow> {
         )
     })
     .collect()
-}
-
-fn mouse_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![
-        SettingsRow::section_bool(
-            "mouse capture",
-            state.mouse_capture,
-            "live",
-            "ui",
-            "mouse_capture",
-            "mouse capture setting",
-        ),
-        SettingsRow::open(
-            "right-click passthrough modifier",
-            right_click_modifier_label(state),
-            "live",
-            SettingsPage::RightClickPassthroughModifier,
-        ),
-        SettingsRow::edit(
-            "mouse scroll lines",
-            state.mouse_scroll_lines.to_string(),
-            "live",
-            SettingsEditField::MouseScrollLines,
-        ),
-    ]
 }
 
 fn right_click_modifier_rows(state: &AppState) -> Vec<SettingsRow> {
@@ -566,77 +587,6 @@ fn right_click_modifier_rows(state: &AppState) -> Vec<SettingsRow> {
         )
     })
     .collect()
-}
-
-fn remote_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![SettingsRow::section_bool(
-        "manage ssh config",
-        state.remote_manage_ssh_config,
-        "remote only",
-        "remote",
-        "manage_ssh_config",
-        "remote ssh config setting",
-    )]
-}
-
-fn advanced_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![SettingsRow::edit(
-        "scrollback limit bytes",
-        state.pane_scrollback_limit_bytes.to_string(),
-        "new panes",
-        SettingsEditField::ScrollbackLimitBytes,
-    )]
-}
-
-fn experiments_rows(state: &AppState) -> Vec<SettingsRow> {
-    vec![
-        SettingsRow::section_bool(
-            "allow nested gmux",
-            state.allow_nested_gmux,
-            "next launch",
-            "experimental",
-            "allow_nested",
-            "nested gmux setting",
-        ),
-        SettingsRow::section_bool(
-            "kitty graphics",
-            state.kitty_graphics_enabled,
-            "live",
-            "experimental",
-            "kitty_graphics",
-            "kitty graphics setting",
-        ),
-        SettingsRow::section_bool(
-            "pane screen history",
-            state.pane_history_persistence,
-            "live",
-            "experimental",
-            "pane_history",
-            "pane screen history",
-        ),
-        SettingsRow::section_bool(
-            "reveal hidden cursor for CJK IME",
-            state.reveal_hidden_cursor_for_cjk_ime,
-            "live",
-            "experimental",
-            "reveal_hidden_cursor_for_cjk_ime",
-            "CJK IME cursor setting",
-        ),
-        SettingsRow::open(
-            "CJK IME cursor shape",
-            cjk_ime_cursor_shape_label(state.cjk_ime_cursor_shape),
-            "live",
-            SettingsPage::CjkImeCursorShape,
-        ),
-        SettingsRow::section_bool(
-            "switch to ascii input source in prefix (macOS)",
-            state.switch_ascii_input_source_in_prefix,
-            "live",
-            "experimental",
-            "switch_ascii_input_source_in_prefix",
-            "prefix ascii input source",
-        ),
-    ]
 }
 
 fn cjk_ime_cursor_shape_rows(state: &AppState) -> Vec<SettingsRow> {
@@ -861,5 +811,58 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn setting_registry_has_no_duplicate_paths() {
+        let mut seen = std::collections::HashSet::new();
+
+        for spec in CONFIG_FIELD_SPECS {
+            assert!(
+                seen.insert(spec.path),
+                "duplicate setting path: {:?}",
+                spec.path
+            );
+        }
+    }
+
+    #[test]
+    fn setting_registry_classifies_readonly_and_hidden_fields() {
+        assert!(CONFIG_FIELD_SPECS.iter().any(|spec| {
+            spec.path
+                == ConfigFieldPath::Section {
+                    section: "theme.custom",
+                    key: "accent",
+                }
+                && matches!(spec.ui, ConfigFieldUi::Readonly { .. })
+        }));
+        assert!(CONFIG_FIELD_SPECS.iter().any(|spec| {
+            spec.path
+                == ConfigFieldPath::Section {
+                    section: "ui",
+                    key: "accent",
+                }
+                && matches!(spec.ui, ConfigFieldUi::Readonly { .. })
+        }));
+        assert!(CONFIG_FIELD_SPECS.iter().any(|spec| {
+            spec.path == ConfigFieldPath::TopLevel("keys")
+                && matches!(spec.ui, ConfigFieldUi::Hidden { .. })
+        }));
+        assert!(CONFIG_FIELD_SPECS.iter().any(|spec| {
+            spec.path
+                == ConfigFieldPath::Section {
+                    section: "keys",
+                    key: "command",
+                }
+                && matches!(spec.ui, ConfigFieldUi::Hidden { .. })
+        }));
+        assert!(CONFIG_FIELD_SPECS.iter().any(|spec| {
+            spec.path
+                == ConfigFieldPath::Section {
+                    section: "ui.toast",
+                    key: "enabled",
+                }
+                && matches!(spec.ui, ConfigFieldUi::Hidden { .. })
+        }));
     }
 }

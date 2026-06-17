@@ -25,6 +25,10 @@ pub use self::{
 };
 
 pub(crate) use self::io::upsert_top_level_bool;
+pub(crate) use self::model::{
+    ConfigFieldEditor, ConfigFieldPath, ConfigFieldSpec, ConfigFieldUi, ConfigUiPage,
+    CONFIG_FIELD_SPECS,
+};
 
 pub const CONFIG_PATH_ENV_VAR: &str = "GMUX_CONFIG_PATH";
 pub const DEFAULT_SCROLLBACK_LIMIT_BYTES: usize = 10_000_000;
