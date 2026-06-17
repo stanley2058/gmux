@@ -2,18 +2,18 @@ use std::cell::Cell;
 use std::io;
 use std::path::Path;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
 };
 
 use bytes::Bytes;
 use portable_pty::CommandBuilder;
 #[cfg(test)]
-use portable_pty::{native_pty_system, PtySize};
-use ratatui::{layout::Rect, Frame};
+use portable_pty::{PtySize, native_pty_system};
+use ratatui::{Frame, layout::Rect};
 #[cfg(test)]
 use tokio::sync::watch;
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::{Notify, mpsc};
 use tracing::{debug, error, info, warn};
 
 use crate::events::AppEvent;
@@ -437,19 +437,39 @@ fn shutdown_pane_processes(
 }
 
 #[cfg(unix)]
-fn truncate_handoff_history(history: String, max_bytes: usize) -> String {
-    if history.len() <= max_bytes {
-        return history;
+fn truncate_handoff_replay(
+    replay: String,
+    max_bytes: usize,
+    pane_id: PaneId,
+    replay_kind: &str,
+) -> String {
+    if replay.len() <= max_bytes {
+        return replay;
     }
-    let mut start = history.len().saturating_sub(max_bytes);
-    while !history.is_char_boundary(start) {
+    let original_len = replay.len();
+    let mut start = replay.len().saturating_sub(max_bytes);
+    while !replay.is_char_boundary(start) {
         start += 1;
     }
-    let Some(newline_offset) = history[start..].find('\n') else {
+    let Some(newline_offset) = replay[start..].find('\n') else {
+        eprintln!(
+            "WARNING: gmux live handoff dropped {replay_kind} replay for pane {}: \
+             original {original_len} bytes exceeds {max_bytes} byte cap and no complete line fit; \
+             restored pane screen may be incomplete",
+            pane_id.raw()
+        );
         return String::new();
     };
     start += newline_offset + 1;
-    history[start..].to_owned()
+    let truncated = replay[start..].to_owned();
+    eprintln!(
+        "WARNING: gmux live handoff truncated {replay_kind} replay for pane {}: \
+         original {original_len} bytes exceeds {max_bytes} byte cap; replaying {} bytes; \
+         restored pane screen may be incomplete",
+        pane_id.raw(),
+        truncated.len()
+    );
+    truncated
 }
 
 fn pane_shell(configured_shell: &str) -> String {
@@ -671,9 +691,14 @@ impl PaneRuntime {
         {
             return None;
         }
-        let ansi = self.terminal.visible_ansi();
+        let ansi = self.terminal.handoff_alternate_screen_ansi();
         (!ansi.trim().is_empty()).then(|| {
-            truncate_handoff_history(ansi, crate::server::handoff::MAX_REPLAY_BYTES_PER_PANE)
+            truncate_handoff_replay(
+                ansi,
+                crate::server::handoff::MAX_ALT_SCREEN_REPLAY_BYTES_PER_PANE,
+                self.pane_id,
+                "alternate-screen",
+            )
         })
     }
 
@@ -687,7 +712,12 @@ impl PaneRuntime {
             return None;
         }
         self.snapshot_history().map(|history| {
-            truncate_handoff_history(history, crate::server::handoff::MAX_REPLAY_BYTES_PER_PANE)
+            truncate_handoff_replay(
+                history,
+                crate::server::handoff::MAX_HISTORY_REPLAY_BYTES_PER_PANE,
+                self.pane_id,
+                "primary-history",
+            )
         })
     }
 
@@ -1965,14 +1995,16 @@ mod tests {
 
         let pane = runtime.handoff_runtime_state(12);
 
-        assert!(pane
-            .input_state
-            .is_some_and(|input_state| input_state.alternate_screen));
+        assert!(
+            pane.input_state
+                .is_some_and(|input_state| input_state.alternate_screen)
+        );
         assert_eq!(pane.initial_history_ansi, None);
-        assert!(pane
-            .initial_alternate_screen_ansi
-            .as_deref()
-            .is_some_and(|ansi| ansi.contains("HANDOFF-ALT")));
+        assert!(
+            pane.initial_alternate_screen_ansi
+                .as_deref()
+                .is_some_and(|ansi| ansi.contains("HANDOFF-ALT"))
+        );
     }
 
     #[tokio::test]
@@ -2002,22 +2034,34 @@ mod tests {
     }
 
     #[test]
-    fn truncate_handoff_history_keeps_recent_utf8_boundary() {
+    fn truncate_handoff_replay_keeps_recent_utf8_boundary() {
         let history = format!("old\n{}\nrecent\n", "é".repeat(8));
 
-        let truncated = truncate_handoff_history(history, 20);
+        let truncated = truncate_handoff_replay(history, 20, PaneId::from_raw(7), "test-history");
 
         assert_eq!(truncated, "recent\n");
         assert!(truncated.is_char_boundary(0));
     }
 
     #[test]
-    fn truncate_handoff_history_drops_partial_long_line() {
+    fn truncate_handoff_replay_drops_partial_long_line() {
         let history = format!("old\n{}", "x".repeat(64));
 
-        let truncated = truncate_handoff_history(history, 12);
+        let truncated = truncate_handoff_replay(history, 12, PaneId::from_raw(7), "test-history");
 
         assert!(truncated.is_empty());
+    }
+
+    #[test]
+    fn handoff_alt_screen_replay_cap_is_larger_than_history_cap() {
+        assert_eq!(
+            crate::server::handoff::MAX_HISTORY_REPLAY_BYTES_PER_PANE,
+            8 * 1024
+        );
+        assert_eq!(
+            crate::server::handoff::MAX_ALT_SCREEN_REPLAY_BYTES_PER_PANE,
+            1024 * 1024
+        );
     }
 
     #[tokio::test]

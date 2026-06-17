@@ -27,7 +27,9 @@ const OWNED_ACK_TIMEOUT: Duration = Duration::from_millis(500);
 #[cfg(unix)]
 pub(crate) const MAX_FDS_PER_HANDOFF: usize = 64;
 #[cfg(unix)]
-pub(crate) const MAX_REPLAY_BYTES_PER_PANE: usize = 8 * 1024;
+pub(crate) const MAX_HISTORY_REPLAY_BYTES_PER_PANE: usize = 8 * 1024;
+#[cfg(unix)]
+pub(crate) const MAX_ALT_SCREEN_REPLAY_BYTES_PER_PANE: usize = 1024 * 1024;
 #[cfg(unix)]
 pub(crate) const COMMIT_TIMEOUT: Duration = READY_TIMEOUT;
 
