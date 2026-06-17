@@ -8,7 +8,7 @@ Terminal multiplexer and session manager. Rust + ratatui.
 - **Render is pure.** `compute_view()` handles geometry and mutations. `render()` takes `&AppState` and only draws. Never mutate state during render.
 - **No god objects.** If a module is doing too many things, split it. `app/` is already split into state, actions, and input. Keep it that way.
 - **Platform code is isolated.** OS-specific behavior lives in `src/platform/`. Core modules should not grow scattered `#[cfg(target_os)]` branches.
-- **Detection is evidence-based.** When changing screen detection, first capture representative pane output with `gmux pane read --source recent --format text` and, when styling or alternate screen behavior matters, `--format ansi`. Match stable visible controls, not incidental whole-pane text.
+- **Detection is evidence-based.** When changing screen detection, first capture representative pane output with `gmux pane read <pane_id> --source recent --format text` and, when styling or alternate screen behavior matters, `--format ansi`. Match stable visible controls, not incidental whole-pane text.
 - **UI patterns should be reused.** Gmux is a mouse-first TUI. New dialogs, onboarding, settings, and overlays should follow the existing UI language and interaction patterns.
 - **Input latency is sacred.** Keyboard and mouse input must not be blocked by rendering, serialization, mirror clients, or slow client writers. Active-client input should flush immediately.
 - **Active clients win.** In multi-client rendering, the active client must behave like a single client as much as possible. Background clients may receive deferred, dropped, or slightly delayed updates rather than increasing active-client frame time.
