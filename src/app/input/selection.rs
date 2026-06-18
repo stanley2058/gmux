@@ -43,6 +43,11 @@ impl AppState {
         terminal_runtimes: &TerminalRuntimeRegistry,
         pane_infos: &[PaneInfo],
     ) {
+        if self.mode == crate::app::state::Mode::Copy {
+            self.selection_viewport_pin = None;
+            return;
+        }
+
         let Some(selection) = self.selection.as_ref() else {
             self.selection_viewport_pin = None;
             return;

@@ -1410,6 +1410,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn copy_mode_selection_scroll_survives_view_recompute() {
+        let bytes = numbered_lines_bytes(64);
+        let (mut app, pane_id) = app_with_copy_scrollback(&bytes);
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+        }
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('v'), KeyModifiers::empty()));
+        crate::ui::compute_view_with_runtime_registry(
+            &mut app.state,
+            &app.terminal_runtimes,
+            Rect::new(0, 0, 20, 5),
+        );
+        assert!(app.state.selection_viewport_pin.is_none());
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('k'), KeyModifiers::empty()));
+        let scrolled_offset = copy_mode_offset_from_bottom(&app, pane_id);
+        assert!(scrolled_offset > 0);
+
+        crate::ui::compute_view_with_runtime_registry(
+            &mut app.state,
+            &app.terminal_runtimes,
+            Rect::new(0, 0, 20, 5),
+        );
+
+        assert_eq!(copy_mode_offset_from_bottom(&app, pane_id), scrolled_offset);
+    }
+
+    #[tokio::test]
     async fn copy_mode_page_up_uses_tmux_page_size() {
         let bytes = numbered_lines_bytes(64);
         let (mut app, pane_id) = app_with_copy_scrollback(&bytes);
