@@ -41,6 +41,10 @@ bench-input-latency:
 bench-input-latency-synthetic:
     cargo test --release --locked held_key_interaction_latency_benchmark -- --ignored --nocapture
 
+# Benchmark cursor-only interaction latency over a dense in-process server frame.
+bench-cursor-latency-synthetic:
+    cargo test --release --locked cursor_motion_interaction_latency_benchmark -- --ignored --nocapture
+
 # Benchmark host scrollback latency for wheel ticks vs PageDown repeats.
 bench-host-scroll-latency:
     cargo test --release --locked host_scrollback_input_latency_benchmark -- --ignored --nocapture

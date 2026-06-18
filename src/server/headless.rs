@@ -680,6 +680,9 @@ impl HeadlessServer {
                 .is_some_and(|deadline| now >= deadline)
         {
             self.latency_background_render_at = None;
+            if self.focused_latency_active(now) {
+                return false;
+            }
             return true;
         }
 
@@ -3995,6 +3998,23 @@ mod tests {
         crate::layout::PaneId,
         mpsc::Receiver<Bytes>,
     ) {
+        interaction_test_server_with_size_and_encoding(
+            initial_screen,
+            size,
+            RenderEncoding::SemanticFrame,
+        )
+    }
+
+    fn interaction_test_server_with_size_and_encoding(
+        initial_screen: &[u8],
+        size: (u16, u16),
+        render_encoding: RenderEncoding,
+    ) -> (
+        HeadlessServer,
+        LatestRenderReceiver,
+        crate::layout::PaneId,
+        mpsc::Receiver<Bytes>,
+    ) {
         let mut server = test_headless_server();
         let mut workspace = crate::workspace::Workspace::test_new("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
@@ -4021,7 +4041,7 @@ mod tests {
                 crate::terminal_theme::TerminalTheme::default(),
                 None,
                 1,
-                RenderEncoding::SemanticFrame,
+                render_encoding,
                 Some(client_tx),
             ),
         );
@@ -4031,6 +4051,221 @@ mod tests {
         server.resize_shared_runtime_to_effective_size();
 
         (server, client_rx, pane_id, pane_input_rx)
+    }
+
+    fn complex_cursor_bench_screen(cols: u16, rows: u16) -> Vec<u8> {
+        let mut frame = String::with_capacity(usize::from(cols) * usize::from(rows) * 18);
+        frame.push_str("\x1b[H\x1b[2J");
+        for y in 0..rows {
+            for x in 0..cols {
+                let fg = 16 + ((usize::from(x) * 5 + usize::from(y) * 7) % 216);
+                let bg = 16 + ((usize::from(x) * 11 + usize::from(y) * 3) % 216);
+                let style = match (usize::from(x) + usize::from(y)) % 7 {
+                    0 => "1",
+                    1 => "3",
+                    2 => "4",
+                    3 => "7",
+                    4 => "9",
+                    5 => "1;4",
+                    _ => "0",
+                };
+                let ch = b'a' + ((usize::from(x) + usize::from(y) * 3) % 26) as u8;
+                frame.push_str(&format!("\x1b[{style};38;5;{fg};48;5;{bg}m{}", ch as char));
+            }
+            if y + 1 < rows {
+                frame.push_str("\x1b[0m\r\n");
+            }
+        }
+        frame.push_str("\x1b[0m\x1b[H");
+        frame.into_bytes()
+    }
+
+    struct CursorMotionBenchStats {
+        total_loop_us: Vec<u64>,
+        handle_event_us: Vec<u64>,
+        pty_write_us: Vec<u64>,
+        focused_render_us: Vec<u64>,
+        recv_frame_us: Vec<u64>,
+        server_input_queue_us: Vec<u64>,
+        server_input_to_frame_us: Vec<u64>,
+        server_dirty_to_frame_us: Vec<u64>,
+        server_prepare_us: Vec<u64>,
+        encoded_bytes: Vec<u64>,
+        full_frames: usize,
+        checksum: usize,
+    }
+
+    impl CursorMotionBenchStats {
+        fn with_capacity(frames: usize) -> Self {
+            Self {
+                total_loop_us: Vec::with_capacity(frames),
+                handle_event_us: Vec::with_capacity(frames),
+                pty_write_us: Vec::with_capacity(frames),
+                focused_render_us: Vec::with_capacity(frames),
+                recv_frame_us: Vec::with_capacity(frames),
+                server_input_queue_us: Vec::with_capacity(frames),
+                server_input_to_frame_us: Vec::with_capacity(frames),
+                server_dirty_to_frame_us: Vec::with_capacity(frames),
+                server_prepare_us: Vec::with_capacity(frames),
+                encoded_bytes: Vec::with_capacity(frames),
+                full_frames: 0,
+                checksum: 0,
+            }
+        }
+    }
+
+    fn recv_bench_render_message_within(
+        rx: &LatestRenderReceiver,
+        timeout: Duration,
+        label: &str,
+    ) -> (Option<FrameDebugTiming>, usize, bool) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let now = Instant::now();
+            assert!(now < deadline, "timed out waiting for {label}");
+            let remaining = deadline.saturating_duration_since(now);
+            match read_server_message(rx.recv_timeout(remaining).expect(label)) {
+                ServerMessage::Frame(frame) => {
+                    return (frame.debug_timing, frame.cells.len(), true);
+                }
+                ServerMessage::Terminal(frame) => {
+                    return (frame.debug_timing, frame.bytes.len(), frame.full);
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    fn run_cursor_motion_bench_case(
+        label: &str,
+        render_encoding: RenderEncoding,
+        cols: u16,
+        rows: u16,
+        frames: usize,
+    ) -> CursorMotionBenchStats {
+        let initial_screen = complex_cursor_bench_screen(cols, rows);
+        let (mut server, client_rx, pane_id, mut pane_input_rx) =
+            interaction_test_server_with_size_and_encoding(
+                &initial_screen,
+                (cols, rows),
+                render_encoding,
+            );
+
+        server.render_and_stream();
+        let _ = recv_bench_render_message_within(
+            &client_rx,
+            Duration::from_secs(1),
+            "initial cursor-motion benchmark frame",
+        );
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_secs(1))
+            .expect("initial cursor-motion benchmark baseline");
+
+        let pane_rect = server
+            .app
+            .state
+            .view
+            .pane_infos
+            .first()
+            .expect("cursor-motion benchmark pane geometry")
+            .inner_rect;
+        let cursor_cols = pane_rect.width.max(1);
+        let cursor_rows = pane_rect.height.max(1);
+
+        let mut stats = CursorMotionBenchStats::with_capacity(frames);
+        for frame_index in 0..frames {
+            let loop_started = Instant::now();
+            let handle_started = Instant::now();
+            let _ = server.handle_server_event(test_client_input(1, b"\x1b[C"));
+            stats
+                .handle_event_us
+                .push(debug_duration_us(handle_started.elapsed()));
+
+            let _ = pane_input_rx
+                .try_recv()
+                .expect("pane should receive cursor-motion input");
+            let cursor_index = frame_index as u16 + 1;
+            let x = (cursor_index % cursor_cols) + 1;
+            let y = ((cursor_index / cursor_cols) % cursor_rows) + 1;
+            let cursor_move = format!("\x1b[{y};{x}H");
+            let pty_started = Instant::now();
+            server
+                .app
+                .state
+                .runtime_for_pane_in_session_at(&server.app.terminal_runtimes, 0, pane_id)
+                .expect("runtime")
+                .test_process_pty_bytes(cursor_move.as_bytes());
+            stats
+                .pty_write_us
+                .push(debug_duration_us(pty_started.elapsed()));
+            server.record_debug_pty_dirty_for_pending_inputs(Instant::now());
+
+            let render_started = Instant::now();
+            assert!(
+                server.render_focused_latency_update_and_stream(Instant::now()),
+                "{label} frame {frame_index} should use focused latency path"
+            );
+            stats
+                .focused_render_us
+                .push(debug_duration_us(render_started.elapsed()));
+
+            let recv_started = Instant::now();
+            let frame_label = format!("{label} cursor-motion benchmark frame {frame_index}");
+            let (timing, encoded_bytes, full) =
+                recv_bench_render_message_within(&client_rx, Duration::from_secs(1), &frame_label);
+            stats
+                .recv_frame_us
+                .push(debug_duration_us(recv_started.elapsed()));
+            stats
+                .total_loop_us
+                .push(debug_duration_us(loop_started.elapsed()));
+            stats.encoded_bytes.push(encoded_bytes as u64);
+            if full {
+                stats.full_frames += 1;
+            }
+            if let Some(timing) = timing {
+                stats
+                    .server_input_queue_us
+                    .push(timing.server_input_queue_us);
+                stats
+                    .server_input_to_frame_us
+                    .push(timing.server_input_to_frame_us);
+                if let Some(value) = timing.server_pty_dirty_to_frame_us {
+                    stats.server_dirty_to_frame_us.push(value);
+                }
+                if let Some(value) = timing.server_prepare_us {
+                    stats.server_prepare_us.push(value);
+                }
+            }
+            stats.checksum ^= encoded_bytes;
+        }
+
+        stats
+    }
+
+    fn print_cursor_motion_bench_stats(label: &str, stats: &CursorMotionBenchStats) {
+        println!("{label}:");
+        print_latency_bench_stats("  total_loop", &stats.total_loop_us);
+        print_latency_bench_stats("  handle_event", &stats.handle_event_us);
+        print_latency_bench_stats("  pty_write", &stats.pty_write_us);
+        print_latency_bench_stats("  focused_render", &stats.focused_render_us);
+        print_latency_bench_stats("  recv_frame", &stats.recv_frame_us);
+        print_latency_bench_stats("  server_input_queue", &stats.server_input_queue_us);
+        print_latency_bench_stats("  server_input_to_frame", &stats.server_input_to_frame_us);
+        print_latency_bench_stats(
+            "  server_pty_dirty_to_frame",
+            &stats.server_dirty_to_frame_us,
+        );
+        print_latency_bench_stats("  server_prepare", &stats.server_prepare_us);
+        print_latency_bench_stats("  encoded_bytes", &stats.encoded_bytes);
+        println!("  full_frames={}", stats.full_frames);
+        std::hint::black_box(stats.checksum);
     }
 
     fn bench_env_u16(name: &str, default: u16) -> u16 {
@@ -4415,6 +4650,36 @@ mod tests {
         print_latency_bench_stats("server_prepare", &prepare_us);
     }
 
+    #[tokio::test]
+    #[ignore = "cursor-motion latency benchmark; run with `just bench-cursor-latency-synthetic`"]
+    async fn cursor_motion_interaction_latency_benchmark() {
+        let cols = bench_env_u16("GMUX_CURSOR_BENCH_COLS", 160);
+        let rows = bench_env_u16("GMUX_CURSOR_BENCH_ROWS", 48);
+        let frames = bench_env_usize("GMUX_CURSOR_BENCH_FRAMES", 480);
+
+        let semantic = run_cursor_motion_bench_case(
+            "semantic_cursor_motion",
+            RenderEncoding::SemanticFrame,
+            cols,
+            rows,
+            frames,
+        );
+        let terminal_ansi = run_cursor_motion_bench_case(
+            "terminal_ansi_cursor_motion",
+            RenderEncoding::TerminalAnsi,
+            cols,
+            rows,
+            frames,
+        );
+
+        println!(
+            "cursor_motion_interaction_latency: frames={} cols={} rows={}",
+            frames, cols, rows
+        );
+        print_cursor_motion_bench_stats("semantic_cursor_motion", &semantic);
+        print_cursor_motion_bench_stats("terminal_ansi_cursor_motion", &terminal_ansi);
+    }
+
     fn assert_frame_data_eq(actual: &FrameData, expected: &FrameData) {
         assert_eq!(
             (actual.width, actual.height),
@@ -4465,7 +4730,7 @@ mod tests {
     }
 
     #[test]
-    fn focused_latency_timer_caps_background_catch_up() {
+    fn focused_latency_timer_defers_background_catch_up_while_input_is_active() {
         let mut server = test_headless_server();
         let workspace = crate::workspace::Workspace::test_new("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
@@ -4482,9 +4747,14 @@ mod tests {
         ));
         assert!(server.latency_background_dirty);
 
-        assert!(server.handle_focused_latency_timers(now + LATENCY_BACKGROUND_RENDER_INTERVAL));
+        assert!(!server.handle_focused_latency_timers(now + LATENCY_BACKGROUND_RENDER_INTERVAL));
         assert!(server.latency_background_dirty);
         assert_eq!(server.latency_background_render_at, None);
+
+        assert!(server.handle_focused_latency_timers(now + Duration::from_secs(1)));
+        assert_eq!(server.focused_input_pane_id, None);
+        assert_eq!(server.focused_input_deadline, None);
+        assert!(!server.latency_background_dirty);
     }
 
     #[test]
