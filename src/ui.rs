@@ -245,6 +245,7 @@ fn compute_view_internal(
 
     app.pane_panel_scroll = 0;
 
+    let tab_bar_view_started = crate::render_prof::timer();
     let tab_bar_view = app
         .session()
         .map(|ws| {
@@ -257,13 +258,17 @@ fn compute_view_internal(
             )
         })
         .unwrap_or_default();
+    crate::render_prof::duration_since("ui.compute_view.tab_bar_view", tab_bar_view_started);
     app.tab_scroll = tab_bar_view.scroll;
 
+    let split_borders_started = crate::render_prof::timer();
     let split_borders = app
         .session()
         .and_then(|ws| (!ws.zoomed).then(|| ws.layout.splits(terminal_area)))
         .unwrap_or_default();
+    crate::render_prof::duration_since("ui.compute_view.split_borders", split_borders_started);
 
+    let pane_infos_started = crate::render_prof::timer();
     let pane_infos = compute_pane_infos(
         app,
         terminal_runtimes,
@@ -271,16 +276,22 @@ fn compute_view_internal(
         resize_panes,
         cell_size,
     );
+    crate::render_prof::duration_since("ui.compute_view.pane_infos", pane_infos_started);
+    let selection_pin_started = crate::render_prof::timer();
     app.apply_selection_viewport_pin(terminal_runtimes, &pane_infos);
+    crate::render_prof::duration_since("ui.compute_view.selection_pin", selection_pin_started);
     if resize_panes {
+        let resize_bg_started = crate::render_prof::timer();
         resize_background_tab_panes_to_terminal_area(
             app,
             terminal_runtimes,
             terminal_area,
             cell_size,
         );
+        crate::render_prof::duration_since("ui.compute_view.resize_background", resize_bg_started);
     }
 
+    let assign_started = crate::render_prof::timer();
     let toast_hit_area = app
         .toast
         .as_ref()
@@ -302,6 +313,7 @@ fn compute_view_internal(
         pane_infos,
         split_borders,
     };
+    crate::render_prof::duration_since("ui.compute_view.assign", assign_started);
 }
 
 fn compute_mobile_view(
@@ -384,20 +396,30 @@ pub fn render_with_runtime_registry(
     terminal_runtimes: &TerminalRuntimeRegistry,
     frame: &mut Frame,
 ) {
+    let total_started = crate::render_prof::timer();
     let tab_bar_area = app.view.tab_bar_rect;
     let terminal_area = app.view.terminal_area;
 
     if app.view.layout == ViewLayout::Mobile {
+        let mobile_header_started = crate::render_prof::timer();
         render_mobile_header(app, terminal_runtimes, frame, app.view.mobile_header_rect);
+        crate::render_prof::duration_since("ui.render.mobile_header", mobile_header_started);
     }
     if app.view.layout != ViewLayout::Mobile {
+        let tab_bar_started = crate::render_prof::timer();
         render_tab_bar(app, terminal_runtimes, frame, tab_bar_area);
+        crate::render_prof::duration_since("ui.render.tab_bar", tab_bar_started);
     }
+    let panes_started = crate::render_prof::timer();
     render_panes(app, terminal_runtimes, frame, terminal_area);
+    crate::render_prof::duration_since("ui.render.panes", panes_started);
 
     // Ambient notifications sit above panes, but below interactive overlays.
+    let notifications_started = crate::render_prof::timer();
     render_notifications(app, frame, terminal_area);
+    crate::render_prof::duration_since("ui.render.notifications", notifications_started);
 
+    let overlay_started = crate::render_prof::timer();
     match app.mode {
         Mode::Onboarding => render_onboarding_overlay(app, frame, frame.area()),
         Mode::Navigate if app.view.layout == ViewLayout::Mobile => {
@@ -420,6 +442,8 @@ pub fn render_with_runtime_registry(
         Mode::UpdateMessage => render_update_message_overlay(app, frame, frame.area()),
         Mode::Terminal => {}
     }
+    crate::render_prof::duration_since("ui.render.overlay", overlay_started);
+    crate::render_prof::duration_since("ui.render.total", total_started);
 }
 
 fn render_notifications(app: &AppState, frame: &mut Frame, terminal_area: Rect) {

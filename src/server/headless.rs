@@ -4324,6 +4324,404 @@ mod tests {
         bytes
     }
 
+    fn complex_scrollback_bench_screen(cols: u16, lines: usize) -> Vec<u8> {
+        let width = usize::from(cols.max(1));
+        let mut bytes = Vec::with_capacity(lines.saturating_mul(width).saturating_mul(18));
+        for line in 0..lines {
+            bytes.extend_from_slice(b"\x1b[0m");
+            for col in 0..width {
+                if col % 4 == 0 {
+                    let fg = 16 + ((col * 5 + line * 7) % 216);
+                    let bg = 16 + ((col * 11 + line * 3) % 216);
+                    let style = match (col / 4 + line) % 6 {
+                        0 => "1",
+                        1 => "3",
+                        2 => "4",
+                        3 => "7",
+                        4 => "1;4",
+                        _ => "0",
+                    };
+                    bytes
+                        .extend_from_slice(format!("\x1b[{style};38;5;{fg};48;5;{bg}m").as_bytes());
+                }
+                let ch = b'a' + ((col + line * 13) % 26) as u8;
+                bytes.push(ch);
+            }
+            bytes.extend_from_slice(b"\x1b[0m\r\n");
+        }
+        bytes
+    }
+
+    fn scrollback_bench_input(cols: u16, history_lines: usize) -> Vec<u8> {
+        if let Ok(path) = std::env::var("GMUX_COPY_SCROLL_BENCH_LOG_PATH") {
+            return read_scrollback_bench_log_tail(&path);
+        }
+        complex_scrollback_bench_screen(cols, history_lines)
+    }
+
+    fn read_scrollback_bench_log_tail(path: &str) -> Vec<u8> {
+        use std::io::{Read, Seek, SeekFrom};
+
+        let max_bytes = bench_env_usize("GMUX_COPY_SCROLL_BENCH_LOG_BYTES", 64 * 1024 * 1024);
+        let mut file = fs::File::open(path).expect("copy scrollback benchmark log file");
+        let file_len = file
+            .metadata()
+            .expect("copy scrollback benchmark log metadata")
+            .len();
+        let read_len = file_len.min(max_bytes as u64);
+        file.seek(SeekFrom::End(-(read_len as i64)))
+            .expect("seek copy scrollback benchmark log tail");
+        let mut bytes = Vec::with_capacity(read_len as usize);
+        file.read_to_end(&mut bytes)
+            .expect("read copy scrollback benchmark log tail");
+
+        let start = bytes
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(0, |index| index.saturating_add(1));
+        let bytes = bytes.split_off(start);
+        let mut normalized = Vec::with_capacity(bytes.len().saturating_add(bytes.len() / 16));
+        for byte in bytes {
+            if byte == b'\n' && !normalized.ends_with(b"\r") {
+                normalized.push(b'\r');
+            }
+            normalized.push(byte);
+        }
+        if !normalized.ends_with(b"\n") {
+            normalized.extend_from_slice(b"\r\n");
+        }
+        normalized
+    }
+
+    struct CopyModeScrollbackBenchStats {
+        total_loop_us: Vec<u64>,
+        handle_event_us: Vec<u64>,
+        pty_append_us: Vec<u64>,
+        render_and_stream_us: Vec<u64>,
+        recv_frame_us: Vec<u64>,
+        input_queue_us: Vec<u64>,
+        input_to_frame_us: Vec<u64>,
+        render_us: Vec<u64>,
+        frame_build_us: Vec<u64>,
+        prepare_us: Vec<u64>,
+        compute_view_us: Vec<u64>,
+        terminal_new_us: Vec<u64>,
+        draw_us: Vec<u64>,
+        buffer_clone_us: Vec<u64>,
+        cursor_us: Vec<u64>,
+        encoded_bytes: Vec<u64>,
+        checksum: usize,
+    }
+
+    impl CopyModeScrollbackBenchStats {
+        fn with_capacity(frames: usize) -> Self {
+            Self {
+                total_loop_us: Vec::with_capacity(frames),
+                handle_event_us: Vec::with_capacity(frames),
+                pty_append_us: Vec::with_capacity(frames),
+                render_and_stream_us: Vec::with_capacity(frames),
+                recv_frame_us: Vec::with_capacity(frames),
+                input_queue_us: Vec::with_capacity(frames),
+                input_to_frame_us: Vec::with_capacity(frames),
+                render_us: Vec::with_capacity(frames),
+                frame_build_us: Vec::with_capacity(frames),
+                prepare_us: Vec::with_capacity(frames),
+                compute_view_us: Vec::with_capacity(frames),
+                terminal_new_us: Vec::with_capacity(frames),
+                draw_us: Vec::with_capacity(frames),
+                buffer_clone_us: Vec::with_capacity(frames),
+                cursor_us: Vec::with_capacity(frames),
+                encoded_bytes: Vec::with_capacity(frames),
+                checksum: 0,
+            }
+        }
+
+        fn push_render_breakdown(
+            &mut self,
+            breakdown: crate::server::render_stream::BenchRenderBreakdown,
+        ) {
+            self.compute_view_us.push(breakdown.compute_view_us);
+            self.terminal_new_us.push(breakdown.terminal_new_us);
+            self.draw_us.push(breakdown.draw_us);
+            self.buffer_clone_us.push(breakdown.buffer_clone_us);
+            self.cursor_us.push(breakdown.cursor_us);
+        }
+    }
+
+    fn render_copy_mode_bench_frame(
+        server: &mut HeadlessServer,
+        client_id: u64,
+    ) -> crate::server::render_stream::BenchRenderBreakdown {
+        let (cols, rows) = server.effective_size;
+        let area = Rect::new(0, 0, cols, rows);
+        let cell_size = server
+            .clients
+            .get(&client_id)
+            .map(|client| client.cell_size)
+            .unwrap_or_default();
+        let render_cell_size = if server.app.state.kitty_graphics_enabled && cell_size.is_known() {
+            cell_size
+        } else {
+            crate::kitty_graphics::HostCellSize::default()
+        };
+
+        let debug_render_started = Instant::now();
+        let (buffer, cursor, breakdown) =
+            crate::server::render_stream::render_virtual_with_runtime_registry_bench_breakdown(
+                &mut server.app.state,
+                &server.app.terminal_runtimes,
+                area,
+                true,
+                render_cell_size,
+            );
+        let render_duration = debug_render_started.elapsed();
+
+        let debug_frame_build_started = Instant::now();
+        let hyperlinks = crate::server::render_stream::visible_hyperlinks(
+            &server.app.state,
+            &server.app.terminal_runtimes,
+        );
+        let decorations = crate::server::render_stream::visible_decorations(
+            &server.app.state,
+            &server.app.terminal_runtimes,
+        );
+        let frame = FrameData::from_ratatui_buffer_with_hyperlinks_and_decorations(
+            &buffer,
+            cursor,
+            &hyperlinks,
+            &decorations,
+        );
+        let snapshot = server.store_app_frame_snapshot(
+            frame,
+            ServerRenderDebug {
+                render_us: Some(debug_duration_us(render_duration)),
+                frame_build_us: Some(debug_duration_us(debug_frame_build_started.elapsed())),
+            },
+        );
+
+        let mut broken_clients = Vec::new();
+        server.stream_app_snapshot_to_client(
+            client_id,
+            snapshot,
+            (cols, rows),
+            cell_size,
+            Some(client_id) == server.foreground_client_id,
+            ServerFrameDebugContext {
+                render: ServerRenderDebug {
+                    render_us: Some(debug_duration_us(render_duration)),
+                    frame_build_us: Some(debug_duration_us(debug_frame_build_started.elapsed())),
+                },
+                target_count: 1,
+            },
+            &mut broken_clients,
+            "copy_mode_bench",
+        );
+        assert!(
+            broken_clients.is_empty(),
+            "copy-mode benchmark client disconnected"
+        );
+        server.compute_foreground_view_geometry();
+        server.app.full_redraw_pending = false;
+        breakdown
+    }
+
+    fn run_complex_copy_mode_scrollback_bench_case(
+        label: &str,
+        input_for_frame: impl Fn(usize) -> Vec<u8>,
+        cursor_row: u16,
+        cols: u16,
+        rows: u16,
+        frames: usize,
+        history_lines: usize,
+        scrollback_limit_bytes: usize,
+        initial_offset_from_bottom: usize,
+        live_append: bool,
+    ) -> CopyModeScrollbackBenchStats {
+        let initial_screen = scrollback_bench_input(cols, history_lines);
+        let append_source = initial_screen.clone();
+        let mut server = test_headless_server();
+        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let pane_id = workspace.focused_pane_id().expect("focused pane");
+        let (runtime, _pane_input_rx) =
+            crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
+                cols,
+                rows,
+                scrollback_limit_bytes,
+                &initial_screen,
+                1024,
+            );
+        runtime.set_scroll_offset_from_bottom(initial_offset_from_bottom);
+        workspace.insert_test_runtime(pane_id, runtime);
+        server.app.state.sessions = vec![workspace];
+        server.app.state.active_session = Some(0);
+        server.app.state.selected_session = 0;
+        server.app.state.mode = crate::app::Mode::Terminal;
+
+        let (client_tx, _client_control_rx, client_rx) = test_client_writer();
+        server.clients.insert(
+            1,
+            ClientConnection::new(
+                (cols, rows),
+                crate::kitty_graphics::HostCellSize::default(),
+                crate::terminal_theme::TerminalTheme::default(),
+                None,
+                1,
+                RenderEncoding::SemanticFrame,
+                Some(client_tx),
+            ),
+        );
+        server.foreground_client_id = Some(1);
+        server.clients.get_mut(&1).unwrap().terminal_size = (cols, rows);
+        server.sync_foreground_client_state();
+        server.resize_shared_runtime_to_effective_size();
+
+        server.render_and_stream();
+        let _ = recv_server_frame_within(
+            &client_rx,
+            Duration::from_secs(1),
+            "terminal-mode complex scrollback geometry frame",
+        );
+
+        server
+            .app
+            .state
+            .enter_copy_mode(&server.app.terminal_runtimes);
+        let pane_rect = server
+            .app
+            .state
+            .view
+            .pane_infos
+            .first()
+            .map(|info| info.inner_rect)
+            .unwrap_or_else(|| Rect::new(0, 0, cols, rows));
+        if let Some(copy_mode) = server.app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = cursor_row.min(pane_rect.height.saturating_sub(1));
+            copy_mode.cursor_col = pane_rect.width.saturating_sub(1) / 2;
+        }
+
+        let _ = render_copy_mode_bench_frame(&mut server, 1);
+        let _ = recv_server_frame_within(
+            &client_rx,
+            Duration::from_secs(1),
+            "initial complex copy-mode scrollback benchmark frame",
+        );
+        server
+            .clients
+            .get(&1)
+            .unwrap()
+            .render_actor
+            .as_ref()
+            .unwrap()
+            .wait_for_last_frame(Duration::from_secs(1))
+            .expect("complex copy-mode scrollback benchmark baseline");
+
+        let mut stats = CopyModeScrollbackBenchStats::with_capacity(frames);
+        for frame_index in 0..frames {
+            let loop_started = Instant::now();
+            let input = input_for_frame(frame_index);
+            let handle_started = Instant::now();
+            assert!(
+                server.handle_server_event(test_client_input(1, input)),
+                "{label} frame {frame_index} should change copy-mode state"
+            );
+            stats
+                .handle_event_us
+                .push(debug_duration_us(handle_started.elapsed()));
+
+            if live_append {
+                let append_started = Instant::now();
+                let append_bytes =
+                    bench_env_usize("GMUX_COPY_SCROLL_BENCH_APPEND_BYTES", 16 * 1024);
+                let chunk = copy_mode_bench_append_chunk(&append_source, frame_index, append_bytes);
+                server
+                    .app
+                    .state
+                    .runtime_for_pane_in_session_at(&server.app.terminal_runtimes, 0, pane_id)
+                    .expect("runtime")
+                    .test_process_pty_bytes(&chunk);
+                server.record_debug_pty_dirty_for_pending_inputs(Instant::now());
+                stats
+                    .pty_append_us
+                    .push(debug_duration_us(append_started.elapsed()));
+            }
+
+            let render_started = Instant::now();
+            let breakdown = render_copy_mode_bench_frame(&mut server, 1);
+            stats
+                .render_and_stream_us
+                .push(debug_duration_us(render_started.elapsed()));
+            stats.push_render_breakdown(breakdown);
+
+            let recv_started = Instant::now();
+            let frame_label = format!("{label} complex copy-mode scrollback frame {frame_index}");
+            let frame = recv_server_frame_within(&client_rx, Duration::from_secs(1), &frame_label);
+            stats
+                .recv_frame_us
+                .push(debug_duration_us(recv_started.elapsed()));
+            stats
+                .total_loop_us
+                .push(debug_duration_us(loop_started.elapsed()));
+
+            let timing = frame
+                .debug_timing
+                .expect("copy-mode scrollback benchmark frame should include debug timing");
+            stats.input_queue_us.push(timing.server_input_queue_us);
+            stats
+                .input_to_frame_us
+                .push(timing.server_input_to_frame_us);
+            if let Some(value) = timing.server_render_us {
+                stats.render_us.push(value);
+            }
+            if let Some(value) = timing.server_frame_build_us {
+                stats.frame_build_us.push(value);
+            }
+            if let Some(value) = timing.server_prepare_us {
+                stats.prepare_us.push(value);
+            }
+            stats.encoded_bytes.push(frame.cells.len() as u64);
+            stats.checksum ^= frame.cells.len();
+        }
+        stats
+    }
+
+    fn copy_mode_bench_append_chunk(source: &[u8], frame_index: usize, bytes: usize) -> Vec<u8> {
+        if source.is_empty() || bytes == 0 {
+            return b"live tail benchmark line\r\n".to_vec();
+        }
+        let start = frame_index.saturating_mul(bytes) % source.len();
+        let first_len = bytes.min(source.len().saturating_sub(start));
+        let mut chunk = Vec::with_capacity(bytes.saturating_add(2));
+        chunk.extend_from_slice(&source[start..start + first_len]);
+        if first_len < bytes {
+            chunk.extend_from_slice(&source[..(bytes - first_len).min(source.len())]);
+        }
+        if !chunk.ends_with(b"\n") {
+            chunk.extend_from_slice(b"\r\n");
+        }
+        chunk
+    }
+
+    fn print_copy_mode_scrollback_bench_stats(label: &str, stats: &CopyModeScrollbackBenchStats) {
+        println!("{label}:");
+        print_latency_bench_stats("  total_loop", &stats.total_loop_us);
+        print_latency_bench_stats("  handle_event", &stats.handle_event_us);
+        print_latency_bench_stats("  pty_append", &stats.pty_append_us);
+        print_latency_bench_stats("  render_and_stream", &stats.render_and_stream_us);
+        print_latency_bench_stats("  recv_frame", &stats.recv_frame_us);
+        print_latency_bench_stats("  server_input_queue", &stats.input_queue_us);
+        print_latency_bench_stats("  server_input_to_frame", &stats.input_to_frame_us);
+        print_latency_bench_stats("  server_render", &stats.render_us);
+        print_latency_bench_stats("  server_frame_build", &stats.frame_build_us);
+        print_latency_bench_stats("  server_prepare", &stats.prepare_us);
+        print_latency_bench_stats("  render.compute_view", &stats.compute_view_us);
+        print_latency_bench_stats("  render.terminal_new", &stats.terminal_new_us);
+        print_latency_bench_stats("  render.draw", &stats.draw_us);
+        print_latency_bench_stats("  render.buffer_clone", &stats.buffer_clone_us);
+        print_latency_bench_stats("  render.cursor", &stats.cursor_us);
+        print_latency_bench_stats("  encoded_cells", &stats.encoded_bytes);
+        std::hint::black_box(stats.checksum);
+    }
+
     struct HostScrollBenchStats {
         total_loop_us: Vec<u64>,
         handle_event_us: Vec<u64>,
@@ -4553,6 +4951,101 @@ mod tests {
             } else {
                 wheel_avg as f64 / page_down_avg as f64
             }
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "complex copy-mode scrollback benchmark; run with `just bench-copy-scrollback-latency`"]
+    async fn complex_copy_mode_scrollback_latency_benchmark() {
+        let cols = bench_env_u16("GMUX_COPY_SCROLL_BENCH_COLS", 160);
+        let rows = bench_env_u16("GMUX_COPY_SCROLL_BENCH_ROWS", 48);
+        let frames = bench_env_usize("GMUX_COPY_SCROLL_BENCH_FRAMES", 120);
+        let history_lines = bench_env_usize("GMUX_COPY_SCROLL_BENCH_HISTORY_LINES", 8_000);
+        let scrollback_limit_bytes = bench_env_usize(
+            "GMUX_COPY_SCROLL_BENCH_SCROLLBACK_LIMIT_BYTES",
+            128 * 1024 * 1024,
+        );
+        let initial_offset_from_bottom = bench_env_usize(
+            "GMUX_COPY_SCROLL_BENCH_INITIAL_OFFSET_FROM_BOTTOM",
+            frames.saturating_add(usize::from(rows) * 8),
+        );
+
+        let cursor_only = run_complex_copy_mode_scrollback_bench_case(
+            "cursor_only_in_viewport",
+            |frame_index| {
+                if frame_index % 2 == 0 {
+                    b"k".to_vec()
+                } else {
+                    b"j".to_vec()
+                }
+            },
+            rows / 2,
+            cols,
+            rows,
+            frames,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom,
+            false,
+        );
+        let line_scroll = run_complex_copy_mode_scrollback_bench_case(
+            "line_scroll_at_top_cursor",
+            |_| b"k".to_vec(),
+            0,
+            cols,
+            rows,
+            frames,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom,
+            false,
+        );
+        let page_scroll = run_complex_copy_mode_scrollback_bench_case(
+            "pageup_repeat",
+            |_| b"\x1b[5~".to_vec(),
+            0,
+            cols,
+            rows,
+            frames,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom.saturating_add(frames.saturating_mul(usize::from(rows))),
+            false,
+        );
+        let live_tail_cursor = run_complex_copy_mode_scrollback_bench_case(
+            "live_tail_cursor_only_in_viewport",
+            |frame_index| {
+                if frame_index % 2 == 0 {
+                    b"k".to_vec()
+                } else {
+                    b"j".to_vec()
+                }
+            },
+            rows / 2,
+            cols,
+            rows,
+            frames,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom,
+            true,
+        );
+
+        println!(
+            "complex_copy_mode_scrollback_latency: frames={} cols={} rows={} history_lines={} scrollback_limit_bytes={} initial_offset_from_bottom={}",
+            frames,
+            cols,
+            rows,
+            history_lines,
+            scrollback_limit_bytes,
+            initial_offset_from_bottom,
+        );
+        print_copy_mode_scrollback_bench_stats("cursor_only_in_viewport", &cursor_only);
+        print_copy_mode_scrollback_bench_stats("line_scroll_at_top_cursor", &line_scroll);
+        print_copy_mode_scrollback_bench_stats("pageup_repeat", &page_scroll);
+        print_copy_mode_scrollback_bench_stats(
+            "live_tail_cursor_only_in_viewport",
+            &live_tail_cursor,
         );
     }
 

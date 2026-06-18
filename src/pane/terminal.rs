@@ -1089,6 +1089,7 @@ impl GhosttyPaneTerminal {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect, show_cursor: bool) {
+        let total_started = crate::render_prof::timer();
         let Ok(mut core) = self.core.lock() else {
             return;
         };
@@ -1100,9 +1101,12 @@ impl GhosttyPaneTerminal {
             render_state,
             ..
         } = &mut *core;
+        let update_started = crate::render_prof::timer();
         if render_state.update(terminal).is_err() {
             return;
         }
+        crate::render_prof::duration_since("pane.render.update", update_started);
+        let setup_started = crate::render_prof::timer();
         let colors = render_state.colors().ok();
         let default_bg = colors
             .and_then(|c| ghostty_default_bg(c.background, host_theme, initial_default_background));
@@ -1120,6 +1124,8 @@ impl GhosttyPaneTerminal {
             Ok(cells) => cells,
             Err(_) => return,
         };
+        crate::render_prof::duration_since("pane.render.setup", setup_started);
+        let cells_started = crate::render_prof::timer();
         {
             let buf = frame.buffer_mut();
             let mut rows = match render_state.populate_row_iterator(&mut row_iterator) {
@@ -1180,9 +1186,13 @@ impl GhosttyPaneTerminal {
                 y += 1;
             }
         }
+        crate::render_prof::duration_since("pane.render.cells", cells_started);
 
+        let clear_dirty_started = crate::render_prof::timer();
         ghostty_clear_render_dirty(render_state, area.height);
+        crate::render_prof::duration_since("pane.render.clear_dirty", clear_dirty_started);
 
+        let cursor_started = crate::render_prof::timer();
         if show_cursor && render_state.cursor_visible().ok() == Some(true) {
             if let Ok(Some(cursor)) = render_state.cursor_viewport() {
                 if cursor.x < area.width && cursor.y < area.height {
@@ -1190,6 +1200,8 @@ impl GhosttyPaneTerminal {
                 }
             }
         }
+        crate::render_prof::duration_since("pane.render.cursor", cursor_started);
+        crate::render_prof::duration_since("pane.render.total", total_started);
     }
 
     pub fn collect_dirty_patch(

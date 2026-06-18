@@ -247,12 +247,15 @@ pub(super) fn render_panes(
     frame: &mut Frame,
     area: Rect,
 ) {
+    let total_started = crate::render_prof::timer();
     let Some(ws_idx) = app.session_index() else {
         render_empty(app, frame, area);
+        crate::render_prof::duration_since("ui.render_panes.total", total_started);
         return;
     };
     let Some(ws) = app.session() else {
         render_empty(app, frame, area);
+        crate::render_prof::duration_since("ui.render_panes.total", total_started);
         return;
     };
 
@@ -262,11 +265,16 @@ pub(super) fn render_panes(
     for info in &app.view.pane_infos {
         if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, info.id) {
             let show_cursor = info.is_focused && terminal_active && !pane_is_scrolled_back(rt);
+            let terminal_started = crate::render_prof::timer();
             rt.render(frame, info.inner_rect, show_cursor);
+            crate::render_prof::duration_since("ui.render_panes.terminal", terminal_started);
+            let scrollbar_started = crate::render_prof::timer();
             render_pane_scrollbar(app, frame, info, rt);
+            crate::render_prof::duration_since("ui.render_panes.scrollbar", scrollbar_started);
 
             let should_dim = !info.is_focused && multi_pane && !terminal_active;
             if should_dim {
+                let dim_started = crate::render_prof::timer();
                 let inner = info.inner_rect;
                 let buf = frame.buffer_mut();
                 for y in inner.y..inner.y + inner.height {
@@ -275,8 +283,10 @@ pub(super) fn render_panes(
                         cell.set_style(cell.style().add_modifier(Modifier::DIM));
                     }
                 }
+                crate::render_prof::duration_since("ui.render_panes.dim", dim_started);
             }
 
+            let selection_started = crate::render_prof::timer();
             render_selection_highlight(
                 &app.selection,
                 frame,
@@ -286,13 +296,29 @@ pub(super) fn render_panes(
                 &app.palette,
                 app.host_terminal_theme,
             );
+            crate::render_prof::duration_since("ui.render_panes.selection", selection_started);
+            let search_highlights_started = crate::render_prof::timer();
             render_copy_mode_search_highlights(app, frame, info, rt.scroll_metrics());
+            crate::render_prof::duration_since(
+                "ui.render_panes.copy_search_highlights",
+                search_highlights_started,
+            );
+            let copy_cursor_started = crate::render_prof::timer();
             render_copy_mode_cursor(app, frame, info);
+            crate::render_prof::duration_since("ui.render_panes.copy_cursor", copy_cursor_started);
+            let search_indicator_started = crate::render_prof::timer();
             render_copy_mode_search_indicator(app, frame, info);
+            crate::render_prof::duration_since(
+                "ui.render_panes.copy_search_indicator",
+                search_indicator_started,
+            );
         }
     }
 
+    let borders_started = crate::render_prof::timer();
     render_pane_borders(app, frame, terminal_active);
+    crate::render_prof::duration_since("ui.render_panes.borders", borders_started);
+    crate::render_prof::duration_since("ui.render_panes.total", total_started);
 }
 
 fn top_separator_rect(app: &AppState) -> Option<Rect> {

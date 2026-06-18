@@ -40,6 +40,7 @@ pub use self::{
 
 const PANE_TERM: &str = crate::config::DEFAULT_TERMINAL_TERM;
 const PANE_COLORTERM: &str = "truecolor";
+const FOREGROUND_PROCESS_CACHE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn normalized_pane_term(term: &str) -> &str {
     let trimmed = term.trim();
@@ -128,6 +129,66 @@ fn foreground_process_name(shell_pid: u32) -> Option<String> {
         .or_else(|| job.processes.iter().find_map(process_display_name))
 }
 
+struct ForegroundProcessNameCache {
+    value: Arc<Mutex<Option<String>>>,
+    stop_tx: Option<std::sync::mpsc::Sender<()>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ForegroundProcessNameCache {
+    fn spawn(child_pid: Arc<AtomicU32>) -> Self {
+        let value = Arc::new(Mutex::new(None));
+        let (stop_tx, stop_rx) = std::sync::mpsc::channel();
+        let thread_value = value.clone();
+        let handle = std::thread::Builder::new()
+            .name("gmux-fg-process-cache".to_string())
+            .spawn(move || loop {
+                let pid = child_pid.load(Ordering::Acquire);
+                let next = (pid > 0).then(|| foreground_process_name(pid)).flatten();
+                if let Ok(mut value) = thread_value.lock() {
+                    *value = next;
+                }
+                if stop_rx
+                    .recv_timeout(FOREGROUND_PROCESS_CACHE_INTERVAL)
+                    .is_ok()
+                {
+                    break;
+                }
+            })
+            .ok();
+
+        Self {
+            value,
+            stop_tx: Some(stop_tx),
+            handle,
+        }
+    }
+
+    #[cfg(test)]
+    fn disabled() -> Self {
+        Self {
+            value: Arc::new(Mutex::new(None)),
+            stop_tx: None,
+            handle: None,
+        }
+    }
+
+    fn get(&self) -> Option<String> {
+        self.value.try_lock().ok().and_then(|value| value.clone())
+    }
+}
+
+impl Drop for ForegroundProcessNameCache {
+    fn drop(&mut self) {
+        if let Some(stop_tx) = self.stop_tx.take() {
+            let _ = stop_tx.send(());
+        }
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 fn foreground_process_argv(shell_pid: u32) -> Option<Vec<String>> {
     let mut job = crate::platform::foreground_job(shell_pid)?;
     let session_pids = crate::platform::session_processes(shell_pid);
@@ -178,6 +239,7 @@ pub struct PaneRuntime {
     io: PaneRuntimeIo,
     current_size: Cell<(u16, u16, u32, u32)>,
     child_pid: Arc<AtomicU32>,
+    foreground_process_name: ForegroundProcessNameCache,
     child_wait_completed: Option<Arc<AtomicBool>>,
     kitty_keyboard_flags: Arc<AtomicU16>,
     #[cfg(unix)]
@@ -951,6 +1013,7 @@ impl PaneRuntime {
         }
         let terminal = Arc::new(PaneTerminal::new(pane_terminal));
         let child_pid = Arc::new(AtomicU32::new(child_pid));
+        let foreground_process_name = ForegroundProcessNameCache::spawn(child_pid.clone());
         let kitty_keyboard_flags = Arc::new(AtomicU16::new(keyboard_protocol_flags));
         let pty_debug_timings = Arc::new(Mutex::new(PtyDebugTimings::default()));
 
@@ -1017,6 +1080,7 @@ impl PaneRuntime {
             io,
             current_size: Cell::new((rows, cols, cell_width_px, cell_height_px)),
             child_pid,
+            foreground_process_name,
             child_wait_completed: None,
             kitty_keyboard_flags,
             handoff_input_state,
@@ -1066,6 +1130,7 @@ impl PaneRuntime {
 
         // --- Child watcher task ---
         let child_pid = Arc::new(AtomicU32::new(0));
+        let foreground_process_name = ForegroundProcessNameCache::spawn(child_pid.clone());
         let child_wait_completed = Arc::new(AtomicBool::new(false));
         {
             let child_pid = child_pid.clone();
@@ -1171,6 +1236,7 @@ impl PaneRuntime {
             io,
             current_size: Cell::new((rows, cols, 0, 0)),
             child_pid,
+            foreground_process_name,
             child_wait_completed: Some(child_wait_completed),
             kitty_keyboard_flags,
             #[cfg(unix)]
@@ -1577,11 +1643,7 @@ impl PaneRuntime {
     }
 
     pub fn foreground_process_name(&self) -> Option<String> {
-        let pid = self.child_pid.load(Ordering::Acquire);
-        if pid == 0 {
-            return None;
-        }
-        foreground_process_name(pid)
+        self.foreground_process_name.get()
     }
 
     pub fn foreground_process_argv(&self) -> Option<Vec<String>> {
@@ -1650,6 +1712,7 @@ impl PaneRuntime {
                 },
                 current_size: Cell::new((rows, cols, 0, 0)),
                 child_pid: Arc::new(AtomicU32::new(0)),
+                foreground_process_name: ForegroundProcessNameCache::disabled(),
                 child_wait_completed: None,
                 kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
                 handoff_input_state: None,
@@ -2081,6 +2144,7 @@ mod tests {
             },
             current_size: Cell::new((80, 24, 0, 0)),
             child_pid: Arc::new(AtomicU32::new(0)),
+            foreground_process_name: ForegroundProcessNameCache::disabled(),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
             handoff_input_state: None,
@@ -2109,6 +2173,7 @@ mod tests {
             },
             current_size: Cell::new((80, 24, 0, 0)),
             child_pid: Arc::new(AtomicU32::new(0)),
+            foreground_process_name: ForegroundProcessNameCache::disabled(),
             child_wait_completed: None,
             kitty_keyboard_flags: Arc::new(AtomicU16::new(0)),
             handoff_input_state: None,

@@ -289,26 +289,106 @@ pub(crate) fn render_virtual_with_runtime_registry(
     resize_panes: bool,
     cell_size: crate::kitty_graphics::HostCellSize,
 ) -> (ratatui::buffer::Buffer, Option<CursorState>) {
+    let compute_view_started = crate::render_prof::timer();
     if resize_panes {
         crate::ui::compute_view_with_cell_size(app_state, terminal_runtimes, area, cell_size);
     } else {
         crate::ui::compute_view_without_resizing_panes(app_state, terminal_runtimes, area);
     }
+    crate::render_prof::duration_since("render_virtual.compute_view", compute_view_started);
 
+    let terminal_new_started = crate::render_prof::timer();
     let backend = CursorTrackingBackend::new(area.width, area.height);
     let mut terminal = ratatui::Terminal::new(backend).expect("TestBackend::new should never fail");
+    crate::render_prof::duration_since("render_virtual.terminal_new", terminal_new_started);
 
+    let draw_started = crate::render_prof::timer();
     terminal
         .draw(|frame| {
             crate::ui::render_with_runtime_registry(app_state, terminal_runtimes, frame);
         })
         .expect("render to TestBackend should never fail");
+    crate::render_prof::duration_since("render_virtual.draw", draw_started);
 
+    let buffer_clone_started = crate::render_prof::timer();
     let buffer = terminal.backend().buffer().clone();
+    crate::render_prof::duration_since("render_virtual.buffer_clone", buffer_clone_started);
+    let cursor_started = crate::render_prof::timer();
     let cursor = focused_terminal_cursor(app_state, terminal_runtimes)
         .or_else(|| terminal.backend().rendered_cursor());
+    crate::render_prof::duration_since("render_virtual.cursor", cursor_started);
 
     (buffer, cursor)
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct BenchRenderBreakdown {
+    pub compute_view_us: u64,
+    pub terminal_new_us: u64,
+    pub draw_us: u64,
+    pub buffer_clone_us: u64,
+    pub cursor_us: u64,
+}
+
+#[cfg(test)]
+fn bench_duration_us(duration: std::time::Duration) -> u64 {
+    duration.as_micros().min(u128::from(u64::MAX)) as u64
+}
+
+#[cfg(test)]
+pub(crate) fn render_virtual_with_runtime_registry_bench_breakdown(
+    app_state: &mut AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    area: Rect,
+    resize_panes: bool,
+    cell_size: crate::kitty_graphics::HostCellSize,
+) -> (
+    ratatui::buffer::Buffer,
+    Option<CursorState>,
+    BenchRenderBreakdown,
+) {
+    let compute_view_started = std::time::Instant::now();
+    if resize_panes {
+        crate::ui::compute_view_with_cell_size(app_state, terminal_runtimes, area, cell_size);
+    } else {
+        crate::ui::compute_view_without_resizing_panes(app_state, terminal_runtimes, area);
+    }
+    let compute_view_us = bench_duration_us(compute_view_started.elapsed());
+
+    let terminal_new_started = std::time::Instant::now();
+    let backend = CursorTrackingBackend::new(area.width, area.height);
+    let mut terminal = ratatui::Terminal::new(backend).expect("TestBackend::new should never fail");
+    let terminal_new_us = bench_duration_us(terminal_new_started.elapsed());
+
+    let draw_started = std::time::Instant::now();
+    terminal
+        .draw(|frame| {
+            crate::ui::render_with_runtime_registry(app_state, terminal_runtimes, frame);
+        })
+        .expect("render to TestBackend should never fail");
+    let draw_us = bench_duration_us(draw_started.elapsed());
+
+    let buffer_clone_started = std::time::Instant::now();
+    let buffer = terminal.backend().buffer().clone();
+    let buffer_clone_us = bench_duration_us(buffer_clone_started.elapsed());
+
+    let cursor_started = std::time::Instant::now();
+    let cursor = focused_terminal_cursor(app_state, terminal_runtimes)
+        .or_else(|| terminal.backend().rendered_cursor());
+    let cursor_us = bench_duration_us(cursor_started.elapsed());
+
+    (
+        buffer,
+        cursor,
+        BenchRenderBreakdown {
+            compute_view_us,
+            terminal_new_us,
+            draw_us,
+            buffer_clone_us,
+            cursor_us,
+        },
+    )
 }
 
 /// Renders one server-owned terminal directly for `terminal attach` clients.

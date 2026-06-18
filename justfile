@@ -49,6 +49,10 @@ bench-cursor-latency-synthetic:
 bench-host-scroll-latency:
     cargo test --release --locked host_scrollback_input_latency_benchmark -- --ignored --nocapture
 
+# Benchmark copy-mode cursor and viewport movement over complex scrollback.
+bench-copy-scrollback-latency:
+    cargo test --release --locked complex_copy_mode_scrollback_latency_benchmark -- --ignored --nocapture
+
 # Run fast local lint checks
 lint:
     cargo fmt --check
