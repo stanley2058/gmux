@@ -64,6 +64,10 @@ impl AppState {
             return None;
         }
 
+        if self.mode == Mode::UpdateConfirm && self.update.installing {
+            return None;
+        }
+
         if self.mode == Mode::Terminal
             && self.clickable_toast_at(mouse.column, mouse.row)
             && matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left))
@@ -210,7 +214,6 @@ impl AppState {
                             self.request_start_self_update = true;
                             self.update.installing = true;
                             self.update.message = Some("updating gmux".to_string());
-                            leave_modal(self);
                         }
                         Some(ModalAction::Cancel) | None => leave_modal(self),
                         _ => {}
@@ -2601,6 +2604,26 @@ mod tests {
             tab_bar.x + tab_bar.width.saturating_sub(1),
             tab_bar.y,
         ));
+        assert_eq!(app.state.sessions[0].active_tab, 0);
+    }
+
+    #[test]
+    fn update_installing_modal_swallows_tab_bar_wheel() {
+        let mut app = app_for_mouse_test();
+        let mut ws = Workspace::test_new("one");
+        ws.test_add_tab(Some("two"));
+        app.state.sessions = vec![ws];
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        app.state.mode = Mode::UpdateConfirm;
+        app.state.update.installing = true;
+
+        crate::ui::compute_view(&mut app.state, Rect::new(0, 0, 106, 20));
+        let tab_bar = app.state.view.tab_bar_rect;
+
+        app.handle_mouse(mouse(MouseEventKind::ScrollDown, tab_bar.x + 1, tab_bar.y));
+
+        assert_eq!(app.state.mode, Mode::UpdateConfirm);
         assert_eq!(app.state.sessions[0].active_tab, 0);
     }
 

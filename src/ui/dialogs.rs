@@ -283,6 +283,30 @@ pub(super) fn render_update_confirm_overlay(app: &AppState, frame: &mut Frame, a
         Constraint::Length(1),
     ])
     .areas::<6>(inner);
+
+    if app.update.installing {
+        render_modal_header(frame, rows[0], "Updating gmux", &app.palette);
+        frame.render_widget(
+            Paragraph::new(format!(" installing {}", release.version)).style(
+                Style::default()
+                    .fg(app.palette.green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            rows[2],
+        );
+        frame.render_widget(
+            Paragraph::new(" please keep this window open")
+                .style(Style::default().fg(app.palette.text)),
+            rows[3],
+        );
+        frame.render_widget(
+            Paragraph::new(" connected clients will relaunch after handoff")
+                .style(Style::default().fg(app.palette.overlay0)),
+            rows[4],
+        );
+        return;
+    }
+
     render_modal_header(frame, rows[0], "Update gmux?", &app.palette);
     frame.render_widget(
         Paragraph::new(format!(" update to {}", release.version)).style(

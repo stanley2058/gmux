@@ -274,12 +274,15 @@ pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {
 }
 
 pub(crate) fn handle_update_confirm_key(state: &mut AppState, key: KeyEvent) {
+    if state.update.installing {
+        return;
+    }
+
     match key.code {
         KeyCode::Enter => {
             state.request_start_self_update = true;
             state.update.installing = true;
             state.update.message = Some("updating gmux".to_string());
-            leave_modal(state);
         }
         KeyCode::Esc => leave_modal(state),
         _ => {}
@@ -795,6 +798,41 @@ mod tests {
         );
 
         assert_eq!(state.mode, Mode::Terminal);
+    }
+
+    #[test]
+    fn update_confirm_enter_stays_open_while_installing() {
+        let mut state = state_with_workspaces(&["test"]);
+        state.mode = Mode::UpdateConfirm;
+        state.update.available = Some(crate::update::UpdateRelease {
+            version: "0.2.0".to_string(),
+            tag: "v0.2.0".to_string(),
+            asset_name: "gmux-linux-x86_64.tar.gz".to_string(),
+        });
+
+        handle_update_confirm_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.mode, Mode::UpdateConfirm);
+        assert!(state.request_start_self_update);
+        assert!(state.update.installing);
+        assert_eq!(state.update.message.as_deref(), Some("updating gmux"));
+    }
+
+    #[test]
+    fn update_confirm_ignores_escape_while_installing() {
+        let mut state = state_with_workspaces(&["test"]);
+        state.mode = Mode::UpdateConfirm;
+        state.update.installing = true;
+
+        handle_update_confirm_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.mode, Mode::UpdateConfirm);
     }
 
     #[test]
