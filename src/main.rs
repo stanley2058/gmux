@@ -135,6 +135,7 @@ const DEFAULT_CONFIG: &str = r##"# gmux configuration
 # rename_tab = ["prefix+comma", "prefix+shift+t"]
 # previous_tab = "prefix+p"
 # next_tab = "prefix+n"
+# last_tab = ""          # optional, bind e.g. "prefix+9" for the rightmost tab
 # switch_tab = "prefix+1..9"
 # close_tab = ["prefix+ampersand", "prefix+shift+x"]
 # rename_pane = "prefix+shift+p"

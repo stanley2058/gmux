@@ -98,7 +98,8 @@ pub(super) fn keybind_help_groups(app: &AppState) -> Vec<HelpGroup> {
         help_entry(keybind_label(&kb.rename_tab), "rename tab"),
         help_entry(keybind_label(&kb.previous_tab), "previous tab"),
         help_entry(keybind_label(&kb.next_tab), "next tab"),
-        help_entry(indexed_label(&kb.switch_tab), "switch tab 1-9"),
+        help_entry(keybind_label(&kb.last_tab), "last tab"),
+        help_entry(indexed_label(&kb.switch_tab), "switch tab by number"),
         help_entry(keybind_label(&kb.close_tab), "close tab"),
     ];
     groups.push(("tabs", tabs));

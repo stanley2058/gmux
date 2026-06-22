@@ -467,6 +467,7 @@ pub(crate) enum NavigateAction {
     RenameTab,
     PreviousTab,
     NextTab,
+    LastTab,
     CloseTab,
     RenamePane,
     ViewScrollback,
@@ -586,6 +587,7 @@ fn action_for_key(
         (&kb.rename_tab, NavigateAction::RenameTab),
         (&kb.previous_tab, NavigateAction::PreviousTab),
         (&kb.next_tab, NavigateAction::NextTab),
+        (&kb.last_tab, NavigateAction::LastTab),
         (&kb.close_tab, NavigateAction::CloseTab),
         (&kb.rename_pane, NavigateAction::RenamePane),
         (&kb.view_scrollback, NavigateAction::ViewScrollback),
@@ -691,6 +693,10 @@ pub(super) fn execute_navigate_action_in_context(
         }
         NavigateAction::NextTab => {
             state.next_tab();
+            leave_navigate_mode(state);
+        }
+        NavigateAction::LastTab => {
+            state.last_tab();
             leave_navigate_mode(state);
         }
         NavigateAction::CloseTab => {
@@ -1321,6 +1327,64 @@ last_pane = "prefix+tab"
         );
 
         assert_eq!(pane_action, Some(NavigateAction::LastPane));
+    }
+
+    #[test]
+    fn prefix_9_override_can_map_to_last_tab() {
+        let config: Config = toml::from_str(
+            r#"
+[keys]
+last_tab = "prefix+9"
+"#,
+        )
+        .unwrap();
+        let mut state = state_with_workspaces(&["test"]);
+        state.keybinds = config.keybinds();
+
+        let action = action_for_key(
+            &state,
+            TerminalKey::new(KeyCode::Char('9'), KeyModifiers::empty()),
+            BindingDispatch::Prefix,
+        );
+
+        assert_eq!(action, Some(NavigateAction::LastTab));
+    }
+
+    #[test]
+    fn direct_last_tab_shortcut_maps_to_navigation_action() {
+        let config: Config = toml::from_str(
+            r#"
+[keys]
+last_tab = "ctrl+alt+9"
+"#,
+        )
+        .unwrap();
+        let mut state = state_with_workspaces(&["test"]);
+        state.keybinds = config.keybinds();
+
+        let action = terminal_direct_navigation_action(
+            &state,
+            TerminalKey::new(
+                KeyCode::Char('9'),
+                KeyModifiers::CONTROL | KeyModifiers::ALT,
+            ),
+        );
+
+        assert_eq!(action, Some(NavigateAction::LastTab));
+    }
+
+    #[test]
+    fn last_tab_action_selects_rightmost_tab() {
+        let mut state = state_with_workspaces(&["test"]);
+        state.sessions[0].test_add_tab(Some("two"));
+        state.sessions[0].test_add_tab(Some("three"));
+        state.sessions[0].switch_tab(0);
+        state.mode = Mode::Navigate;
+
+        execute_navigate_action(&mut state, NavigateAction::LastTab);
+
+        assert_eq!(state.sessions[0].active_tab, 2);
+        assert_eq!(state.mode, Mode::Terminal);
     }
 
     #[test]

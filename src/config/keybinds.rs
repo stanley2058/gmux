@@ -270,6 +270,7 @@ pub struct Keybinds {
     pub rename_tab: ActionKeybinds,
     pub previous_tab: ActionKeybinds,
     pub next_tab: ActionKeybinds,
+    pub last_tab: ActionKeybinds,
     pub switch_tab: Vec<IndexedKeybind>,
     pub close_tab: ActionKeybinds,
     pub rename_pane: ActionKeybinds,
@@ -383,7 +384,7 @@ impl Config {
         }
         macro_rules! indexed {
             ($field:literal, $config:expr) => {
-                parse_indexed_bindings($field, $config, &mut registry, &mut diagnostics)
+                parse_indexed_bindings($field, $config, &mut registry, &mut diagnostics, &[])
             };
         }
 
@@ -439,7 +440,14 @@ impl Config {
             rename_tab: action!("keys.rename_tab", &self.keys.rename_tab),
             previous_tab: action!("keys.previous_tab", &self.keys.previous_tab),
             next_tab: action!("keys.next_tab", &self.keys.next_tab),
-            switch_tab: indexed!("keys.switch_tab", &self.keys.switch_tab),
+            last_tab: action!("keys.last_tab", &self.keys.last_tab),
+            switch_tab: parse_indexed_bindings(
+                "keys.switch_tab",
+                &self.keys.switch_tab,
+                &mut registry,
+                &mut diagnostics,
+                &["keys.last_tab"],
+            ),
             close_tab: action!("keys.close_tab", &self.keys.close_tab),
             rename_pane: action!("keys.rename_pane", &self.keys.rename_pane),
             view_scrollback: action!("keys.view_scrollback", &self.keys.view_scrollback),
@@ -491,6 +499,7 @@ impl Config {
                 false,
                 &mut registry,
                 &mut diagnostics,
+                &[],
             );
             if bindings.bindings.is_empty() {
                 continue;
@@ -534,7 +543,7 @@ fn parse_action_bindings(
     registry: &mut BindingRegistry,
     diagnostics: &mut Vec<String>,
 ) -> ActionKeybinds {
-    parse_action_bindings_owned(field, config, allow_ranges, registry, diagnostics)
+    parse_action_bindings_owned(field, config, allow_ranges, registry, diagnostics, &[])
 }
 
 fn parse_action_bindings_owned(
@@ -543,6 +552,7 @@ fn parse_action_bindings_owned(
     allow_ranges: bool,
     registry: &mut BindingRegistry,
     diagnostics: &mut Vec<String>,
+    silent_conflicts: &[&str],
 ) -> ActionKeybinds {
     let mut bindings = Vec::new();
     for raw in config.values() {
@@ -552,7 +562,7 @@ fn parse_action_bindings_owned(
         }
         match parse_binding_string(raw) {
             Some(ParsedBinding::Single(binding)) => {
-                if reject_binding(field, &binding, registry, diagnostics) {
+                if reject_binding(field, &binding, registry, diagnostics, silent_conflicts) {
                     continue;
                 }
                 registry.register(&binding, field);
@@ -565,7 +575,7 @@ fn parse_action_bindings_owned(
             }
             Some(ParsedBinding::Range(range)) => {
                 for binding in range {
-                    if reject_binding(field, &binding, registry, diagnostics) {
+                    if reject_binding(field, &binding, registry, diagnostics, silent_conflicts) {
                         continue;
                     }
                     registry.register(&binding, field);
@@ -622,8 +632,9 @@ fn parse_indexed_bindings(
     config: &BindingConfig,
     registry: &mut BindingRegistry,
     diagnostics: &mut Vec<String>,
+    silent_conflicts: &[&str],
 ) -> Vec<IndexedKeybind> {
-    parse_action_bindings(field, config, true, registry, diagnostics)
+    parse_action_bindings_owned(field, config, true, registry, diagnostics, silent_conflicts)
         .bindings
         .into_iter()
         .filter_map(|binding| {
@@ -673,7 +684,7 @@ fn append_legacy_indexed_bindings(
             trigger: BindingTrigger::Direct(combo),
             label: format!("{}+{idx}", configured_label.trim()),
         };
-        if reject_binding(field, &binding, registry, diagnostics) {
+        if reject_binding(field, &binding, registry, diagnostics, &[]) {
             continue;
         }
         registry.register(&binding, field);
@@ -725,6 +736,7 @@ fn reject_binding(
     binding: &ResolvedBinding,
     registry: &BindingRegistry,
     diagnostics: &mut Vec<String>,
+    silent_conflicts: &[&str],
 ) -> bool {
     if binding.trigger.is_prefix() && registry.prefix_rhs_is_reserved(binding.trigger.combo()) {
         let diag = format!(
@@ -737,6 +749,9 @@ fn reject_binding(
     }
 
     if let Some(first_field) = registry.conflict(binding) {
+        if silent_conflicts.contains(&first_field) {
+            return true;
+        }
         let diag = format!("{}: kept {first_field}, disabled {field}", binding.label);
         warn!(message = %diag, "config diagnostic");
         diagnostics.push(diag);
@@ -1346,6 +1361,7 @@ workspaces = "prefix+shift"
     fn back_and_forth_keybinds_are_unset_by_default() {
         let kb = Config::default().keybinds();
         assert!(kb.last_pane.bindings.is_empty());
+        assert!(kb.last_tab.bindings.is_empty());
     }
 
     #[test]
@@ -1734,6 +1750,33 @@ switch_tab = "prefix+shift+1..9"
     }
 
     #[test]
+    fn explicit_last_tab_binding_overrides_switch_tab_range_member() {
+        let config: Config = toml::from_str(
+            r#"
+[keys]
+last_tab = "prefix+9"
+"#,
+        )
+        .unwrap();
+        let diagnostics = config.collect_diagnostics();
+        let kb = config.keybinds();
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            binding_triggers(&kb.last_tab),
+            vec![BindingTrigger::Prefix((
+                KeyCode::Char('9'),
+                KeyModifiers::empty()
+            ))]
+        );
+        assert_eq!(kb.switch_tab.len(), 8);
+        assert!(!kb
+            .switch_tab
+            .iter()
+            .any(|binding| binding.label == "prefix+9"));
+    }
+
+    #[test]
     fn default_keymap_is_prefix_first_and_tab_centered() {
         let kb = Config::default().keybinds();
         assert_eq!(
@@ -1750,6 +1793,7 @@ switch_tab = "prefix+shift+1..9"
                 KeyModifiers::empty()
             ))]
         );
+        assert!(kb.last_tab.bindings.is_empty());
         assert_eq!(
             binding_triggers(&kb.previous_tab),
             vec![BindingTrigger::Prefix((

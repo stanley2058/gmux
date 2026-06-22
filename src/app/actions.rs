@@ -720,6 +720,14 @@ impl AppState {
         }
     }
 
+    pub fn last_tab(&mut self) {
+        if let Some(ws) = self.session() {
+            if let Some(last) = ws.tabs.len().checked_sub(1) {
+                self.switch_tab(last);
+            }
+        }
+    }
+
     pub fn previous_tab(&mut self) {
         if let Some(ws) = self.session() {
             if !ws.tabs.is_empty() {

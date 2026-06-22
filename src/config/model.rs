@@ -490,6 +490,8 @@ pub struct KeysConfig {
     pub previous_tab: BindingConfig,
     /// Select the next tab. Default: "prefix+n".
     pub next_tab: BindingConfig,
+    /// Select the rightmost tab. Unset by default.
+    pub last_tab: BindingConfig,
     /// Switch to tab 1-9. Default: "prefix+1..9".
     pub switch_tab: BindingConfig,
     /// Close the active tab. Default: "prefix+ampersand" with "prefix+shift+x" as a legacy alias.
@@ -681,6 +683,7 @@ impl Default for KeysConfig {
             rename_tab: BindingConfig::Many(vec!["prefix+comma".into(), "prefix+shift+t".into()]),
             previous_tab: BindingConfig::one("prefix+p"),
             next_tab: BindingConfig::one("prefix+n"),
+            last_tab: BindingConfig::empty(),
             switch_tab: BindingConfig::one("prefix+1..9"),
             close_tab: BindingConfig::Many(vec![
                 "prefix+ampersand".into(),
