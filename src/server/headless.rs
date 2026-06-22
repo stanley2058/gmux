@@ -3814,6 +3814,21 @@ mod tests {
         }
     }
 
+    fn test_workspace(name: &str) -> crate::workspace::Workspace {
+        let mut workspace = crate::workspace::Workspace::test_new(name);
+        if let Some(tab) = workspace.tabs.get_mut(0) {
+            tab.custom_name = Some(name.to_string());
+        }
+        workspace
+    }
+
+    fn default_session_env_guard() -> std::sync::MutexGuard<'static, ()> {
+        let guard = crate::test_support::env_lock().lock().unwrap();
+        std::env::remove_var(crate::session::SESSION_ENV_VAR);
+        crate::session::clear_explicit_session_for_test();
+        guard
+    }
+
     fn read_server_message(bytes: Vec<u8>) -> ServerMessage {
         let mut cursor = std::io::Cursor::new(bytes);
         protocol::read_message(&mut cursor, MAX_FRAME_SIZE).expect("decode server message")
@@ -3842,6 +3857,30 @@ mod tests {
                 _ => continue,
             }
         }
+    }
+
+    fn client_render_jobs(server: &HeadlessServer, client_id: u64) -> u64 {
+        server
+            .clients
+            .get(&client_id)
+            .and_then(|client| client.render_actor.as_ref())
+            .expect("client render actor")
+            .processed_jobs()
+    }
+
+    fn wait_for_client_render_jobs(
+        server: &HeadlessServer,
+        client_id: u64,
+        min_processed_jobs: u64,
+        label: &str,
+    ) {
+        server
+            .clients
+            .get(&client_id)
+            .and_then(|client| client.render_actor.as_ref())
+            .expect("client render actor")
+            .wait_for_processed_jobs(min_processed_jobs, Duration::from_millis(250))
+            .unwrap_or_else(|| panic!("timed out waiting for render actor job: {label}"));
     }
 
     fn test_client_input(client_id: u64, data: impl Into<Vec<u8>>) -> ServerEvent {
@@ -3948,7 +3987,7 @@ mod tests {
         size: (u16, u16),
     ) -> (HeadlessServer, LatestRenderReceiver, crate::layout::PaneId) {
         let mut server = test_headless_server();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         workspace.insert_test_runtime(
             pane_id,
@@ -4011,7 +4050,7 @@ mod tests {
         mpsc::Receiver<Bytes>,
     ) {
         let mut server = test_headless_server();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         let (runtime, pane_input_rx) =
             crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
@@ -4535,7 +4574,7 @@ mod tests {
         let initial_screen = scrollback_bench_input(cols, history_lines);
         let append_source = initial_screen.clone();
         let mut server = test_headless_server();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         let (runtime, _pane_input_rx) =
             crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
@@ -4757,7 +4796,7 @@ mod tests {
     ) -> HostScrollBenchStats {
         let initial_screen = scrollback_bench_screen(history_lines);
         let mut server = test_headless_server();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         let (runtime, _pane_input_rx) =
             crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
@@ -6696,7 +6735,7 @@ next_tab = ""
     #[test]
     fn app_client_lone_escape_closes_navigate_mode() {
         let mut server = test_headless_server();
-        server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
+        server.app.state.sessions = vec![test_workspace("test")];
         server.app.state.active_session = Some(0);
         server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Navigate;
@@ -6723,7 +6762,7 @@ next_tab = ""
     #[tokio::test]
     async fn split_default_background_response_updates_theme_without_forwarding_tail() {
         let mut server = test_headless_server();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let focused = workspace.focused_pane_id().unwrap();
         let (runtime, mut rx) =
             crate::terminal::TerminalRuntime::test_with_channel_capacity(80, 24, 1);
@@ -6774,7 +6813,7 @@ next_tab = ""
     #[test]
     fn render_and_stream_uses_each_client_terminal_size() {
         let mut server = test_headless_server();
-        server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
+        server.app.state.sessions = vec![test_workspace("test")];
         server.app.state.active_session = Some(0);
         server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
@@ -7330,9 +7369,10 @@ next_tab = ""
 
     #[tokio::test]
     async fn semantic_terminal_input_waits_for_pty_dirty_frame() {
+        let _session_env = default_session_env_guard();
         let mut server = test_headless_server();
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         let (runtime, mut input_rx) =
             crate::terminal::TerminalRuntime::test_with_channel_capacity(80, 24, 1);
@@ -7359,20 +7399,24 @@ next_tab = ""
         let _ = client_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial semantic frame");
+        wait_for_client_render_jobs(&server, 1, 1, "initial semantic frame");
 
         assert!(!server.handle_server_event(test_client_input(1, b"j".to_vec())));
         assert_eq!(input_rx.try_recv().unwrap(), Bytes::from_static(b"j"));
         assert!(server.app.input_render_bypass_pending);
 
+        let processed_jobs = client_render_jobs(&server, 1);
         server.render_and_stream();
-        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        wait_for_client_render_jobs(&server, 1, processed_jobs + 1, "semantic input render");
+        assert!(client_rx.try_recv().is_err());
     }
 
     #[tokio::test]
     async fn semantic_mouse_report_waits_for_pty_dirty_frame() {
+        let _session_env = default_session_env_guard();
         let mut server = test_headless_server();
         let (client_tx, _client_control_rx, client_rx) = test_client_writer();
-        let mut workspace = crate::workspace::Workspace::test_new("test");
+        let mut workspace = test_workspace("test");
         let pane_id = workspace.focused_pane_id().expect("focused pane");
         let (runtime, mut input_rx) =
             crate::terminal::TerminalRuntime::test_with_channel_and_scrollback_bytes(
@@ -7405,6 +7449,7 @@ next_tab = ""
         let _ = client_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial semantic frame");
+        wait_for_client_render_jobs(&server, 1, 1, "initial semantic mouse frame");
         let pane = server
             .app
             .state
@@ -7420,8 +7465,10 @@ next_tab = ""
         assert!(!input_rx.try_recv().unwrap().is_empty());
         assert!(server.app.input_render_bypass_pending);
 
+        let processed_jobs = client_render_jobs(&server, 1);
         server.render_and_stream();
-        assert!(client_rx.recv_timeout(Duration::from_millis(50)).is_err());
+        wait_for_client_render_jobs(&server, 1, processed_jobs + 1, "semantic mouse render");
+        assert!(client_rx.try_recv().is_err());
     }
 
     #[test]
@@ -7558,8 +7605,9 @@ next_tab = ""
 
     #[test]
     fn render_and_stream_skips_identical_frame_sends() {
+        let _session_env = default_session_env_guard();
         let mut server = test_headless_server();
-        server.app.state.sessions = vec![crate::workspace::Workspace::test_new("test")];
+        server.app.state.sessions = vec![test_workspace("test")];
         server.app.state.active_session = Some(0);
         server.app.state.selected_session = 0;
         server.app.state.mode = crate::app::Mode::Terminal;
@@ -7583,18 +7631,16 @@ next_tab = ""
         server.resize_shared_runtime_to_effective_size();
 
         server.render_and_stream();
-        let first = client_rx.recv_timeout(Duration::from_millis(100));
-        assert!(first.is_ok(), "expected first frame to be sent");
-        assert!(server
-            .clients
-            .get(&1)
-            .and_then(|client| client.render_actor.as_ref())
-            .and_then(|actor| actor.wait_for_last_frame(Duration::from_millis(100)))
-            .is_some());
+        let _ = client_rx
+            .recv_timeout(Duration::from_millis(100))
+            .expect("expected first frame to be sent");
+        wait_for_client_render_jobs(&server, 1, 1, "initial identical-frame baseline");
 
+        let processed_jobs = client_render_jobs(&server, 1);
         server.render_and_stream();
+        wait_for_client_render_jobs(&server, 1, processed_jobs + 1, "identical-frame render");
         assert!(
-            client_rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            client_rx.try_recv().is_err(),
             "identical frame should not be sent twice"
         );
     }
@@ -7862,6 +7908,7 @@ next_tab = ""
 
     #[tokio::test]
     async fn retained_pty_update_matches_full_render_frame() {
+        let _session_env = default_session_env_guard();
         let initial = b"\x1b[6 qleft \xe4\xb8\xad";
         let update = b"\r\x1b[44mZ\x1b[0m";
         let (mut retained_server, retained_rx, retained_pane_id) = retained_test_server(initial);
@@ -7871,10 +7918,12 @@ next_tab = ""
         let _ = retained_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial retained baseline");
+        wait_for_client_render_jobs(&retained_server, 1, 1, "initial retained baseline");
         full_server.render_and_stream();
         let _ = full_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial full baseline");
+        wait_for_client_render_jobs(&full_server, 1, 1, "initial full baseline");
 
         retained_server
             .app
@@ -7893,8 +7942,17 @@ next_tab = ""
             .expect("full runtime")
             .test_process_pty_bytes(update);
 
+        let retained_jobs = client_render_jobs(&retained_server, 1);
+        let full_jobs = client_render_jobs(&full_server, 1);
         assert!(retained_server.render_retained_pty_update_and_stream());
         full_server.render_and_stream();
+        wait_for_client_render_jobs(
+            &retained_server,
+            1,
+            retained_jobs + 1,
+            "retained update frame",
+        );
+        wait_for_client_render_jobs(&full_server, 1, full_jobs + 1, "full update frame");
 
         let retained_frame = read_server_frame(
             retained_rx
@@ -7911,6 +7969,7 @@ next_tab = ""
 
     #[tokio::test]
     async fn retained_pty_update_streams_cursor_only_change() {
+        let _session_env = default_session_env_guard();
         let initial = b"abcd";
         let update = b"\x1b[D";
         let (mut retained_server, retained_rx, retained_pane_id) = retained_test_server(initial);
@@ -7920,10 +7979,12 @@ next_tab = ""
         let _ = retained_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial retained baseline");
+        wait_for_client_render_jobs(&retained_server, 1, 1, "initial retained cursor baseline");
         full_server.render_and_stream();
         let _ = full_rx
             .recv_timeout(Duration::from_millis(100))
             .expect("initial full baseline");
+        wait_for_client_render_jobs(&full_server, 1, 1, "initial full cursor baseline");
 
         retained_server
             .app
@@ -7942,8 +8003,17 @@ next_tab = ""
             .expect("full runtime")
             .test_process_pty_bytes(update);
 
+        let retained_jobs = client_render_jobs(&retained_server, 1);
+        let full_jobs = client_render_jobs(&full_server, 1);
         assert!(retained_server.render_retained_pty_update_and_stream());
         full_server.render_and_stream();
+        wait_for_client_render_jobs(
+            &retained_server,
+            1,
+            retained_jobs + 1,
+            "retained cursor frame",
+        );
+        wait_for_client_render_jobs(&full_server, 1, full_jobs + 1, "full cursor frame");
 
         let retained_frame = read_server_frame(
             retained_rx

@@ -436,11 +436,20 @@ fn unique_temp_path(name: &str) -> std::path::PathBuf {
 #[cfg(test)]
 fn wait_for_file(path: &std::path::Path) -> String {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut last_content = None;
     while std::time::Instant::now() < deadline {
         if let Ok(content) = std::fs::read_to_string(path) {
-            return content;
+            if !content.is_empty() {
+                if last_content.as_ref() == Some(&content) {
+                    return content;
+                }
+                last_content = Some(content);
+            }
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    if let Some(content) = last_content {
+        return content;
     }
     panic!("timed out waiting for {}", path.display());
 }

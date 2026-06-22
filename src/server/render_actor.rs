@@ -148,6 +148,33 @@ impl ClientRenderActor {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn processed_jobs(&self) -> u64 {
+        self.shared
+            .lock()
+            .expect("client render shared state lock poisoned")
+            .processed_jobs
+    }
+
+    #[cfg(test)]
+    pub(crate) fn wait_for_processed_jobs(
+        &self,
+        min_processed_jobs: u64,
+        timeout: std::time::Duration,
+    ) -> Option<u64> {
+        let started = Instant::now();
+        loop {
+            let processed_jobs = self.processed_jobs();
+            if processed_jobs >= min_processed_jobs {
+                return Some(processed_jobs);
+            }
+            if started.elapsed() >= timeout {
+                return None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -176,6 +203,8 @@ struct ClientRenderSharedState {
     is_semantic: bool,
     last_frame: Option<FrameData>,
     terminal_seq: Option<u64>,
+    #[cfg(test)]
+    processed_jobs: u64,
 }
 
 #[derive(Debug)]
@@ -303,10 +332,12 @@ fn client_render_worker_loop(
             job.debug_context,
         ) {
             ClientRenderPublish::Sent | ClientRenderPublish::SkippedUnchanged => {
-                update_shared_render_state(&render_state, &shared);
+                update_shared_render_state_after_job(&render_state, &shared);
             }
             ClientRenderPublish::Disconnected => break,
-            ClientRenderPublish::Oversized | ClientRenderPublish::SerializeError => {}
+            ClientRenderPublish::Oversized | ClientRenderPublish::SerializeError => {
+                update_shared_render_state_after_job(&render_state, &shared);
+            }
         }
     }
 }
@@ -432,6 +463,22 @@ fn update_shared_render_state(
     shared.terminal_seq = render_state.terminal_seq();
 }
 
+fn update_shared_render_state_after_job(
+    render_state: &ClientRenderState,
+    shared: &Arc<Mutex<ClientRenderSharedState>>,
+) {
+    let mut shared = shared
+        .lock()
+        .expect("client render shared state lock poisoned");
+    shared.is_semantic = render_state.is_semantic();
+    shared.last_frame = render_state.last_frame().cloned();
+    shared.terminal_seq = render_state.terminal_seq();
+    #[cfg(test)]
+    {
+        shared.processed_jobs = shared.processed_jobs.saturating_add(1);
+    }
+}
+
 pub(crate) fn frame_server_message(msg: &ServerMessage) -> Result<Vec<u8>, protocol::FramingError> {
     frame_server_message_with_max(msg, MAX_FRAME_SIZE)
 }
@@ -545,6 +592,9 @@ mod tests {
             ServerMessage::Terminal(frame) => assert_eq!(frame.seq, 1),
             other => panic!("expected terminal frame, got {other:?}"),
         }
+        actor
+            .wait_for_processed_jobs(1, Duration::from_millis(100))
+            .expect("terminal frame commit");
         assert_eq!(actor.terminal_seq(), Some(1));
     }
 
