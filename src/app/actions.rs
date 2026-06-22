@@ -149,7 +149,7 @@ impl AppState {
         terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,
     ) {
         self.navigator.query.clear();
-        self.navigator.search_focused = false;
+        self.navigator.search_focused = true;
         self.navigator.scroll = 0;
 
         self.mode = Mode::Navigator;

@@ -343,14 +343,14 @@ fn render_footer(app: &AppState, frame: &mut Frame, area: Rect) {
     let key = Style::default().fg(p.accent).add_modifier(Modifier::BOLD);
     let dim = Style::default().fg(p.overlay0);
     let line = Line::from(vec![
+        Span::styled(" type", key),
+        Span::styled(" search  ", dim),
         Span::styled(" enter", key),
         Span::styled(" switch  ", dim),
-        Span::styled("/", key),
-        Span::styled(" search  ", dim),
-        Span::styled("j/k/↑↓", key),
+        Span::styled("↑↓/ctrl+n,p", key),
         Span::styled(" move  ", dim),
         Span::styled("esc", key),
-        Span::styled(" close", dim),
+        Span::styled(" clear/close", dim),
     ]);
     frame.render_widget(Paragraph::new(line), area);
 }

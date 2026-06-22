@@ -81,7 +81,7 @@ pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: R
         render_action_button(
             frame,
             close_rect,
-            Some("esc"),
+            Some("q"),
             "close",
             Style::default()
                 .fg(p.text)
@@ -95,8 +95,10 @@ pub(super) fn render_settings_overlay(app: &AppState, frame: &mut Frame, area: R
                 Span::styled(" select  ", Style::default().fg(p.overlay1)),
                 Span::styled("enter", Style::default().fg(p.overlay0)),
                 Span::styled(" open/toggle  ", Style::default().fg(p.overlay1)),
-                Span::styled("esc", Style::default().fg(p.overlay0)),
+                Span::styled("esc/backspace", Style::default().fg(p.overlay0)),
                 Span::styled(" back", Style::default().fg(p.overlay1)),
+                Span::styled("  q", Style::default().fg(p.overlay0)),
+                Span::styled(" close", Style::default().fg(p.overlay1)),
             ])),
             footer_rows[0],
         );
@@ -120,7 +122,7 @@ pub(crate) fn settings_button_rects(
         let rects = action_button_row_rects(
             inner,
             &[ActionButtonSpec {
-                hint: Some("esc"),
+                hint: Some("q"),
                 label: "close",
             }],
             2,
@@ -137,7 +139,7 @@ pub(crate) fn settings_button_rects(
                 label: settings_primary_button_label(page),
             },
             ActionButtonSpec {
-                hint: Some("esc"),
+                hint: Some("q"),
                 label: "close",
             },
         ],

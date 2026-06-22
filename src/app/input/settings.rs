@@ -178,10 +178,22 @@ pub(super) fn update_settings_state(state: &mut AppState, key: KeyEvent) -> Opti
     }
 
     let row_count = settings_catalog::settings_rows(state).len();
+    if super::modal::is_plain_quit_key(&key) {
+        close_settings(state);
+        return None;
+    }
+    if super::modal::is_prev_list_key(&key) {
+        state.settings.list.move_prev();
+        return None;
+    }
+    if super::modal::is_next_list_key(&key) {
+        state.settings.list.move_next(row_count);
+        return None;
+    }
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => state.settings.list.move_prev(),
-        KeyCode::Down | KeyCode::Char('j') => state.settings.list.move_next(row_count),
-        KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => go_back_or_close(state),
+        KeyCode::Esc | KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
+            go_back_or_close(state)
+        }
         KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
             if let Some(action) = selected_row_action(state) {
                 return apply_row_action(state, action);
@@ -461,6 +473,80 @@ mod tests {
 
         assert_eq!(state.mode, Mode::Settings);
         assert_eq!(state.settings.page, SettingsPage::Main);
+    }
+
+    #[test]
+    fn settings_backspace_backs_out_of_submenu() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_settings_at_page(&mut state, SettingsPage::Experiments);
+
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.mode, Mode::Settings);
+        assert_eq!(state.settings.page, SettingsPage::Main);
+    }
+
+    #[test]
+    fn settings_q_closes_immediately() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_settings_at_page(&mut state, SettingsPage::Experiments);
+
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.mode, Mode::Terminal);
+    }
+
+    #[test]
+    fn settings_supports_ctrl_navigation() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_settings_at_page(&mut state, SettingsPage::Main);
+
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.settings.list.selected, 1);
+
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.settings.list.selected, 0);
+    }
+
+    #[test]
+    fn settings_edit_mode_keeps_backspace_and_q_as_text_input() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_settings_at_page(&mut state, SettingsPage::Terminal);
+        state.settings.list.selected = 1;
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+        );
+        if let Some(edit) = &mut state.settings.edit {
+            edit.input = "abc".to_string();
+        }
+
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Backspace, KeyModifiers::empty()),
+        );
+        update_settings_state(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.mode, Mode::Settings);
+        assert_eq!(
+            state.settings.edit.as_ref().map(|edit| edit.input.as_str()),
+            Some("abq")
+        );
     }
 
     #[test]

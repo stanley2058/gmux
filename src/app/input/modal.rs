@@ -65,6 +65,20 @@ pub(super) fn modal_action_from_buttons<A: Copy>(
     })
 }
 
+pub(super) fn is_plain_quit_key(key: &KeyEvent) -> bool {
+    key.code == KeyCode::Char('q') && key.modifiers.is_empty()
+}
+
+pub(super) fn is_prev_list_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Up | KeyCode::Char('k'))
+        || (key.code == KeyCode::Char('p') && key.modifiers == KeyModifiers::CONTROL)
+}
+
+pub(super) fn is_next_list_key(key: &KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Down | KeyCode::Char('j'))
+        || (key.code == KeyCode::Char('n') && key.modifiers == KeyModifiers::CONTROL)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GlobalMenuAction {
     Detach,
@@ -152,10 +166,20 @@ pub(super) fn apply_global_menu_action(state: &mut AppState, action: GlobalMenuA
 
 pub(crate) fn handle_global_menu_key(state: &mut AppState, key: KeyEvent) {
     let actions = global_menu_actions(state);
+    if is_plain_quit_key(&key) {
+        leave_modal(state);
+        return;
+    }
+    if is_prev_list_key(&key) {
+        state.global_menu.move_prev();
+        return;
+    }
+    if is_next_list_key(&key) {
+        state.global_menu.move_next(actions.len());
+        return;
+    }
     match key.code {
         KeyCode::Esc => leave_modal(state),
-        KeyCode::Up | KeyCode::Char('k') => state.global_menu.move_prev(),
-        KeyCode::Down | KeyCode::Char('j') => state.global_menu.move_next(actions.len()),
         KeyCode::Enter => {
             if let Some(action) = actions.get(state.global_menu.highlighted).copied() {
                 apply_global_menu_action(state, action);
@@ -174,11 +198,9 @@ pub(crate) fn handle_navigator_key(
         match key.code {
             KeyCode::Esc => {
                 if state.navigator.query.is_empty() {
-                    state.navigator.search_focused = false;
                     leave_modal(state);
                 } else {
                     state.navigator.query.clear();
-                    state.navigator.search_focused = false;
                     state.clamp_navigator_selection_from(terminal_runtimes);
                 }
             }
@@ -196,6 +218,17 @@ pub(crate) fn handle_navigator_key(
             }
             KeyCode::Char('p') if key.modifiers == KeyModifiers::CONTROL => {
                 state.move_navigator_selection_from(terminal_runtimes, -1)
+            }
+            KeyCode::Home => {
+                state.navigator.selected = 0;
+                state.ensure_navigator_selection_visible_from(terminal_runtimes);
+            }
+            KeyCode::End => {
+                state.navigator.selected = state
+                    .navigator_rows_from(terminal_runtimes)
+                    .len()
+                    .saturating_sub(1);
+                state.ensure_navigator_selection_visible_from(terminal_runtimes);
             }
             KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
                 state.navigator.query.clear();
@@ -229,10 +262,12 @@ pub(crate) fn handle_navigator_key(
             state.navigator.search_focused = true;
             state.clamp_navigator_selection_from(terminal_runtimes);
         }
-        KeyCode::Char('j') | KeyCode::Down => {
+        KeyCode::Down => state.move_navigator_selection_from(terminal_runtimes, 1),
+        KeyCode::Up => state.move_navigator_selection_from(terminal_runtimes, -1),
+        KeyCode::Char('n') if key.modifiers == KeyModifiers::CONTROL => {
             state.move_navigator_selection_from(terminal_runtimes, 1)
         }
-        KeyCode::Char('k') | KeyCode::Up => {
+        KeyCode::Char('p') if key.modifiers == KeyModifiers::CONTROL => {
             state.move_navigator_selection_from(terminal_runtimes, -1)
         }
         KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => state
@@ -249,7 +284,7 @@ pub(crate) fn handle_navigator_key(
             state.navigator.selected = 0;
             state.ensure_navigator_selection_visible_from(terminal_runtimes);
         }
-        KeyCode::End | KeyCode::Char('G') => {
+        KeyCode::End => {
             state.navigator.selected = state
                 .navigator_rows_from(terminal_runtimes)
                 .len()
@@ -261,9 +296,19 @@ pub(crate) fn handle_navigator_key(
 }
 
 pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {
+    if is_plain_quit_key(&key) {
+        leave_modal(state);
+        return;
+    }
+    if is_prev_list_key(&key) {
+        state.scroll_keybind_help(-1);
+        return;
+    }
+    if is_next_list_key(&key) {
+        state.scroll_keybind_help(1);
+        return;
+    }
     match key.code {
-        KeyCode::Up | KeyCode::Char('k') => state.scroll_keybind_help(-1),
-        KeyCode::Down | KeyCode::Char('j') => state.scroll_keybind_help(1),
         KeyCode::PageUp => state.scroll_keybind_help(-8),
         KeyCode::PageDown => state.scroll_keybind_help(8),
         KeyCode::Home => state.keybind_help.scroll = 0,
@@ -285,6 +330,7 @@ pub(crate) fn handle_update_confirm_key(state: &mut AppState, key: KeyEvent) {
             state.update.message = Some("updating gmux".to_string());
         }
         KeyCode::Esc => leave_modal(state),
+        _ if is_plain_quit_key(&key) => leave_modal(state),
         _ => {}
     }
 }
@@ -292,6 +338,10 @@ pub(crate) fn handle_update_confirm_key(state: &mut AppState, key: KeyEvent) {
 pub(crate) fn handle_update_message_key(state: &mut AppState, key: KeyEvent) {
     match key.code {
         KeyCode::Enter | KeyCode::Esc => {
+            state.update.message = None;
+            leave_modal(state);
+        }
+        _ if is_plain_quit_key(&key) => {
             state.update.message = None;
             leave_modal(state);
         }
@@ -572,6 +622,7 @@ pub(crate) fn handle_resize_key(state: &mut AppState, raw_key: TerminalKey) {
     let key = raw_key.as_key_event();
     if key.code == KeyCode::Esc
         || key.code == KeyCode::Enter
+        || is_plain_quit_key(&key)
         || state.keybinds.resize_mode.matches_prefix_key(raw_key)
         || state.keybinds.resize_mode.matches_direct_key(raw_key)
     {
@@ -610,6 +661,10 @@ pub(super) fn confirm_close_cancel(state: &mut AppState) {
 }
 
 pub(crate) fn handle_confirm_close_key(state: &mut AppState, key: KeyEvent) {
+    if is_plain_quit_key(&key) {
+        confirm_close_cancel(state);
+        return;
+    }
     match modal_action_from_key(&key, CONFIRM_CLOSE_ACTIONS) {
         Some(ModalAction::Confirm) => confirm_close_accept(state),
         Some(ModalAction::Cancel) => confirm_close_cancel(state),
@@ -706,6 +761,23 @@ pub(crate) fn handle_context_menu_key(
     terminal_runtimes: &mut crate::terminal::TerminalRuntimeRegistry,
     key: KeyEvent,
 ) {
+    if is_plain_quit_key(&key) {
+        state.context_menu = None;
+        leave_modal(state);
+        return;
+    }
+    if is_prev_list_key(&key) {
+        if let Some(menu) = &mut state.context_menu {
+            menu.list.move_prev();
+        }
+        return;
+    }
+    if is_next_list_key(&key) {
+        if let Some(menu) = &mut state.context_menu {
+            menu.list.move_next(menu.items().len());
+        }
+        return;
+    }
     match key.code {
         KeyCode::Esc => {
             state.context_menu = None;
@@ -1234,5 +1306,196 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
         );
         assert!(state.sessions.is_empty());
+    }
+
+    #[test]
+    fn q_cancels_confirm_close() {
+        let mut state = state_with_workspaces(&["a", "b"]);
+        state.mode = Mode::ConfirmClose;
+
+        handle_confirm_close_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()),
+        );
+
+        assert_eq!(state.mode, Mode::Navigate);
+        assert_eq!(state.sessions.len(), 2);
+    }
+
+    #[test]
+    fn global_menu_supports_ctrl_navigation_and_q_close() {
+        let mut state = state_with_workspaces(&["test"]);
+        open_global_menu(&mut state);
+
+        handle_global_menu_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.global_menu.highlighted, 1);
+
+        handle_global_menu_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.global_menu.highlighted, 0);
+
+        handle_global_menu_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()),
+        );
+        assert_eq!(state.mode, Mode::Terminal);
+    }
+
+    #[test]
+    fn keybind_help_supports_ctrl_navigation_and_q_close() {
+        let mut state = state_with_workspaces(&["test"]);
+        crate::ui::compute_view(&mut state, Rect::new(0, 0, 90, 12));
+        open_keybind_help(&mut state);
+
+        handle_keybind_help_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.keybind_help.scroll, 1);
+
+        handle_keybind_help_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.keybind_help.scroll, 0);
+
+        handle_keybind_help_key(
+            &mut state,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()),
+        );
+        assert_eq!(state.mode, Mode::Terminal);
+    }
+
+    #[test]
+    fn context_menu_supports_vim_ctrl_navigation_and_q_close() {
+        let mut state = state_with_workspaces(&["test"]);
+        let pane_id = state.sessions[0].tabs[0].root_pane;
+        state.mode = Mode::ContextMenu;
+        state.context_menu = Some(ContextMenuState {
+            kind: ContextMenuKind::Pane {
+                pane_id,
+                has_manual_label: false,
+            },
+            x: 1,
+            y: 1,
+            list: MenuListState::new(0),
+        });
+        let mut terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
+
+        handle_context_menu_key(
+            &mut state,
+            &mut terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
+        );
+        assert_eq!(state.context_menu.as_ref().unwrap().list.highlighted, 1);
+
+        handle_context_menu_key(
+            &mut state,
+            &mut terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.context_menu.as_ref().unwrap().list.highlighted, 0);
+
+        handle_context_menu_key(
+            &mut state,
+            &mut terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('q'), KeyModifiers::empty()),
+        );
+        assert_eq!(state.mode, Mode::Terminal);
+        assert!(state.context_menu.is_none());
+    }
+
+    #[test]
+    fn navigator_opens_search_first_and_treats_j_and_g_as_search_text() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        state.open_navigator();
+        let selected = state.navigator.selected;
+        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
+
+        assert!(state.navigator.search_focused);
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
+        );
+        assert_eq!(state.navigator.query, "j");
+        assert_eq!(state.navigator.selected, 0);
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+        );
+        assert_eq!(state.navigator.query, "jG");
+        assert_eq!(state.navigator.selected, 0);
+
+        state.navigator.query.clear();
+        state.navigator.selected = selected;
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.navigator.selected, selected + 1);
+    }
+
+    #[test]
+    fn navigator_search_escape_clears_before_closing() {
+        let mut state = state_with_workspaces(&["test"]);
+        state.open_navigator();
+        state.navigator.query = "shell".into();
+        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+        );
+        assert_eq!(state.mode, Mode::Navigator);
+        assert!(state.navigator.search_focused);
+        assert!(state.navigator.query.is_empty());
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::empty()),
+        );
+        assert_eq!(state.mode, Mode::Terminal);
+    }
+
+    #[test]
+    fn navigator_normal_mode_no_longer_uses_j_k_or_g() {
+        let mut state = state_with_workspaces(&["one", "two"]);
+        state.open_navigator();
+        state.navigator.search_focused = false;
+        state.navigator.selected = 0;
+        let terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('j'), KeyModifiers::empty()),
+        );
+        assert_eq!(state.navigator.selected, 0);
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT),
+        );
+        assert_eq!(state.navigator.selected, 0);
+
+        handle_navigator_key(
+            &mut state,
+            &terminal_runtimes,
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+        );
+        assert_eq!(state.navigator.selected, 1);
     }
 }

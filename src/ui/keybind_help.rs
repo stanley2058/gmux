@@ -272,7 +272,7 @@ pub(super) fn render_keybind_help_overlay(app: &AppState, frame: &mut Frame) {
             Span::styled(" pgup / pgdn ", Style::default().fg(app.palette.text)),
             Span::styled("  ·  ", Style::default().fg(app.palette.overlay0)),
             Span::styled("close", Style::default().fg(app.palette.overlay0)),
-            Span::styled(" esc / enter ", Style::default().fg(app.palette.text)),
+            Span::styled(" esc / enter / q ", Style::default().fg(app.palette.text)),
         ])),
         stack.footer.unwrap_or_default(),
     );
