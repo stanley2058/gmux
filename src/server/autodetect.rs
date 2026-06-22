@@ -24,6 +24,9 @@ use super::socket_paths::client_socket_path;
 /// after spawning the server process.
 const SERVER_READY_TIMEOUT: Duration = Duration::from_secs(5);
 
+pub(crate) const HANDOFF_RELAUNCH_ENV_VAR: &str = "GMUX_RELAUNCH_AFTER_HANDOFF";
+pub(crate) const HANDOFF_RELAUNCH_WAIT_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Poll interval when waiting for the server socket to appear.
 const SOCKET_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -107,6 +110,18 @@ fn validate_running_server_compatibility() -> io::Result<()> {
         crate::protocol::PROTOCOL_VERSION,
         crate::session::active_restart_after_update_guidance()
     )))
+}
+
+pub(crate) fn take_handoff_relaunch_request() -> bool {
+    let requested = std::env::var_os(HANDOFF_RELAUNCH_ENV_VAR).is_some();
+    if requested {
+        std::env::remove_var(HANDOFF_RELAUNCH_ENV_VAR);
+    }
+    requested
+}
+
+fn handoff_relaunch_requested() -> bool {
+    std::env::var_os(HANDOFF_RELAUNCH_ENV_VAR).is_some()
 }
 
 // ---------------------------------------------------------------------------
@@ -213,8 +228,15 @@ pub fn wait_for_server_socket(socket_path: &Path, timeout: Duration) -> io::Resu
 pub fn auto_detect_launch() -> io::Result<()> {
     let socket_path = client_socket_path();
     info!(path = %socket_path.display(), "auto-detect launch starting");
+    let relaunch_after_handoff = handoff_relaunch_requested();
 
-    if is_server_listening_at(&socket_path) {
+    if relaunch_after_handoff {
+        if !is_server_listening_at(&socket_path) {
+            info!("waiting for replacement server after live handoff");
+            wait_for_server_socket(&socket_path, HANDOFF_RELAUNCH_WAIT_TIMEOUT)?;
+        }
+        info!("attaching after live handoff");
+    } else if is_server_listening_at(&socket_path) {
         validate_running_server_compatibility()?;
         info!("server already running, attaching as client");
     } else {
@@ -286,6 +308,22 @@ mod tests {
         std::env::remove_var("GMUX_CLIENT_SOCKET_PATH");
         std::env::remove_var(crate::session::SESSION_ENV_VAR);
         crate::session::clear_explicit_session_for_test();
+    }
+
+    #[test]
+    fn handoff_relaunch_request_is_consumed_once() {
+        let _guard = env_lock().lock().unwrap();
+        let previous = std::env::var_os(HANDOFF_RELAUNCH_ENV_VAR);
+        std::env::set_var(HANDOFF_RELAUNCH_ENV_VAR, "1");
+
+        assert!(take_handoff_relaunch_request());
+        assert!(!take_handoff_relaunch_request());
+
+        if let Some(previous) = previous {
+            std::env::set_var(HANDOFF_RELAUNCH_ENV_VAR, previous);
+        } else {
+            std::env::remove_var(HANDOFF_RELAUNCH_ENV_VAR);
+        }
     }
 
     #[test]

@@ -18,6 +18,8 @@ mod input;
 use std::collections::HashSet;
 use std::io::{self, Write as _};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -205,6 +207,8 @@ pub enum ClientError {
     HandshakeRejected { version: u32, error: String },
     /// Server shut down.
     ServerShutdown { reason: Option<String> },
+    /// Server handed off to a replacement process; relaunch this client.
+    RelaunchAfterHandoff,
     /// Lost connection to the server.
     ConnectionLost(io::Error),
     /// Protocol error (framing, deserialization).
@@ -218,6 +222,10 @@ fn is_graceful_server_shutdown(err: &ClientError) -> bool {
             reason: Some(reason)
         } if matches!(reason.as_str(), "detached" | "server is shutting down")
     )
+}
+
+fn should_relaunch_after_handoff(reason: Option<&str>, direct_attach: bool) -> bool {
+    !direct_attach && reason == Some(crate::server::LIVE_HANDOFF_RELAUNCH_REASON)
 }
 
 impl std::fmt::Display for ClientError {
@@ -258,6 +266,7 @@ impl std::fmt::Display for ClientError {
                 }
                 Ok(())
             }
+            ClientError::RelaunchAfterHandoff => write!(f, "relaunching after live handoff"),
             ClientError::ConnectionLost(err) => {
                 write!(f, "lost connection to server: {err}")
             }
@@ -539,33 +548,25 @@ fn run_client_with_mode(
     let socket_path = client_socket_path();
     crate::logging::startup("client");
     info!(path = %socket_path.display(), "{log_message}");
-
-    // Try to connect to the server.
-    let mut stream = match UnixStream::connect(&socket_path) {
-        Ok(s) => s,
-        Err(err) => {
-            // Server unreachable — show clear error and exit.
-            let client_err = ClientError::ConnectionFailed(err);
-            eprintln!("gmux: {client_err}");
-            std::process::exit(1);
-        }
-    };
+    let relaunch_after_handoff = crate::server::autodetect::take_handoff_relaunch_request();
 
     // Get the terminal geometry before handshake (before raw mode).
     let (cols, rows, cell_width_px, cell_height_px) =
         current_terminal_geometry(kitty_graphics_enabled);
 
-    // Perform handshake while the stream is still in blocking mode.
-    let negotiated_encoding = match do_handshake(
-        &mut stream,
+    // Connect and handshake before raw mode, so failed relaunch retries never
+    // leave the terminal in application mode.
+    let (mut stream, negotiated_encoding) = match connect_and_handshake(
+        &socket_path,
         cols,
         rows,
         cell_width_px,
         cell_height_px,
         requested_encoding,
         direct_attach_requested,
+        relaunch_after_handoff,
     ) {
-        Ok(encoding) => encoding,
+        Ok(result) => result,
         Err(err) => {
             eprintln!("gmux: {err}");
             std::process::exit(1);
@@ -637,6 +638,15 @@ fn run_client_with_mode(
     // Restore the terminal before printing any final status message.
     drop(_guard);
 
+    if let Err(ClientError::RelaunchAfterHandoff) = result {
+        eprintln!("gmux: relaunching after live handoff...");
+        rt.shutdown_timeout(Duration::from_millis(100));
+        crate::logging::shutdown("client");
+        let err = relaunch_current_process();
+        eprintln!("gmux: failed to relaunch after live handoff: {err}");
+        std::process::exit(1);
+    }
+
     if let Err(err) = result {
         eprintln!("gmux: {err}");
         rt.shutdown_timeout(Duration::from_millis(100));
@@ -652,6 +662,79 @@ fn run_client_with_mode(
     rt.shutdown_timeout(Duration::from_millis(100));
     crate::logging::shutdown("client");
     Ok(())
+}
+
+fn connect_and_handshake(
+    socket_path: &std::path::Path,
+    cols: u16,
+    rows: u16,
+    cell_width_px: u32,
+    cell_height_px: u32,
+    requested_encoding: RenderEncoding,
+    direct_attach_requested: bool,
+    relaunch_after_handoff: bool,
+) -> Result<(UnixStream, RenderEncoding), ClientError> {
+    let deadline = Instant::now() + crate::server::autodetect::HANDOFF_RELAUNCH_WAIT_TIMEOUT;
+    loop {
+        let mut stream = match UnixStream::connect(socket_path) {
+            Ok(stream) => stream,
+            Err(err) => {
+                let err = ClientError::ConnectionFailed(err);
+                if should_retry_handoff_attach(&err, relaunch_after_handoff, deadline) {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                return Err(err);
+            }
+        };
+
+        match do_handshake(
+            &mut stream,
+            cols,
+            rows,
+            cell_width_px,
+            cell_height_px,
+            requested_encoding,
+            direct_attach_requested,
+        ) {
+            Ok(encoding) => return Ok((stream, encoding)),
+            Err(err) => {
+                if should_retry_handoff_attach(&err, relaunch_after_handoff, deadline) {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                return Err(err);
+            }
+        }
+    }
+}
+
+fn should_retry_handoff_attach(
+    err: &ClientError,
+    relaunch_after_handoff: bool,
+    deadline: Instant,
+) -> bool {
+    if !relaunch_after_handoff || Instant::now() >= deadline {
+        return false;
+    }
+
+    matches!(
+        err,
+        ClientError::ConnectionFailed(_)
+            | ClientError::Protocol(_)
+            | ClientError::ConnectionLost(_)
+    )
+}
+
+fn relaunch_current_process() -> io::Error {
+    let mut args = std::env::args_os();
+    let program = args
+        .next()
+        .unwrap_or_else(|| std::ffi::OsString::from("gmux"));
+    Command::new(program)
+        .args(args)
+        .env(crate::server::autodetect::HANDOFF_RELAUNCH_ENV_VAR, "1")
+        .exec()
 }
 
 /// The main client event loop.
@@ -928,6 +1011,13 @@ async fn run_client_loop(
                     }
                 }
                 ServerMessage::ServerShutdown { reason } => {
+                    if should_relaunch_after_handoff(
+                        reason.as_deref(),
+                        state.attach_escape.is_some(),
+                    ) {
+                        should_quit.store(true, Ordering::Release);
+                        return Err(ClientError::RelaunchAfterHandoff);
+                    }
                     return Err(ClientError::ServerShutdown { reason });
                 }
                 ServerMessage::Notify { kind, message } => {
@@ -1627,6 +1717,72 @@ mod tests {
         };
 
         assert!(is_graceful_server_shutdown(&err));
+    }
+
+    #[test]
+    fn live_handoff_shutdown_relaunches_app_clients() {
+        assert!(should_relaunch_after_handoff(
+            Some(crate::server::LIVE_HANDOFF_RELAUNCH_REASON),
+            false,
+        ));
+    }
+
+    #[test]
+    fn live_handoff_shutdown_does_not_relaunch_direct_attach_clients() {
+        assert!(!should_relaunch_after_handoff(
+            Some(crate::server::LIVE_HANDOFF_RELAUNCH_REASON),
+            true,
+        ));
+    }
+
+    #[test]
+    fn non_handoff_shutdown_does_not_relaunch() {
+        assert!(!should_relaunch_after_handoff(
+            Some("server is shutting down"),
+            false,
+        ));
+    }
+
+    #[test]
+    fn handoff_relaunch_retries_transient_protocol_errors() {
+        let err = ClientError::Protocol(protocol::FramingError::Io(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "reset",
+        )));
+
+        assert!(should_retry_handoff_attach(
+            &err,
+            true,
+            Instant::now() + Duration::from_secs(1),
+        ));
+    }
+
+    #[test]
+    fn handoff_relaunch_retry_stops_after_deadline() {
+        let err = ClientError::Protocol(protocol::FramingError::Io(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "reset",
+        )));
+
+        assert!(!should_retry_handoff_attach(
+            &err,
+            true,
+            Instant::now() - Duration::from_secs(1),
+        ));
+    }
+
+    #[test]
+    fn normal_launch_does_not_retry_protocol_errors() {
+        let err = ClientError::Protocol(protocol::FramingError::Io(io::Error::new(
+            io::ErrorKind::ConnectionReset,
+            "reset",
+        )));
+
+        assert!(!should_retry_handoff_attach(
+            &err,
+            false,
+            Instant::now() + Duration::from_secs(1),
+        ));
     }
 
     #[test]

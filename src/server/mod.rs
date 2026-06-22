@@ -1,4 +1,6 @@
 pub mod autodetect;
+pub(crate) const LIVE_HANDOFF_RELAUNCH_REASON: &str =
+    "live handoff in progress; relaunch after handoff completes";
 pub(crate) mod client_accept;
 pub(crate) mod client_transport;
 pub(crate) mod clients;
