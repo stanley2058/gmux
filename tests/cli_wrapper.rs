@@ -1584,7 +1584,11 @@ fn top_level_tab_and_pane_aliases_work() {
 
     let command_split = run_cli(
         &socket_path,
-        &["split-pane", "--no-focus", "printf split-command-ok"],
+        &[
+            "split-pane",
+            "--no-focus",
+            "printf split-command-ok; sleep 10",
+        ],
     );
     assert!(
         command_split.status.success(),

@@ -95,11 +95,19 @@ fn render_rows(
         let y = body.y + visible_idx as u16;
         let rect = Rect::new(body.x, y, body.width, 1);
         let selected = idx == app.navigator.selected;
-        render_row(app, frame, rect, row, selected);
+        render_row(app, frame, rect, &rows, idx, row, selected);
     }
 }
 
-fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow, selected: bool) {
+fn render_row(
+    app: &AppState,
+    frame: &mut Frame,
+    rect: Rect,
+    rows: &[NavigatorRow],
+    idx: usize,
+    row: &NavigatorRow,
+    selected: bool,
+) {
     let p = &app.palette;
     frame.render_widget(Clear, rect);
     let base_style = if selected {
@@ -112,6 +120,20 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
     } else {
         Style::default().fg(p.overlay0).bg(p.panel_bg)
     };
+    let branch_style = if selected {
+        base_style
+    } else {
+        Style::default().fg(p.surface1).bg(p.panel_bg)
+    };
+    let kind = row_kind(row);
+    let icon_style = if selected {
+        base_style.add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(kind.color(app, row))
+            .bg(p.panel_bg)
+            .add_modifier(kind.modifier())
+    };
     let text_style = if selected {
         base_style.add_modifier(Modifier::BOLD)
     } else if row.is_current {
@@ -120,23 +142,32 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
             .bg(p.panel_bg)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(p.subtext0).bg(p.panel_bg)
+        Style::default()
+            .fg(kind.label_color(app, row))
+            .bg(p.panel_bg)
+            .add_modifier(kind.modifier())
     };
-    let prefix = if row.depth > 0 { "├─" } else { "  " };
-    let current = if row.is_current { "◆" } else { " " };
     let marker = if selected { "→" } else { " " };
-    let indent = "  ".repeat(row.depth as usize);
-    let left_fixed = format!(" {indent}{prefix} {marker} {current} ");
+    let branch = tree_branch(rows, idx, row.depth);
+    let icon = if row.is_current {
+        "◆"
+    } else {
+        kind.icon(row)
+    };
+    let left_fixed_width = 3 + branch.chars().count() as u16 + 2;
     let meta_width = metadata_width(rect.width);
     let left_budget = rect
         .width
         .saturating_sub(meta_width)
-        .saturating_sub(left_fixed.chars().count() as u16)
+        .saturating_sub(left_fixed_width)
         .saturating_sub(1) as usize;
     let title = truncate_text(&row.label, left_budget);
 
     let spans = vec![
-        Span::styled(left_fixed, dim_style),
+        Span::styled(format!(" {marker} "), dim_style),
+        Span::styled(branch, branch_style),
+        Span::styled(icon, icon_style),
+        Span::styled(" ", dim_style),
         Span::styled(title, text_style),
     ];
     frame.render_widget(Paragraph::new(Line::from(spans)).style(base_style), rect);
@@ -152,13 +183,129 @@ fn render_row(app: &AppState, frame: &mut Frame, rect: Rect, row: &NavigatorRow,
         let meta_style = if selected {
             base_style
         } else {
-            Style::default().fg(p.overlay0).bg(p.panel_bg)
+            Style::default()
+                .fg(kind.meta_color(app, row))
+                .bg(p.panel_bg)
         };
         frame.render_widget(
             Paragraph::new(format!(" {meta}")).style(meta_style),
             meta_rect,
         );
     }
+}
+
+#[derive(Clone, Copy)]
+enum NavigatorRowKind {
+    Session,
+    RunningSession,
+    StoppedSession,
+    Tab,
+    Pane,
+    Directory,
+}
+
+impl NavigatorRowKind {
+    fn icon(self, row: &NavigatorRow) -> &'static str {
+        match self {
+            Self::Session => "◇",
+            Self::RunningSession => "●",
+            Self::StoppedSession => "○",
+            Self::Tab => "▸",
+            Self::Pane if !row.seen => "•",
+            Self::Pane => "·",
+            Self::Directory => "+",
+        }
+    }
+
+    fn color(self, app: &AppState, row: &NavigatorRow) -> ratatui::style::Color {
+        let p = &app.palette;
+        if row.is_current {
+            return p.accent;
+        }
+        match self {
+            Self::Session => p.mauve,
+            Self::RunningSession => p.green,
+            Self::StoppedSession => p.overlay1,
+            Self::Tab => p.blue,
+            Self::Pane if !row.seen => p.peach,
+            Self::Pane => p.overlay1,
+            Self::Directory => p.teal,
+        }
+    }
+
+    fn label_color(self, app: &AppState, row: &NavigatorRow) -> ratatui::style::Color {
+        let p = &app.palette;
+        match self {
+            Self::Session => p.text,
+            Self::RunningSession => p.text,
+            Self::StoppedSession => p.subtext0,
+            Self::Tab => p.subtext0,
+            Self::Pane if !row.seen => p.text,
+            Self::Pane => p.subtext0,
+            Self::Directory => p.subtext0,
+        }
+    }
+
+    fn meta_color(self, app: &AppState, row: &NavigatorRow) -> ratatui::style::Color {
+        let p = &app.palette;
+        match self {
+            Self::RunningSession => p.green,
+            Self::StoppedSession => p.overlay1,
+            Self::Pane if !row.seen => p.peach,
+            _ => p.overlay0,
+        }
+    }
+
+    fn modifier(self) -> Modifier {
+        match self {
+            Self::Session | Self::RunningSession => Modifier::BOLD,
+            _ => Modifier::empty(),
+        }
+    }
+}
+
+fn row_kind(row: &NavigatorRow) -> NavigatorRowKind {
+    match &row.target {
+        NavigatorTarget::Session { .. } => NavigatorRowKind::Session,
+        NavigatorTarget::ExternalSession { running: true, .. } => NavigatorRowKind::RunningSession,
+        NavigatorTarget::ExternalSession { running: false, .. } => NavigatorRowKind::StoppedSession,
+        NavigatorTarget::Tab { .. } => NavigatorRowKind::Tab,
+        NavigatorTarget::Pane { .. } => NavigatorRowKind::Pane,
+        NavigatorTarget::Directory { .. } => NavigatorRowKind::Directory,
+    }
+}
+
+fn tree_branch(rows: &[NavigatorRow], idx: usize, depth: u8) -> String {
+    if depth == 0 {
+        return String::new();
+    }
+
+    let mut branch = String::new();
+    for ancestor_depth in 1..depth {
+        if has_later_sibling(rows, idx, ancestor_depth) {
+            branch.push_str("│  ");
+        } else {
+            branch.push_str("   ");
+        }
+    }
+    if has_later_sibling(rows, idx, depth) {
+        branch.push_str("├─ ");
+    } else {
+        branch.push_str("└─ ");
+    }
+    branch
+}
+
+fn has_later_sibling(rows: &[NavigatorRow], idx: usize, depth: u8) -> bool {
+    for row in rows.iter().skip(idx + 1) {
+        if row.depth < depth {
+            return false;
+        }
+        if row.depth == depth {
+            return true;
+        }
+    }
+    false
 }
 
 fn render_navigator_scrollbar(
@@ -243,6 +390,10 @@ fn selected_detail(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) 
             })
             .map(|cwd| format!("session: {}", cwd.display()))
             .unwrap_or_else(|| "session".to_string()),
+        NavigatorTarget::ExternalSession { ref name, running } => {
+            let status = if running { "running" } else { "stopped" };
+            format!("switch to {status} session: {name}")
+        }
         NavigatorTarget::Tab { ws_idx, tab_idx } => {
             tab_detail(app, terminal_runtimes, ws_idx, tab_idx)
         }

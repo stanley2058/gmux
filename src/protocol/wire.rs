@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Current protocol version. Bumped when wire format changes incompatibly.
-pub const PROTOCOL_VERSION: u32 = 16;
+pub const PROTOCOL_VERSION: u32 = 17;
 
 /// Maximum allowed frame payload size (2 MB). Frames larger than this are
 /// rejected to prevent denial-of-service via oversized length prefixes.
@@ -487,6 +487,12 @@ pub enum ServerMessage {
     MouseCapture {
         /// True when Gmux mouse UI is enabled or the focused pane app requests mouse reporting.
         enabled: bool,
+    },
+
+    /// Switch this app client to another local persistent session.
+    SwitchSession {
+        /// Session display name, or "default" for the default session.
+        name: String,
     },
 }
 

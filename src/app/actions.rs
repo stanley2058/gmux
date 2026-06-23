@@ -151,7 +151,18 @@ impl AppState {
         self.navigator.query.clear();
         self.navigator.search_focused = true;
         self.navigator.scroll = 0;
-        self.navigator.directory_candidates = zoxide_directory_candidates();
+        self.navigator.session_candidates.clear();
+        self.navigator.session_candidates_request_id =
+            self.navigator.session_candidates_request_id.wrapping_add(1);
+        self.request_navigator_session_candidates =
+            Some(self.navigator.session_candidates_request_id);
+        self.navigator.directory_candidates.clear();
+        self.navigator.directory_candidates_request_id = self
+            .navigator
+            .directory_candidates_request_id
+            .wrapping_add(1);
+        self.request_navigator_directory_candidates =
+            Some(self.navigator.directory_candidates_request_id);
 
         self.mode = Mode::Navigator;
         self.navigator.selected = self
@@ -215,6 +226,35 @@ impl AppState {
                 });
             }
             rows.extend(child_rows);
+        }
+
+        for candidate in &self.navigator.session_candidates {
+            if candidate.is_current {
+                continue;
+            }
+            let label = candidate.name.clone();
+            let meta = if candidate.running {
+                "running session".to_string()
+            } else {
+                "stopped session".to_string()
+            };
+            let search_text = format!("{label} {meta} {}", candidate.session_dir).to_lowercase();
+            if query_kind == NavigatorQueryKind::Text && !navigator_matches(&query, &search_text) {
+                continue;
+            }
+            rows.push(NavigatorRow {
+                target: NavigatorTarget::ExternalSession {
+                    name: candidate.name.clone(),
+                    running: candidate.running,
+                },
+                depth: 0,
+                label,
+                meta,
+                seen: true,
+                is_current: false,
+                is_tab: true,
+                search_text,
+            });
         }
 
         if query_kind != NavigatorQueryKind::Text || !rows.is_empty() {
@@ -296,7 +336,7 @@ impl AppState {
         let search_text = format!("{label} {meta}").to_lowercase();
         Some(NavigatorRow {
             target: NavigatorTarget::Tab { ws_idx, tab_idx },
-            depth: 0,
+            depth: 1,
             label,
             meta,
             seen: true,
@@ -344,7 +384,7 @@ impl AppState {
                     tab_idx,
                     pane_id,
                 },
-                depth: if multi_tab { 1 } else { 0 },
+                depth: if multi_tab { 2 } else { 1 },
                 label,
                 meta,
                 seen: pane.seen,
@@ -457,6 +497,11 @@ impl AppState {
                 self.mode = Mode::Terminal;
                 true
             }
+            NavigatorTarget::ExternalSession { name, .. } => {
+                self.request_switch_session_name = Some(name);
+                self.mode = Mode::Terminal;
+                true
+            }
             NavigatorTarget::Tab { ws_idx, tab_idx } => {
                 if !self
                     .session_tab_entries()
@@ -490,33 +535,6 @@ impl AppState {
                 true
             }
         }
-    }
-}
-
-fn zoxide_directory_candidates() -> Vec<std::path::PathBuf> {
-    #[cfg(test)]
-    {
-        return Vec::new();
-    }
-    #[cfg(not(test))]
-    {
-        let Ok(output) = std::process::Command::new("zoxide")
-            .args(["query", "-l"])
-            .output()
-        else {
-            return Vec::new();
-        };
-        if !output.status.success() {
-            return Vec::new();
-        }
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter_map(|line| {
-                let path = std::path::PathBuf::from(line.trim());
-                (path.is_absolute() && path.is_dir()).then_some(path)
-            })
-            .take(100)
-            .collect()
     }
 }
 
@@ -1678,6 +1696,26 @@ impl AppState {
                     }
                 }
             }
+            AppEvent::NavigatorDirectoryCandidates {
+                request_id,
+                candidates,
+            } => {
+                if self.mode == Mode::Navigator
+                    && self.navigator.directory_candidates_request_id == request_id
+                {
+                    self.navigator.directory_candidates = candidates;
+                }
+            }
+            AppEvent::NavigatorSessionCandidates {
+                request_id,
+                candidates,
+            } => {
+                if self.mode == Mode::Navigator
+                    && self.navigator.session_candidates_request_id == request_id
+                {
+                    self.navigator.session_candidates = candidates;
+                }
+            }
         }
     }
 
@@ -1998,6 +2036,67 @@ mod tests {
         }));
     }
 
+    #[test]
+    fn navigator_rows_use_depths_for_session_tab_pane_hierarchy() {
+        let mut state = app_with_workspaces(&["single", "multi"]);
+        state.sessions[1].test_add_tab(Some("tests"));
+        let pane = state.sessions[1].tabs[0].root_pane;
+        state.ensure_test_terminals();
+
+        state.open_navigator();
+        let rows = state.navigator_rows();
+
+        assert_eq!(
+            rows.iter()
+                .find(|row| matches!(
+                    row.target,
+                    crate::app::state::NavigatorTarget::Session { ws_idx: 1 }
+                ))
+                .map(|row| row.depth),
+            Some(0)
+        );
+        assert_eq!(
+            rows.iter()
+                .find(|row| matches!(
+                    row.target,
+                    crate::app::state::NavigatorTarget::Tab {
+                        ws_idx: 1,
+                        tab_idx: 0,
+                    }
+                ))
+                .map(|row| row.depth),
+            Some(1)
+        );
+        assert_eq!(
+            rows.iter()
+                .find(|row| matches!(
+                    row.target,
+                    crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == pane
+                ))
+                .map(|row| row.depth),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn navigator_rows_indent_panes_under_single_tab_sessions() {
+        let mut state = app_with_workspaces(&["one"]);
+        let pane = state.sessions[0].tabs[0].root_pane;
+
+        state.open_navigator();
+        let rows = state.navigator_rows();
+
+        assert_eq!(
+            rows.iter()
+                .find(|row| matches!(
+                    row.target,
+                    crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == pane
+                ))
+                .map(|row| row.depth),
+            Some(1)
+        );
+    }
+
     #[tokio::test]
     async fn navigator_rows_match_live_root_runtime_cwd_workspace_label() {
         let unique = format!(
@@ -2255,6 +2354,122 @@ mod tests {
             fallback_rows[0].target,
             crate::app::state::NavigatorTarget::Directory { .. }
         ));
+    }
+
+    #[test]
+    fn opening_navigator_requests_directory_candidates_without_blocking_state() {
+        let mut state = app_with_workspaces(&["one"]);
+        state.navigator.directory_candidates = vec![std::path::PathBuf::from("/tmp/old")];
+        state.navigator.session_candidates = vec![crate::app::state::NavigatorSessionCandidate {
+            name: "old".into(),
+            running: false,
+            is_current: false,
+            session_dir: "/tmp/old-session".into(),
+        }];
+
+        state.open_navigator();
+
+        assert_eq!(state.mode, Mode::Navigator);
+        assert!(state.navigator.directory_candidates.is_empty());
+        assert!(state.navigator.session_candidates.is_empty());
+        assert_eq!(state.request_navigator_session_candidates, Some(1));
+        assert_eq!(state.request_navigator_directory_candidates, Some(1));
+        assert_eq!(state.navigator.session_candidates_request_id, 1);
+        assert_eq!(state.navigator.directory_candidates_request_id, 1);
+    }
+
+    #[test]
+    fn navigator_directory_candidate_events_ignore_stale_requests() {
+        let mut state = app_with_workspaces(&["one"]);
+        state.open_navigator();
+        state.open_navigator();
+
+        state.handle_app_event(crate::events::AppEvent::NavigatorDirectoryCandidates {
+            request_id: 1,
+            candidates: vec![std::path::PathBuf::from("/tmp/stale")],
+        });
+        assert!(state.navigator.directory_candidates.is_empty());
+
+        state.handle_app_event(crate::events::AppEvent::NavigatorDirectoryCandidates {
+            request_id: 2,
+            candidates: vec![std::path::PathBuf::from("/tmp/current")],
+        });
+        assert_eq!(
+            state.navigator.directory_candidates,
+            vec![std::path::PathBuf::from("/tmp/current")]
+        );
+    }
+
+    #[test]
+    fn navigator_rows_include_external_sessions_from_latest_candidate_refresh() {
+        let mut state = app_with_workspaces(&["current"]);
+        state.open_navigator();
+
+        state.handle_app_event(crate::events::AppEvent::NavigatorSessionCandidates {
+            request_id: 1,
+            candidates: vec![
+                crate::app::state::NavigatorSessionCandidate {
+                    name: "current".into(),
+                    running: true,
+                    is_current: true,
+                    session_dir: "/tmp/current".into(),
+                },
+                crate::app::state::NavigatorSessionCandidate {
+                    name: "work".into(),
+                    running: true,
+                    is_current: false,
+                    session_dir: "/tmp/work".into(),
+                },
+                crate::app::state::NavigatorSessionCandidate {
+                    name: "archive".into(),
+                    running: false,
+                    is_current: false,
+                    session_dir: "/tmp/archive".into(),
+                },
+            ],
+        });
+
+        let rows = state.navigator_rows();
+        assert!(!rows.iter().any(|row| matches!(
+            &row.target,
+            crate::app::state::NavigatorTarget::ExternalSession { name, .. } if name == "current"
+        )));
+        assert!(rows.iter().any(|row| matches!(
+            &row.target,
+            crate::app::state::NavigatorTarget::ExternalSession { name, running } if name == "work" && *running
+        )));
+        assert!(rows.iter().any(|row| matches!(
+            &row.target,
+            crate::app::state::NavigatorTarget::ExternalSession { name, running } if name == "archive" && !*running
+        )));
+    }
+
+    #[test]
+    fn accepting_external_session_requests_switch() {
+        let mut state = app_with_workspaces(&["current"]);
+        state.open_navigator();
+        state.handle_app_event(crate::events::AppEvent::NavigatorSessionCandidates {
+            request_id: 1,
+            candidates: vec![crate::app::state::NavigatorSessionCandidate {
+                name: "work".into(),
+                running: false,
+                is_current: false,
+                session_dir: "/tmp/work".into(),
+            }],
+        });
+        state.navigator.selected = state
+            .navigator_rows()
+            .iter()
+            .position(|row| matches!(
+                &row.target,
+                crate::app::state::NavigatorTarget::ExternalSession { name, .. } if name == "work"
+            ))
+            .unwrap();
+
+        assert!(state.accept_navigator_selection());
+
+        assert_eq!(state.request_switch_session_name.as_deref(), Some("work"));
+        assert_eq!(state.mode, Mode::Terminal);
     }
 
     #[test]

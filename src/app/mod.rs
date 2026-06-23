@@ -19,7 +19,9 @@ mod theme_sync;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::pending;
+use std::io::Read as _;
 use std::io::{self, Write};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -35,6 +37,9 @@ const SIDEBAR_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(350);
 const PANE_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(350);
 const PANE_COPY_HIGHLIGHT_DURATION: Duration = Duration::from_millis(500);
 const COPY_FEEDBACK_DURATION: Duration = Duration::from_secs(2);
+const NAVIGATOR_DIRECTORY_REFRESH_TIMEOUT: Duration = Duration::from_millis(400);
+const NAVIGATOR_DIRECTORY_CANDIDATE_LIMIT: usize = 100;
+const NAVIGATOR_DIRECTORY_INSPECT_LIMIT: usize = 1000;
 
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
@@ -64,6 +69,97 @@ impl ClientInputRouteResult {
             self.forwarded_terminal_ids.push(terminal_id);
         }
     }
+}
+
+fn zoxide_directory_candidates(timeout: Duration) -> Vec<std::path::PathBuf> {
+    zoxide_directory_candidates_from_command(std::ffi::OsStr::new("zoxide"), timeout)
+}
+
+fn zoxide_directory_candidates_from_command(
+    command: impl AsRef<std::ffi::OsStr>,
+    timeout: Duration,
+) -> Vec<std::path::PathBuf> {
+    let Ok(mut child) = Command::new(command)
+        .args(["query", "-l"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return Vec::new();
+    };
+
+    let mut reader = child.stdout.take().map(|mut stdout| {
+        std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let _ = stdout.read_to_end(&mut output);
+            output
+        })
+    });
+    let deadline = Instant::now() + timeout;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let output = reader
+                    .take()
+                    .and_then(|handle| handle.join().ok())
+                    .unwrap_or_default();
+                if !status.success() {
+                    return Vec::new();
+                }
+                return parse_zoxide_directory_candidates(&output);
+            }
+            Ok(None) => {
+                let now = Instant::now();
+                if now >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    if let Some(handle) = reader.take() {
+                        let _ = handle.join();
+                    }
+                    return Vec::new();
+                }
+                std::thread::sleep((deadline - now).min(Duration::from_millis(10)));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                if let Some(handle) = reader.take() {
+                    let _ = handle.join();
+                }
+                return Vec::new();
+            }
+        }
+    }
+}
+
+fn parse_zoxide_directory_candidates(output: &[u8]) -> Vec<std::path::PathBuf> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .take(NAVIGATOR_DIRECTORY_INSPECT_LIMIT)
+        .filter_map(|line| {
+            let path = std::path::PathBuf::from(line.trim());
+            (path.is_absolute() && path.is_dir()).then_some(path)
+        })
+        .take(NAVIGATOR_DIRECTORY_CANDIDATE_LIMIT)
+        .collect()
+}
+
+fn navigator_session_candidates() -> Vec<state::NavigatorSessionCandidate> {
+    let current = crate::session::active_display_name();
+    crate::session::list_sessions()
+        .map(|sessions| {
+            sessions
+                .into_iter()
+                .map(|session| state::NavigatorSessionCandidate {
+                    is_current: session.name == current,
+                    name: session.name,
+                    running: session.running,
+                    session_dir: session.session_dir,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn translate_raw_sgr_mouse_to_pane(data: &[u8], inner_rect: Rect) -> Option<Vec<u8>> {
@@ -373,6 +469,9 @@ impl App {
             request_client_config_reload: false,
             request_clipboard_write: None,
             request_new_session_cwd: None,
+            request_switch_session_name: None,
+            request_navigator_session_candidates: None,
+            request_navigator_directory_candidates: None,
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,
@@ -621,6 +720,44 @@ impl App {
         });
     }
 
+    pub(crate) fn drain_navigator_directory_candidate_request(&mut self) -> bool {
+        let Some(request_id) = self.state.request_navigator_directory_candidates.take() else {
+            return false;
+        };
+        self.start_navigator_directory_candidate_refresh(request_id);
+        true
+    }
+
+    pub(crate) fn drain_navigator_session_candidate_request(&mut self) -> bool {
+        let Some(request_id) = self.state.request_navigator_session_candidates.take() else {
+            return false;
+        };
+        self.start_navigator_session_candidate_refresh(request_id);
+        true
+    }
+
+    fn start_navigator_directory_candidate_refresh(&self, request_id: u64) {
+        let tx = self.event_tx.clone();
+        std::thread::spawn(move || {
+            let candidates = zoxide_directory_candidates(NAVIGATOR_DIRECTORY_REFRESH_TIMEOUT);
+            let _ = tx.blocking_send(crate::events::AppEvent::NavigatorDirectoryCandidates {
+                request_id,
+                candidates,
+            });
+        });
+    }
+
+    fn start_navigator_session_candidate_refresh(&self, request_id: u64) {
+        let tx = self.event_tx.clone();
+        std::thread::spawn(move || {
+            let candidates = navigator_session_candidates();
+            let _ = tx.blocking_send(crate::events::AppEvent::NavigatorSessionCandidates {
+                request_id,
+                candidates,
+            });
+        });
+    }
+
     pub(crate) fn start_self_update(&mut self) {
         if !crate::update::self_update_enabled() {
             self.state.update.message =
@@ -682,6 +819,8 @@ impl App {
             if self.drain_api_requests() {
                 needs_render = true;
             }
+            self.drain_navigator_session_candidate_request();
+            self.drain_navigator_directory_candidate_request();
 
             self.sync_focus_events();
             self.sync_session_save_schedule();
@@ -1477,6 +1616,25 @@ mod tests {
             api_rx,
             crate::api::EventHub::default(),
         )
+    }
+
+    #[test]
+    fn zoxide_directory_candidates_missing_binary_returns_empty() {
+        let missing = std::env::temp_dir().join(format!(
+            "gmux-missing-zoxide-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        assert!(!missing.exists());
+        assert!(zoxide_directory_candidates_from_command(
+            missing.as_os_str(),
+            Duration::from_millis(1),
+        )
+        .is_empty());
     }
 
     #[test]

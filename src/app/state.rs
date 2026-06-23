@@ -628,6 +628,10 @@ pub(crate) enum NavigatorTarget {
     Session {
         ws_idx: usize,
     },
+    ExternalSession {
+        name: String,
+        running: bool,
+    },
     Tab {
         ws_idx: usize,
         tab_idx: usize,
@@ -654,13 +658,24 @@ pub(crate) struct NavigatorRow {
     pub search_text: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NavigatorSessionCandidate {
+    pub name: String,
+    pub running: bool,
+    pub is_current: bool,
+    pub session_dir: String,
+}
+
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NavigatorState {
     pub query: String,
     pub selected: usize,
     pub scroll: usize,
     pub search_focused: bool,
+    pub session_candidates: Vec<NavigatorSessionCandidate>,
+    pub session_candidates_request_id: u64,
     pub directory_candidates: Vec<std::path::PathBuf>,
+    pub directory_candidates_request_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1071,6 +1086,9 @@ pub struct AppState {
     /// handled by the outer App/event loop instead of directly from AppState.
     pub request_clipboard_write: Option<Vec<u8>>,
     pub request_new_session_cwd: Option<std::path::PathBuf>,
+    pub request_switch_session_name: Option<String>,
+    pub request_navigator_session_candidates: Option<u64>,
+    pub request_navigator_directory_candidates: Option<u64>,
     pub creating_new_tab: bool,
     pub requested_new_tab_name: Option<String>,
     pub rename_pane_target: Option<PaneId>,
@@ -1406,6 +1424,9 @@ impl AppState {
             request_client_config_reload: false,
             request_clipboard_write: None,
             request_new_session_cwd: None,
+            request_switch_session_name: None,
+            request_navigator_session_candidates: None,
+            request_navigator_directory_candidates: None,
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,

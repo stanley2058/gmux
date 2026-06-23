@@ -452,6 +452,8 @@ impl HeadlessServer {
                 needs_full_render = true;
                 crate::render_prof::event("full_render_cause.api_requests");
             }
+            self.app.drain_navigator_session_candidate_request();
+            self.app.drain_navigator_directory_candidate_request();
 
             self.app.sync_focus_events();
             self.app.sync_session_save_schedule();
@@ -493,6 +495,22 @@ impl HeadlessServer {
                 needs_render = true;
                 needs_full_render = true;
                 crate::render_prof::event("full_render_cause.deferred_new_tab");
+            }
+
+            if let Some(cwd) = self.app.state.request_new_session_cwd.take() {
+                if let Err(err) = self.app.create_additional_session(cwd) {
+                    tracing::error!(err = %err, "failed to create session from navigator");
+                }
+                needs_render = true;
+                needs_full_render = true;
+                crate::render_prof::event("full_render_cause.deferred_new_session");
+            }
+
+            if let Some(name) = self.app.state.request_switch_session_name.take() {
+                self.send_to_foreground_client(ServerMessage::SwitchSession { name });
+                needs_render = true;
+                needs_full_render = true;
+                crate::render_prof::event("full_render_cause.session_switch");
             }
 
             if self.app.state.request_reload_config {
@@ -1562,7 +1580,10 @@ impl HeadlessServer {
                 }
                 true
             }
-            AppEvent::UpdateCheckFinished(_) | AppEvent::UpdateInstallFinished(_) => {
+            AppEvent::UpdateCheckFinished(_)
+            | AppEvent::UpdateInstallFinished(_)
+            | AppEvent::NavigatorDirectoryCandidates { .. }
+            | AppEvent::NavigatorSessionCandidates { .. } => {
                 self.app.handle_internal_event(ev);
                 true
             }

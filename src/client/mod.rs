@@ -209,6 +209,8 @@ pub enum ClientError {
     ServerShutdown { reason: Option<String> },
     /// Server handed off to a replacement process; relaunch this client.
     RelaunchAfterHandoff,
+    /// Server requested that this app client switch to another local session.
+    SwitchSession { name: String },
     /// Lost connection to the server.
     ConnectionLost(io::Error),
     /// Protocol error (framing, deserialization).
@@ -267,6 +269,7 @@ impl std::fmt::Display for ClientError {
                 Ok(())
             }
             ClientError::RelaunchAfterHandoff => write!(f, "relaunching after live handoff"),
+            ClientError::SwitchSession { name } => write!(f, "switching to session {name}"),
             ClientError::ConnectionLost(err) => {
                 write!(f, "lost connection to server: {err}")
             }
@@ -647,6 +650,15 @@ fn run_client_with_mode(
         std::process::exit(1);
     }
 
+    if let Err(ClientError::SwitchSession { name }) = result {
+        eprintln!("gmux: switching to session {name}...");
+        rt.shutdown_timeout(Duration::from_millis(100));
+        crate::logging::shutdown("client");
+        let err = relaunch_session(&name);
+        eprintln!("gmux: failed to switch to session {name}: {err}");
+        std::process::exit(1);
+    }
+
     if let Err(err) = result {
         eprintln!("gmux: {err}");
         rt.shutdown_timeout(Duration::from_millis(100));
@@ -735,6 +747,20 @@ fn relaunch_current_process() -> io::Error {
         .args(args)
         .env(crate::server::autodetect::HANDOFF_RELAUNCH_ENV_VAR, "1")
         .exec()
+}
+
+fn relaunch_session(name: &str) -> io::Error {
+    let program = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("gmux"));
+    let mut command = Command::new(program);
+    command
+        .env_remove(crate::api::SOCKET_PATH_ENV_VAR)
+        .env_remove("GMUX_CLIENT_SOCKET_PATH");
+    if name == crate::session::DEFAULT_SESSION_NAME {
+        command.env_remove(crate::session::SESSION_ENV_VAR);
+    } else {
+        command.env(crate::session::SESSION_ENV_VAR, name);
+    }
+    command.exec()
 }
 
 /// The main client event loop.
@@ -1029,6 +1055,10 @@ async fn run_client_loop(
                 }
                 ServerMessage::ReloadClientConfig => {
                     reload_local_client_config(&mut state.redraw_on_focus_gained);
+                }
+                ServerMessage::SwitchSession { name } => {
+                    should_quit.store(true, Ordering::Release);
+                    return Err(ClientError::SwitchSession { name });
                 }
                 ServerMessage::MouseCapture { enabled } => {
                     let desired = enabled;

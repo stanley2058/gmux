@@ -16,4 +16,14 @@ pub enum AppEvent {
     UpdateCheckFinished(crate::update::UpdateCheckResult),
     /// Background self-update installer completed.
     UpdateInstallFinished(crate::update::UpdateInstallResult),
+    /// Background navigator directory candidate refresh completed.
+    NavigatorDirectoryCandidates {
+        request_id: u64,
+        candidates: Vec<std::path::PathBuf>,
+    },
+    /// Background navigator session candidate refresh completed.
+    NavigatorSessionCandidates {
+        request_id: u64,
+        candidates: Vec<crate::app::state::NavigatorSessionCandidate>,
+    },
 }
