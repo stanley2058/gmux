@@ -217,11 +217,15 @@ impl AppState {
             rows.extend(child_rows);
         }
 
+        if query_kind != NavigatorQueryKind::Text || !rows.is_empty() {
+            return rows;
+        }
+
         for cwd in &self.navigator.directory_candidates {
             let label = crate::workspace::derive_label_from_cwd(cwd);
             let meta = cwd.display().to_string();
             let search_text = format!("{label} {meta}").to_lowercase();
-            if query_kind == NavigatorQueryKind::Text && !navigator_matches(&query, &search_text) {
+            if !navigator_matches(&query, &search_text) {
                 continue;
             }
             rows.push(NavigatorRow {
@@ -429,6 +433,7 @@ impl AppState {
         self.accept_navigator_selection_from(&terminal_runtimes)
     }
 
+    #[cfg(test)]
     pub(crate) fn accept_navigator_selection_from(
         &mut self,
         terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,
@@ -2217,6 +2222,40 @@ mod tests {
             crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
         )));
         assert!(rows.iter().any(|row| row.label.contains("weekly")));
+    }
+
+    #[test]
+    fn navigator_search_uses_directory_candidates_only_when_sessions_miss() {
+        let mut state = app_with_workspaces(&["one"]);
+        let root = state.sessions[0].tabs[0].root_pane;
+        let terminal_id = state.sessions[0].terminal_id(root).cloned().unwrap();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_manual_label("weekly review".into());
+        state.open_navigator();
+        state.navigator.directory_candidates =
+            vec![std::path::PathBuf::from("/tmp/missing-weekly")];
+
+        state.navigator.query = "weekly".into();
+        let known_rows = state.navigator_rows();
+        assert!(known_rows.iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
+        )));
+        assert!(!known_rows.iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Directory { .. }
+        )));
+
+        state.navigator.query = "missing-weekly".into();
+        let fallback_rows = state.navigator_rows();
+        assert_eq!(fallback_rows.len(), 1);
+        assert!(matches!(
+            fallback_rows[0].target,
+            crate::app::state::NavigatorTarget::Directory { .. }
+        ));
     }
 
     #[test]

@@ -77,7 +77,10 @@ impl App {
                     Mode::GlobalMenu => handle_global_menu_key(&mut self.state, key_event),
                     Mode::KeybindHelp => handle_keybind_help_key(&mut self.state, key_event),
                     Mode::Navigator => {
-                        handle_navigator_key(&mut self.state, &self.terminal_runtimes, key_event)
+                        if handle_navigator_key(&mut self.state, &self.terminal_runtimes, key_event)
+                        {
+                            self.accept_navigator_selection();
+                        }
                     }
                     Mode::UpdateConfirm => handle_update_confirm_key(&mut self.state, key_event),
                     Mode::UpdateMessage => handle_update_message_key(&mut self.state, key_event),

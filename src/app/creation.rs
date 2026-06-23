@@ -39,6 +39,28 @@ fn expand_tilde_path(path: &str) -> PathBuf {
 }
 
 impl App {
+    pub(crate) fn accept_navigator_selection(&mut self) -> bool {
+        let Some(row) = self
+            .state
+            .navigator_rows_from(&self.terminal_runtimes)
+            .get(self.state.navigator.selected)
+            .cloned()
+        else {
+            return false;
+        };
+
+        match row.target {
+            crate::app::state::NavigatorTarget::Directory { cwd } => {
+                if let Err(err) = self.create_additional_session(cwd) {
+                    tracing::error!(err = %err, "failed to create session from navigator");
+                    return false;
+                }
+                true
+            }
+            target => self.state.focus_navigator_target(target),
+        }
+    }
+
     pub(super) fn seed_cwd_from_session(&self) -> Option<PathBuf> {
         self.state
             .session()?
