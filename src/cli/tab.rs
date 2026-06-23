@@ -42,6 +42,7 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
     let mut cwd = None;
     let mut focus = false;
     let mut label = None;
+    let mut command = Vec::new();
 
     let mut index = 0;
     while index < args.len() {
@@ -70,16 +71,29 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
                 focus = false;
                 index += 1;
             }
-            other => {
+            "--" => {
+                command.extend(args[index + 1..].iter().cloned());
+                break;
+            }
+            other if other.starts_with('-') => {
                 eprintln!("unknown option: {other}");
                 return Ok(2);
+            }
+            _ => {
+                command.extend(args[index..].iter().cloned());
+                break;
             }
         }
     }
 
     super::print_response(&super::send_request(&Request {
         id: "cli:tab:create".into(),
-        method: Method::TabCreate(TabCreateParams { cwd, focus, label }),
+        method: Method::TabCreate(TabCreateParams {
+            cwd,
+            focus,
+            label,
+            command: (!command.is_empty()).then(|| command.join(" ")),
+        }),
     })?)
 }
 
@@ -155,7 +169,7 @@ fn tab_close(args: &[String]) -> std::io::Result<i32> {
 fn print_tab_help() {
     eprintln!("gmux tab commands:");
     eprintln!("  gmux tab list");
-    eprintln!("  gmux tab create [--cwd PATH] [--label TEXT] [--focus] [--no-focus]");
+    eprintln!("  gmux tab create [--cwd PATH] [--label TEXT] [--focus] [--no-focus] [command ...]");
     eprintln!("  gmux tab get <tab_id>");
     eprintln!("  gmux tab focus <tab_id>");
     eprintln!("  gmux tab rename <tab_id> <label>");

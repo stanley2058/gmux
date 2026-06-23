@@ -5,8 +5,7 @@ use serde::Serialize;
 use crate::api::client::{ApiClient, ApiClientError};
 use crate::api::schema::{
     Method, OutputMatch, PaneDirection, PaneFocusParams, PaneListParams, PaneResizeParams,
-    PaneSendInputParams, PaneSplitParams, PaneWaitForOutputParams, ReadFormat, ReadSource, Request,
-    SplitDirection,
+    PaneSplitParams, PaneWaitForOutputParams, ReadFormat, ReadSource, Request, SplitDirection,
 };
 
 mod completions;
@@ -107,7 +106,7 @@ fn new_tab_alias(args: &[String]) -> std::io::Result<i32> {
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")
     ) {
-        eprintln!("usage: gmux new-tab [-n name] [-c cwd] [--focus|--no-focus]");
+        eprintln!("usage: gmux new-tab [-n name] [-c cwd] [--focus|--no-focus] [command ...]");
         return Ok(0);
     }
 
@@ -174,9 +173,17 @@ fn new_tab_alias(args: &[String]) -> std::io::Result<i32> {
                 ]);
                 index += 1;
             }
-            other => {
+            "--" => {
+                tab_args.extend(args[index..].iter().cloned());
+                break;
+            }
+            other if other.starts_with('-') => {
                 eprintln!("unknown option: {other}");
                 return Ok(2);
+            }
+            _ => {
+                tab_args.extend(args[index..].iter().cloned());
+                break;
             }
         }
     }
@@ -756,30 +763,9 @@ fn split_pane_alias(args: &[String]) -> std::io::Result<i32> {
             direction: direction.unwrap_or(SplitDirection::Down),
             cwd,
             focus,
+            command: (!command.is_empty()).then(|| command.join(" ")),
         }),
     })?;
-    if response.get("error").is_some() {
-        return print_response(&response);
-    }
-
-    if !command.is_empty() {
-        let Some(new_pane_id) = response["result"]["pane"]["pane_id"].as_str() else {
-            eprintln!("split response did not include pane id");
-            return Ok(1);
-        };
-        let send_response = send_request(&Request {
-            id: "cli:split-pane:command".into(),
-            method: Method::PaneSendInput(PaneSendInputParams {
-                pane_id: new_pane_id.to_string(),
-                text: command.join(" "),
-                keys: vec!["Enter".into()],
-            }),
-        })?;
-        if send_response.get("error").is_some() {
-            eprintln!("{}", serde_json::to_string(&send_response).unwrap());
-            return Ok(1);
-        }
-    }
 
     print_response(&response)
 }

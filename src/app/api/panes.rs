@@ -50,17 +50,33 @@ impl App {
             crate::api::schema::SplitDirection::Right => ratatui::layout::Direction::Horizontal,
             crate::api::schema::SplitDirection::Down => ratatui::layout::Direction::Vertical,
         };
-        let (target_tab_idx, new_pane) = match ws.split_pane(
-            target_pane_id,
-            direction,
-            rows,
-            cols,
-            split_cwd,
-            scrollback_limit_bytes,
-            host_terminal_theme,
-            crate::pane::PaneShellConfig::new(&default_shell, shell_mode).with_term(&pane_term),
-            params.focus,
-        ) {
+        let split_result = if let Some(command) = params.command.as_deref() {
+            ws.split_pane_command(
+                target_pane_id,
+                direction,
+                rows,
+                cols,
+                split_cwd,
+                command,
+                &pane_term,
+                scrollback_limit_bytes,
+                host_terminal_theme,
+                params.focus,
+            )
+        } else {
+            ws.split_pane(
+                target_pane_id,
+                direction,
+                rows,
+                cols,
+                split_cwd,
+                scrollback_limit_bytes,
+                host_terminal_theme,
+                crate::pane::PaneShellConfig::new(&default_shell, shell_mode).with_term(&pane_term),
+                params.focus,
+            )
+        };
+        let (target_tab_idx, new_pane) = match split_result {
             Some(Ok(result)) => result,
             Some(Err(err)) => return encode_error(id, "pane_split_failed", err.to_string()),
             None => return pane_not_found(id, &params.target_pane_id),

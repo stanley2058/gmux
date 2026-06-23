@@ -85,6 +85,8 @@ pub struct TabCreateParams {
     pub focus: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -106,6 +108,8 @@ pub struct PaneSplitParams {
     pub cwd: Option<String>,
     #[serde(default)]
     pub focus: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -514,6 +518,7 @@ mod tests {
                 cwd: Some("/tmp".into()),
                 focus: true,
                 label: Some("api".into()),
+                command: None,
             }),
         };
 

@@ -39,6 +39,28 @@ fn expand_tilde_path(path: &str) -> PathBuf {
 }
 
 impl App {
+    pub(crate) fn accept_navigator_selection(&mut self) -> bool {
+        let Some(row) = self
+            .state
+            .navigator_rows_from(&self.terminal_runtimes)
+            .get(self.state.navigator.selected)
+            .cloned()
+        else {
+            return false;
+        };
+
+        match row.target {
+            crate::app::state::NavigatorTarget::Directory { cwd } => {
+                if let Err(err) = self.create_additional_session(cwd) {
+                    tracing::error!(err = %err, "failed to create session from navigator");
+                    return false;
+                }
+                true
+            }
+            target => self.state.focus_navigator_target(target),
+        }
+    }
+
     pub(super) fn seed_cwd_from_session(&self) -> Option<PathBuf> {
         self.state
             .session()?
@@ -160,6 +182,84 @@ impl App {
         }
         self.schedule_session_save();
         Ok(0)
+    }
+
+    pub(crate) fn create_session_with_command(
+        &mut self,
+        initial_cwd: PathBuf,
+        command: &str,
+        focus: bool,
+    ) -> std::io::Result<usize> {
+        if self.state.has_session() {
+            self.state.collapse_to_single_session();
+            return Ok(self.state.session_index().unwrap_or(0));
+        }
+
+        let should_focus = focus || self.state.session_index().is_none();
+        let (rows, cols) = self.state.estimate_pane_size();
+        let (ws, terminal, runtime) = SessionUiState::new_shell_command(
+            initial_cwd,
+            rows,
+            cols,
+            command,
+            &self.state.pane_term,
+            self.state.pane_scrollback_limit_bytes,
+            self.state.host_terminal_theme,
+            self.event_tx.clone(),
+            self.render_notify.clone(),
+            self.render_dirty.clone(),
+        )?;
+        self.terminal_runtimes.insert(terminal.id.clone(), runtime);
+        self.state.terminals.insert(terminal.id.clone(), terminal);
+        self.state.set_session(ws);
+        let (root_pane, session_id) = {
+            let session = self
+                .state
+                .session()
+                .expect("newly set session should be active");
+            (session.tabs[0].root_pane, session.id.clone())
+        };
+        self.state.remove_alias_shadowed_by_new_pane(root_pane);
+        crate::logging::session_created(&session_id, root_pane.raw());
+        if should_focus {
+            self.state.focus_session(0);
+            self.state.mode = Mode::Terminal;
+        }
+        self.schedule_session_save();
+        Ok(0)
+    }
+
+    pub(crate) fn create_additional_session(
+        &mut self,
+        initial_cwd: PathBuf,
+    ) -> std::io::Result<usize> {
+        let (rows, cols) = self.state.estimate_pane_size();
+        let (ws, terminal, runtime) = SessionUiState::new(
+            initial_cwd,
+            rows,
+            cols,
+            self.state.pane_scrollback_limit_bytes,
+            self.state.host_terminal_theme,
+            crate::pane::PaneShellConfig::new(&self.state.default_shell, self.state.shell_mode)
+                .with_term(&self.state.pane_term),
+            self.event_tx.clone(),
+            self.render_notify.clone(),
+            self.render_dirty.clone(),
+        )?;
+        self.terminal_runtimes.insert(terminal.id.clone(), runtime);
+        self.state.terminals.insert(terminal.id.clone(), terminal);
+        self.state.sessions.push(ws);
+        let session_idx = self.state.sessions.len() - 1;
+        let (root_pane, session_id) = {
+            let session = &self.state.sessions[session_idx];
+            (session.tabs[0].root_pane, session.id.clone())
+        };
+        self.state.remove_alias_shadowed_by_new_pane(root_pane);
+        crate::logging::session_created(&session_id, root_pane.raw());
+        self.state.focus_session(session_idx);
+        self.state.mode = Mode::Terminal;
+        self.schedule_session_save();
+        Ok(session_idx)
     }
 
     pub(super) fn collect_panes(&self) -> Vec<crate::api::schema::PaneInfo> {

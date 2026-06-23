@@ -151,6 +151,7 @@ impl AppState {
         self.navigator.query.clear();
         self.navigator.search_focused = true;
         self.navigator.scroll = 0;
+        self.navigator.directory_candidates = zoxide_directory_candidates();
 
         self.mode = Mode::Navigator;
         self.navigator.selected = self
@@ -172,17 +173,22 @@ impl AppState {
         let query = self.navigator.query.trim().to_lowercase();
         let query_kind = navigator_query_kind(&query);
         let mut rows = Vec::new();
-        let session_matches = self.session().is_some_and(|ws| {
-            let session_label = ws.display_name_from(&self.terminals, terminal_runtimes);
-            let session_search_text = session_label.to_lowercase();
-            match query_kind {
-                NavigatorQueryKind::Empty => true,
-                NavigatorQueryKind::Text => navigator_matches(&query, &session_search_text),
-            }
-        });
         let multi_tab = self.session_tab_count() > 1;
 
         for entry in self.session_entries() {
+            let session_label = entry
+                .session
+                .display_name_from(&self.terminals, terminal_runtimes);
+            let session_meta = entry
+                .session
+                .resolved_identity_cwd_from(&self.terminals, terminal_runtimes)
+                .map(|cwd| cwd.display().to_string())
+                .unwrap_or_else(|| "session".to_string());
+            let session_search_text = format!("{session_label} {session_meta}").to_lowercase();
+            let session_matches = match query_kind {
+                NavigatorQueryKind::Empty => true,
+                NavigatorQueryKind::Text => navigator_matches(&query, &session_search_text),
+            };
             let child_query_kind = if session_matches {
                 NavigatorQueryKind::Empty
             } else {
@@ -194,7 +200,44 @@ impl AppState {
                 continue;
             }
 
+            if session_matches && query_kind == NavigatorQueryKind::Empty {
+                rows.push(NavigatorRow {
+                    target: NavigatorTarget::Session {
+                        ws_idx: entry.session_idx,
+                    },
+                    depth: 0,
+                    label: session_label,
+                    meta: session_meta,
+                    seen: true,
+                    is_current: self.session_index() == Some(entry.session_idx),
+                    is_tab: true,
+                    search_text: session_search_text,
+                });
+            }
             rows.extend(child_rows);
+        }
+
+        if query_kind != NavigatorQueryKind::Text || !rows.is_empty() {
+            return rows;
+        }
+
+        for cwd in &self.navigator.directory_candidates {
+            let label = crate::workspace::derive_label_from_cwd(cwd);
+            let meta = cwd.display().to_string();
+            let search_text = format!("{label} {meta}").to_lowercase();
+            if !navigator_matches(&query, &search_text) {
+                continue;
+            }
+            rows.push(NavigatorRow {
+                target: NavigatorTarget::Directory { cwd: cwd.clone() },
+                depth: 0,
+                label,
+                meta,
+                seen: true,
+                is_current: false,
+                is_tab: true,
+                search_text,
+            });
         }
         rows
     }
@@ -406,6 +449,14 @@ impl AppState {
 
     pub(crate) fn focus_navigator_target(&mut self, target: NavigatorTarget) -> bool {
         match target {
+            NavigatorTarget::Session { ws_idx } => {
+                if self.sessions.get(ws_idx).is_none() {
+                    return false;
+                }
+                self.focus_session(ws_idx);
+                self.mode = Mode::Terminal;
+                true
+            }
             NavigatorTarget::Tab { ws_idx, tab_idx } => {
                 if !self
                     .session_tab_entries()
@@ -433,7 +484,39 @@ impl AppState {
                 }
                 false
             }
+            NavigatorTarget::Directory { cwd } => {
+                self.request_new_session_cwd = Some(cwd);
+                self.mode = Mode::Terminal;
+                true
+            }
         }
+    }
+}
+
+fn zoxide_directory_candidates() -> Vec<std::path::PathBuf> {
+    #[cfg(test)]
+    {
+        return Vec::new();
+    }
+    #[cfg(not(test))]
+    {
+        let Ok(output) = std::process::Command::new("zoxide")
+            .args(["query", "-l"])
+            .output()
+        else {
+            return Vec::new();
+        };
+        if !output.status.success() {
+            return Vec::new();
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| {
+                let path = std::path::PathBuf::from(line.trim());
+                (path.is_absolute() && path.is_dir()).then_some(path)
+            })
+            .take(100)
+            .collect()
     }
 }
 
@@ -2138,6 +2221,40 @@ mod tests {
             crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
         )));
         assert!(rows.iter().any(|row| row.label.contains("weekly")));
+    }
+
+    #[test]
+    fn navigator_search_uses_directory_candidates_only_when_sessions_miss() {
+        let mut state = app_with_workspaces(&["one"]);
+        let root = state.sessions[0].tabs[0].root_pane;
+        let terminal_id = state.sessions[0].terminal_id(root).cloned().unwrap();
+        state
+            .terminals
+            .get_mut(&terminal_id)
+            .unwrap()
+            .set_manual_label("weekly review".into());
+        state.open_navigator();
+        state.navigator.directory_candidates =
+            vec![std::path::PathBuf::from("/tmp/missing-weekly")];
+
+        state.navigator.query = "weekly".into();
+        let known_rows = state.navigator_rows();
+        assert!(known_rows.iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Pane { pane_id, .. } if pane_id == root
+        )));
+        assert!(!known_rows.iter().any(|row| matches!(
+            row.target,
+            crate::app::state::NavigatorTarget::Directory { .. }
+        )));
+
+        state.navigator.query = "missing-weekly".into();
+        let fallback_rows = state.navigator_rows();
+        assert_eq!(fallback_rows.len(), 1);
+        assert!(matches!(
+            fallback_rows[0].target,
+            crate::app::state::NavigatorTarget::Directory { .. }
+        ));
     }
 
     #[test]

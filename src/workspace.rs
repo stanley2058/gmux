@@ -145,6 +145,51 @@ impl SessionUiState {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn new_shell_command(
+        initial_cwd: PathBuf,
+        rows: u16,
+        cols: u16,
+        command: &str,
+        term: &str,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        events: mpsc::Sender<AppEvent>,
+        render_notify: Arc<Notify>,
+        render_dirty: Arc<AtomicBool>,
+    ) -> std::io::Result<(Self, TerminalState, TerminalRuntime)> {
+        let (tab, terminal, runtime) = Tab::new_shell_command(
+            1,
+            initial_cwd.clone(),
+            rows,
+            cols,
+            command,
+            term,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            events,
+            render_notify,
+            render_dirty,
+        )?;
+        let mut public_pane_numbers = HashMap::new();
+        public_pane_numbers.insert(tab.root_pane, 1);
+        Ok((
+            Self {
+                id: generate_session_id(),
+                custom_name: None,
+                identity_cwd: initial_cwd.clone(),
+                public_pane_numbers,
+                next_public_pane_number: 2,
+                tabs: vec![tab],
+                active_tab: 0,
+                #[cfg(test)]
+                test_runtimes: HashMap::new(),
+            },
+            terminal,
+            runtime,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn new_with_tab(
         initial_cwd: PathBuf,
         rows: u16,
@@ -231,6 +276,49 @@ impl SessionUiState {
             host_terminal_theme,
             shell_config,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_tab_shell_command(
+        &mut self,
+        rows: u16,
+        cols: u16,
+        cwd: PathBuf,
+        command: &str,
+        term: &str,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+    ) -> std::io::Result<(usize, TerminalState, TerminalRuntime)> {
+        let number = self.tabs.len() + 1;
+        let events = self
+            .active_tab()
+            .map(|tab| tab.events.clone())
+            .expect("session must always have at least one tab");
+        let render_notify = self
+            .active_tab()
+            .map(|tab| tab.render_notify.clone())
+            .expect("session must always have at least one tab");
+        let render_dirty = self
+            .active_tab()
+            .map(|tab| tab.render_dirty.clone())
+            .expect("session must always have at least one tab");
+
+        let (tab, terminal, runtime) = Tab::new_shell_command(
+            number,
+            cwd,
+            rows,
+            cols,
+            command,
+            term,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            events,
+            render_notify,
+            render_dirty,
+        )?;
+        self.register_new_pane(tab.root_pane);
+        self.tabs.push(tab);
+        Ok((self.tabs.len() - 1, terminal, runtime))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -371,6 +459,48 @@ impl SessionUiState {
             focus_new_pane,
             None,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn split_pane_command(
+        &mut self,
+        pane_id: PaneId,
+        direction: Direction,
+        rows: u16,
+        cols: u16,
+        cwd: Option<PathBuf>,
+        command: &str,
+        term: &str,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        focus_new_pane: bool,
+    ) -> Option<std::io::Result<(usize, crate::workspace::tab::NewPane)>> {
+        let tab_idx = self.find_tab_index_for_pane(pane_id)?;
+        let tab = &mut self.tabs[tab_idx];
+        let previous_focus = tab.layout.focused();
+        tab.layout.focus_pane(pane_id);
+        let new_pane = match tab.split_focused_command(
+            direction,
+            rows,
+            cols,
+            cwd,
+            command,
+            &[],
+            term,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+        ) {
+            Ok(new_pane) => new_pane,
+            Err(err) => {
+                tab.layout.focus_pane(previous_focus);
+                return Some(Err(err));
+            }
+        };
+        if !focus_new_pane {
+            tab.layout.focus_pane(previous_focus);
+        }
+        self.register_new_pane(new_pane.pane_id);
+        Some(Ok((tab_idx, new_pane)))
     }
 
     #[allow(clippy::too_many_arguments)]
