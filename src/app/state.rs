@@ -625,6 +625,9 @@ pub enum Mode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NavigatorTarget {
+    Session {
+        ws_idx: usize,
+    },
     Tab {
         ws_idx: usize,
         tab_idx: usize,
@@ -633,6 +636,9 @@ pub(crate) enum NavigatorTarget {
         ws_idx: usize,
         tab_idx: usize,
         pane_id: PaneId,
+    },
+    Directory {
+        cwd: std::path::PathBuf,
     },
 }
 
@@ -654,6 +660,7 @@ pub(crate) struct NavigatorState {
     pub selected: usize,
     pub scroll: usize,
     pub search_focused: bool,
+    pub directory_candidates: Vec<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1063,6 +1070,7 @@ pub struct AppState {
     /// Set when UI interaction requested a clipboard write that must be
     /// handled by the outer App/event loop instead of directly from AppState.
     pub request_clipboard_write: Option<Vec<u8>>,
+    pub request_new_session_cwd: Option<std::path::PathBuf>,
     pub creating_new_tab: bool,
     pub requested_new_tab_name: Option<String>,
     pub rename_pane_target: Option<PaneId>,
@@ -1397,6 +1405,7 @@ impl AppState {
             request_start_self_update: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
+            request_new_session_cwd: None,
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,

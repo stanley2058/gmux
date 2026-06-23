@@ -372,6 +372,7 @@ impl App {
             request_start_self_update: false,
             request_client_config_reload: false,
             request_clipboard_write: None,
+            request_new_session_cwd: None,
             creating_new_tab: false,
             requested_new_tab_name: None,
             rename_pane_target: None,
@@ -699,6 +700,13 @@ impl App {
             if self.state.request_new_tab {
                 self.state.request_new_tab = false;
                 self.create_tab();
+                needs_render = true;
+            }
+
+            if let Some(cwd) = self.state.request_new_session_cwd.take() {
+                if let Err(err) = self.create_additional_session(cwd) {
+                    tracing::error!(err = %err, "failed to create session from navigator");
+                }
                 needs_render = true;
             }
 
@@ -2815,6 +2823,7 @@ mod tests {
                 direction: crate::api::schema::SplitDirection::Right,
                 cwd: None,
                 focus: false,
+                command: None,
             }),
         });
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
@@ -2885,6 +2894,7 @@ mod tests {
                 direction: crate::api::schema::SplitDirection::Right,
                 cwd: Some(split_cwd.display().to_string()),
                 focus: false,
+                command: None,
             }),
         });
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();
@@ -2935,6 +2945,7 @@ mod tests {
                 direction: crate::api::schema::SplitDirection::Right,
                 cwd: None,
                 focus: true,
+                command: None,
             }),
         });
         let response: serde_json::Value = serde_json::from_str(&response).unwrap();

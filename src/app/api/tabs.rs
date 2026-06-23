@@ -37,7 +37,12 @@ impl App {
     }
 
     pub(super) fn handle_tab_create(&mut self, id: String, params: TabCreateParams) -> String {
-        let TabCreateParams { cwd, focus, label } = params;
+        let TabCreateParams {
+            cwd,
+            focus,
+            label,
+            command,
+        } = params;
         self.state.collapse_to_single_session();
         let ws_idx = if let Some(ws_idx) = self.state.session_index() {
             ws_idx
@@ -45,7 +50,11 @@ impl App {
             let cwd = cwd
                 .map(PathBuf::from)
                 .unwrap_or_else(|| self.resolve_new_terminal_cwd(None));
-            return match self.create_session_with_options(cwd, focus) {
+            return match if let Some(command) = command.as_deref() {
+                self.create_session_with_command(cwd, command, focus)
+            } else {
+                self.create_session_with_options(cwd, focus)
+            } {
                 Ok(ws_idx) => {
                     if let Some(label) = label {
                         let session_id = self
@@ -108,6 +117,17 @@ impl App {
             .session_mut()
             .ok_or_else(|| std::io::Error::other("session state disappeared"))
             .and_then(|ws| {
+                if let Some(command) = command.as_deref() {
+                    return ws.create_tab_shell_command(
+                        rows,
+                        cols,
+                        cwd,
+                        command,
+                        &pane_term,
+                        scrollback_limit_bytes,
+                        host_terminal_theme,
+                    );
+                }
                 ws.create_tab(
                     rows,
                     cols,

@@ -165,7 +165,7 @@ fn pane_read(args: &[String]) -> std::io::Result<i32> {
 fn pane_split(args: &[String]) -> std::io::Result<i32> {
     let Some(raw_pane_id) = args.first() else {
         eprintln!(
-            "usage: gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus]"
+            "usage: gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus] [command ...]"
         );
         return Ok(2);
     };
@@ -174,6 +174,7 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
     let mut direction = None;
     let mut cwd = None;
     let mut focus = false;
+    let mut command = Vec::new();
 
     let mut index = 1;
     while index < args.len() {
@@ -202,9 +203,17 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
                 focus = false;
                 index += 1;
             }
-            other => {
+            "--" => {
+                command.extend(args[index + 1..].iter().cloned());
+                break;
+            }
+            other if other.starts_with('-') => {
                 eprintln!("unknown option: {other}");
                 return Ok(2);
+            }
+            _ => {
+                command.extend(args[index..].iter().cloned());
+                break;
             }
         }
     }
@@ -221,6 +230,7 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
             direction,
             cwd,
             focus,
+            command: (!command.is_empty()).then(|| command.join(" ")),
         }),
     })?)
 }
@@ -287,7 +297,7 @@ fn print_pane_help() {
     eprintln!("  gmux pane rename <pane_id> <label>|--clear");
     eprintln!("  gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]");
     eprintln!(
-        "  gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus]"
+        "  gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus] [command ...]"
     );
     eprintln!("  gmux pane close <pane_id>");
     eprintln!("  gmux pane send-text <pane_id> <text>");

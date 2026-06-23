@@ -235,6 +235,14 @@ fn selected_detail(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) 
         return String::new();
     };
     match row.target {
+        NavigatorTarget::Session { ws_idx } => app
+            .sessions()
+            .get(ws_idx)
+            .and_then(|session| {
+                session.resolved_identity_cwd_from(&app.terminals, terminal_runtimes)
+            })
+            .map(|cwd| format!("session: {}", cwd.display()))
+            .unwrap_or_else(|| "session".to_string()),
         NavigatorTarget::Tab { ws_idx, tab_idx } => {
             tab_detail(app, terminal_runtimes, ws_idx, tab_idx)
         }
@@ -243,6 +251,9 @@ fn selected_detail(app: &AppState, terminal_runtimes: &TerminalRuntimeRegistry) 
             tab_idx,
             pane_id,
         } => pane_detail(app, terminal_runtimes, ws_idx, tab_idx, pane_id),
+        NavigatorTarget::Directory { ref cwd } => {
+            format!("create session: {}", cwd.display())
+        }
     }
 }
 
