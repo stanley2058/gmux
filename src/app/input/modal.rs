@@ -193,7 +193,7 @@ pub(crate) fn handle_navigator_key(
     state: &mut AppState,
     terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,
     key: KeyEvent,
-) -> bool {
+) {
     if state.navigator.search_focused {
         match key.code {
             KeyCode::Esc => {
@@ -205,7 +205,7 @@ pub(crate) fn handle_navigator_key(
                 }
             }
             KeyCode::Enter => {
-                return true;
+                state.accept_navigator_selection_from(terminal_runtimes);
             }
             KeyCode::Backspace => {
                 state.navigator.query.pop();
@@ -242,7 +242,7 @@ pub(crate) fn handle_navigator_key(
             }
             _ => {}
         }
-        return false;
+        return;
     }
 
     match key.code {
@@ -255,7 +255,7 @@ pub(crate) fn handle_navigator_key(
             }
         }
         KeyCode::Enter => {
-            return true;
+            state.accept_navigator_selection_from(terminal_runtimes);
         }
         KeyCode::Char('/') => {
             state.navigator.query.clear();
@@ -293,7 +293,6 @@ pub(crate) fn handle_navigator_key(
         }
         _ => {}
     }
-    false
 }
 
 pub(crate) fn handle_keybind_help_key(state: &mut AppState, key: KeyEvent) {

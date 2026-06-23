@@ -433,7 +433,6 @@ impl AppState {
         self.accept_navigator_selection_from(&terminal_runtimes)
     }
 
-    #[cfg(test)]
     pub(crate) fn accept_navigator_selection_from(
         &mut self,
         terminal_runtimes: &crate::terminal::TerminalRuntimeRegistry,

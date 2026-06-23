@@ -1315,10 +1315,7 @@ impl App {
                 self.handle_settings_key(key_event);
             }
             Mode::Navigator => {
-                if input::handle_navigator_key(&mut self.state, &self.terminal_runtimes, key_event)
-                {
-                    self.accept_navigator_selection();
-                }
+                input::handle_navigator_key(&mut self.state, &self.terminal_runtimes, key_event);
             }
             Mode::UpdateConfirm => {
                 input::handle_update_confirm_key(&mut self.state, key_event);

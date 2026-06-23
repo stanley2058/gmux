@@ -45,7 +45,8 @@ impl App {
                         mouse.row,
                     ) {
                         self.state.navigator.selected = idx;
-                        self.accept_navigator_selection();
+                        self.state
+                            .accept_navigator_selection_from(&self.terminal_runtimes);
                     } else if !self.state.navigator_popup_contains(mouse.column, mouse.row) {
                         leave_modal(&mut self.state);
                     }
