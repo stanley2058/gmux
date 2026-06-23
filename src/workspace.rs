@@ -18,7 +18,9 @@ use crate::terminal::{TerminalId, TerminalRuntime, TerminalRuntimeRegistry, Term
 mod aggregate;
 mod tab;
 
-pub use self::tab::Tab;
+#[cfg(test)]
+pub use self::tab::PopupPaneState;
+pub use self::tab::{PopupDimension, PopupGeometry, PopupPosition, Tab};
 
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
 const DEFAULT_SESSION_LABEL: &str = "session";
@@ -435,6 +437,41 @@ impl SessionUiState {
         Ok(new_pane)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_popup_command_in_tab(
+        &mut self,
+        tab_idx: usize,
+        rows: u16,
+        cols: u16,
+        cwd: Option<PathBuf>,
+        command: &str,
+        extra_env: &[(String, String)],
+        term: &str,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        geometry: PopupGeometry,
+        focus: bool,
+    ) -> Option<std::io::Result<crate::workspace::tab::NewPane>> {
+        let tab = self.tabs.get_mut(tab_idx)?;
+        let new_pane = match tab.spawn_popup_command(
+            rows,
+            cols,
+            cwd,
+            command,
+            extra_env,
+            term,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            geometry,
+            focus,
+        ) {
+            Ok(new_pane) => new_pane,
+            Err(err) => return Some(Err(err)),
+        };
+        self.register_new_pane(new_pane.pane_id);
+        Some(Ok(new_pane))
+    }
+
     pub fn split_pane(
         &mut self,
         pane_id: PaneId,
@@ -477,8 +514,8 @@ impl SessionUiState {
     ) -> Option<std::io::Result<(usize, crate::workspace::tab::NewPane)>> {
         let tab_idx = self.find_tab_index_for_pane(pane_id)?;
         let tab = &mut self.tabs[tab_idx];
-        let previous_focus = tab.layout.focused();
-        tab.layout.focus_pane(pane_id);
+        let previous_focus = tab.focused_pane_id();
+        tab.focus_pane(pane_id);
         let new_pane = match tab.split_focused_command(
             direction,
             rows,
@@ -492,12 +529,12 @@ impl SessionUiState {
         ) {
             Ok(new_pane) => new_pane,
             Err(err) => {
-                tab.layout.focus_pane(previous_focus);
+                tab.focus_pane(previous_focus);
                 return Some(Err(err));
             }
         };
         if !focus_new_pane {
-            tab.layout.focus_pane(previous_focus);
+            tab.focus_pane(previous_focus);
         }
         self.register_new_pane(new_pane.pane_id);
         Some(Ok((tab_idx, new_pane)))
@@ -519,8 +556,8 @@ impl SessionUiState {
     ) -> Option<std::io::Result<(usize, crate::workspace::tab::NewPane)>> {
         let tab_idx = self.find_tab_index_for_pane(pane_id)?;
         let tab = &mut self.tabs[tab_idx];
-        let previous_focus = tab.layout.focused();
-        tab.layout.focus_pane(pane_id);
+        let previous_focus = tab.focused_pane_id();
+        tab.focus_pane(pane_id);
         let new_pane = match if let Some(argv) = argv {
             tab.split_focused_argv_command(
                 direction,
@@ -545,12 +582,12 @@ impl SessionUiState {
         } {
             Ok(new_pane) => new_pane,
             Err(err) => {
-                tab.layout.focus_pane(previous_focus);
+                tab.focus_pane(previous_focus);
                 return Some(Err(err));
             }
         };
         if !focus_new_pane {
-            tab.layout.focus_pane(previous_focus);
+            tab.focus_pane(previous_focus);
         }
         self.register_new_pane(new_pane.pane_id);
         Some(Ok((tab_idx, new_pane)))
@@ -558,6 +595,17 @@ impl SessionUiState {
 
     /// Close the focused pane. Returns true if the session should close.
     pub fn close_focused(&mut self) -> bool {
+        if let Some(tab) = self.active_tab() {
+            let focused = tab.focused_pane_id();
+            if tab.popup_panes.contains_key(&focused) {
+                if let Some((removed, _terminal_id)) =
+                    self.active_tab_mut().and_then(Tab::close_focused)
+                {
+                    self.unregister_pane(removed);
+                }
+                return false;
+            }
+        }
         let pane_count = self
             .active_tab()
             .map(|tab| tab.layout.pane_count())
@@ -579,14 +627,22 @@ impl SessionUiState {
         let Some(tab_idx) = self.find_tab_index_for_pane(pane_id) else {
             return false;
         };
+        if self.tabs[tab_idx].popup_panes.contains_key(&pane_id) {
+            if let Some((removed, _terminal_id)) = self.tabs[tab_idx].remove_pane(pane_id) {
+                self.unregister_pane(removed);
+            }
+            return false;
+        }
         let pane_count = self.tabs[tab_idx].layout.pane_count();
         let tab_count = self.tabs.len();
         if pane_count <= 1 {
             if tab_count <= 1 {
                 return true;
             }
-            self.tabs.remove(tab_idx);
-            self.unregister_pane(pane_id);
+            let removed_tab = self.tabs.remove(tab_idx);
+            for removed_pane_id in removed_tab.panes.keys() {
+                self.unregister_pane(*removed_pane_id);
+            }
             self.renumber_tabs();
             if self.active_tab >= self.tabs.len() {
                 self.active_tab = self.tabs.len() - 1;
@@ -660,7 +716,7 @@ impl SessionUiState {
     }
 
     pub fn focused_pane_id(&self) -> Option<PaneId> {
-        self.active_tab().map(|tab| tab.layout.focused())
+        self.active_tab().map(Tab::focused_pane_id)
     }
 
     fn register_new_pane(&mut self, pane_id: PaneId) {
@@ -712,6 +768,8 @@ impl SessionUiState {
             root_pane: root_id,
             layout,
             panes,
+            popup_panes: HashMap::new(),
+            focused_popup: None,
             runtimes: HashMap::new(),
             zoomed: false,
             events,
@@ -758,6 +816,8 @@ impl SessionUiState {
             root_pane: root_id,
             layout,
             panes,
+            popup_panes: HashMap::new(),
+            focused_popup: None,
             runtimes: HashMap::new(),
             zoomed: false,
             events,

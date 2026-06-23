@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Direction, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph},
     Frame,
 };
 use std::collections::HashMap;
@@ -13,6 +13,7 @@ use crate::app::state::{CopyModeSearchMatch, Palette};
 use crate::app::{AppState, Mode};
 use crate::layout::{PaneInfo, SplitBorder};
 use crate::terminal::{TerminalRuntime, TerminalRuntimeRegistry};
+use crate::workspace::{PopupDimension, PopupGeometry, PopupPosition};
 
 pub(crate) fn pane_is_scrolled_back(rt: &TerminalRuntime) -> bool {
     rt.scroll_metrics()
@@ -57,6 +58,43 @@ fn pane_inner_rect(area: Rect, framed: bool) -> Rect {
     } else {
         area
     }
+}
+
+fn resolve_popup_dimension(spec: PopupDimension, available: u16, min: u16) -> u16 {
+    let raw = match spec {
+        PopupDimension::Cells(cells) => cells,
+        PopupDimension::Percent(percent) => {
+            let percent = percent.min(100);
+            ((u32::from(available) * u32::from(percent)) / 100) as u16
+        }
+    };
+    raw.clamp(min.min(available), available)
+}
+
+fn resolve_popup_offset(spec: PopupPosition, available: u16, popup: u16) -> u16 {
+    let max = available.saturating_sub(popup);
+    match spec {
+        PopupPosition::Cells(cells) => cells.min(max),
+        PopupPosition::Percent(percent) => {
+            ((u32::from(max) * u32::from(percent.min(100))) / 100) as u16
+        }
+        PopupPosition::Center => max / 2,
+    }
+}
+
+fn popup_rect(area: Rect, geometry: PopupGeometry) -> Rect {
+    if area.width == 0 || area.height == 0 {
+        return Rect::default();
+    }
+    let width = resolve_popup_dimension(geometry.width, area.width, 3);
+    let height = resolve_popup_dimension(geometry.height, area.height, 3);
+    let x = area
+        .x
+        .saturating_add(resolve_popup_offset(geometry.x, area.width, width));
+    let y = area
+        .y
+        .saturating_add(resolve_popup_offset(geometry.y, area.height, height));
+    Rect::new(x, y, width, height)
 }
 
 fn ranges_overlap(a_start: u16, a_len: u16, b_start: u16, b_len: u16) -> bool {
@@ -171,6 +209,9 @@ pub(super) fn compute_pane_infos(
     };
 
     let multi_pane = ws.layout.pane_count() > 1;
+    let popup_focused = ws
+        .active_tab()
+        .is_some_and(|tab| tab.focused_popup.is_some());
 
     if ws.zoomed {
         let focused_id = ws.layout.focused();
@@ -197,19 +238,32 @@ pub(super) fn compute_pane_infos(
                 );
             }
         }
-        return vec![PaneInfo {
+        let mut pane_infos = vec![PaneInfo {
             id: focused_id,
             rect: area,
             inner_rect,
             scrollbar_rect,
-            is_focused: true,
+            is_focused: !popup_focused,
         }];
+        append_popup_pane_infos(
+            app,
+            terminal_runtimes,
+            ws_idx,
+            area,
+            resize_panes,
+            cell_size,
+            &mut pane_infos,
+        );
+        return pane_infos;
     }
 
     let mut pane_infos = ws.layout.panes(area);
     let split_borders = ws.layout.splits(area);
 
     for info in &mut pane_infos {
+        if popup_focused {
+            info.is_focused = false;
+        }
         let pane_inner = if multi_pane {
             merged_pane_inner_rect(info.rect, &split_borders)
         } else {
@@ -238,7 +292,65 @@ pub(super) fn compute_pane_infos(
         info.scrollbar_rect = scrollbar_rect;
     }
 
+    append_popup_pane_infos(
+        app,
+        terminal_runtimes,
+        ws_idx,
+        area,
+        resize_panes,
+        cell_size,
+        &mut pane_infos,
+    );
     pane_infos
+}
+
+fn append_popup_pane_infos(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    ws_idx: usize,
+    area: Rect,
+    resize_panes: bool,
+    cell_size: crate::kitty_graphics::HostCellSize,
+    pane_infos: &mut Vec<PaneInfo>,
+) {
+    let Some(ws) = app.sessions().get(ws_idx) else {
+        return;
+    };
+    let Some(tab) = ws.active_tab() else {
+        return;
+    };
+    let focused = tab.focused_pane_id();
+    for (pane_id, popup) in &tab.popup_panes {
+        let rect = popup_rect(area, popup.geometry);
+        if rect.width == 0 || rect.height == 0 {
+            continue;
+        }
+        let pane_inner = pane_inner_rect(rect, true);
+        let mut inner_rect = pane_inner;
+        let mut scrollbar_rect = None;
+        if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, *pane_id) {
+            (inner_rect, scrollbar_rect) = terminal_inner_rect(rt, pane_inner);
+            if resize_panes
+                && ws.terminal_id(*pane_id).is_some_and(|terminal_id| {
+                    !app.direct_attach_resize_locks.contains(terminal_id)
+                })
+            {
+                rt.resize(
+                    inner_rect.height,
+                    inner_rect.width,
+                    cell_size.width_px,
+                    cell_size.height_px,
+                );
+            }
+        }
+        pane_infos.push(PaneInfo {
+            id: *pane_id,
+            rect,
+            inner_rect,
+            scrollbar_rect,
+            is_focused: focused == *pane_id,
+        });
+    }
 }
 
 pub(super) fn render_panes(
@@ -264,6 +376,12 @@ pub(super) fn render_panes(
 
     for info in &app.view.pane_infos {
         if let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, info.id) {
+            let is_popup = ws
+                .active_tab()
+                .is_some_and(|tab| tab.popup_panes.contains_key(&info.id));
+            if is_popup {
+                continue;
+            }
             let show_cursor = info.is_focused && terminal_active && !pane_is_scrolled_back(rt);
             let terminal_started = crate::render_prof::timer();
             rt.render(frame, info.inner_rect, show_cursor);
@@ -318,7 +436,56 @@ pub(super) fn render_panes(
     let borders_started = crate::render_prof::timer();
     render_pane_borders(app, frame, terminal_active);
     crate::render_prof::duration_since("ui.render_panes.borders", borders_started);
+    render_popup_panes_on_top(app, terminal_runtimes, frame, ws_idx, terminal_active);
     crate::render_prof::duration_since("ui.render_panes.total", total_started);
+}
+
+fn render_popup_panes_on_top(
+    app: &AppState,
+    terminal_runtimes: &TerminalRuntimeRegistry,
+    frame: &mut Frame,
+    ws_idx: usize,
+    terminal_active: bool,
+) {
+    let Some(tab) = app.session().and_then(|ws| ws.active_tab()) else {
+        return;
+    };
+    for info in &app.view.pane_infos {
+        if !tab.popup_panes.contains_key(&info.id) {
+            continue;
+        }
+        let Some(rt) = app.runtime_for_pane_in_session_at(terminal_runtimes, ws_idx, info.id)
+        else {
+            continue;
+        };
+        frame.render_widget(Clear, info.rect);
+        let show_cursor = info.is_focused && terminal_active && !pane_is_scrolled_back(rt);
+        rt.render(frame, info.inner_rect, show_cursor);
+        render_pane_scrollbar(app, frame, info, rt);
+        render_selection_highlight(
+            &app.selection,
+            frame,
+            info.id,
+            info.inner_rect,
+            rt.scroll_metrics(),
+            &app.palette,
+            app.host_terminal_theme,
+        );
+        render_copy_mode_search_highlights(app, frame, info, rt.scroll_metrics());
+        render_copy_mode_cursor(app, frame, info);
+        render_copy_mode_search_indicator(app, frame, info);
+        let border_style = if info.is_focused && terminal_active {
+            Style::default().fg(app.palette.accent)
+        } else {
+            Style::default().fg(app.palette.overlay0)
+        };
+        frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(border_style),
+            info.rect,
+        );
+    }
 }
 
 fn top_separator_rect(app: &AppState) -> Option<Rect> {
@@ -881,9 +1048,12 @@ fn render_empty(app: &AppState, frame: &mut Frame, area: Rect) {
 mod tests {
     use super::*;
     use crate::layout::PaneId;
+    use crate::pane::PaneState;
     use crate::selection::Selection;
-    use crate::terminal::TerminalRuntime;
-    use crate::workspace::Workspace;
+    use crate::terminal::{TerminalId, TerminalRuntime};
+    use crate::workspace::{
+        PopupDimension, PopupGeometry, PopupPaneState, PopupPosition, Workspace,
+    };
 
     fn test_app_with_workspace(workspace: Workspace) -> AppState {
         let mut app = AppState::test_new();
@@ -964,6 +1134,86 @@ mod tests {
         assert_eq!(info.rect, area);
         assert_eq!(info.scrollbar_rect, None);
         assert_eq!(info.inner_rect, Rect::new(10, 3, 40, 8));
+    }
+
+    #[tokio::test]
+    async fn focused_popup_suppresses_tiled_pane_focus() {
+        let mut app = AppState::test_new();
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let popup_pane = PaneId::alloc();
+        workspace.tabs[0]
+            .panes
+            .insert(popup_pane, PaneState::new(TerminalId::alloc()));
+        workspace.tabs[0].popup_panes.insert(
+            popup_pane,
+            PopupPaneState {
+                geometry: PopupGeometry::default(),
+                previous_focus: root_pane,
+            },
+        );
+        workspace.tabs[0].focused_popup = Some(popup_pane);
+        app.sessions = vec![workspace];
+        app.active_session = Some(0);
+
+        let terminal_runtimes = TerminalRuntimeRegistry::new();
+        let infos = compute_pane_infos(
+            &app,
+            &terminal_runtimes,
+            Rect::new(0, 0, 80, 24),
+            false,
+            crate::kitty_graphics::HostCellSize::default(),
+        );
+        let root_info = infos.iter().find(|info| info.id == root_pane).unwrap();
+        let popup_info = infos.iter().find(|info| info.id == popup_pane).unwrap();
+
+        assert!(!root_info.is_focused);
+        assert!(popup_info.is_focused);
+    }
+
+    #[tokio::test]
+    async fn popup_border_style_does_not_recolor_terminal_content() {
+        let mut workspace = Workspace::test_new("test");
+        let root_pane = workspace.tabs[0].root_pane;
+        let popup_pane = PaneId::alloc();
+        workspace.tabs[0]
+            .panes
+            .insert(popup_pane, PaneState::new(TerminalId::alloc()));
+        workspace.tabs[0].popup_panes.insert(
+            popup_pane,
+            PopupPaneState {
+                geometry: PopupGeometry {
+                    width: PopupDimension::Cells(20),
+                    height: PopupDimension::Cells(6),
+                    x: PopupPosition::Cells(2),
+                    y: PopupPosition::Cells(1),
+                },
+                previous_focus: root_pane,
+            },
+        );
+        workspace.tabs[0].focused_popup = Some(popup_pane);
+        workspace.tabs[0].runtimes.insert(
+            popup_pane,
+            TerminalRuntime::test_with_screen_bytes(18, 4, b"hello"),
+        );
+        let mut app = test_app_with_workspace(workspace);
+
+        let buffer = draw_panes(&mut app, 60, 16);
+        let popup_info = app
+            .view
+            .pane_infos
+            .iter()
+            .find(|info| info.id == popup_pane)
+            .unwrap();
+
+        assert_eq!(
+            cell_symbol(&buffer, popup_info.inner_rect.x, popup_info.inner_rect.y),
+            "h"
+        );
+        assert_ne!(
+            cell_fg(&buffer, popup_info.inner_rect.x, popup_info.inner_rect.y),
+            Some(app.palette.accent)
+        );
     }
 
     #[tokio::test]

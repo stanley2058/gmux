@@ -13,6 +13,44 @@ use crate::terminal::{TerminalId, TerminalRuntime, TerminalRuntimeRegistry, Term
 
 pub(crate) type DetachedPane = (PaneId, TerminalId);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupDimension {
+    Cells(u16),
+    Percent(u16),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupPosition {
+    Cells(u16),
+    Percent(u16),
+    Center,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PopupGeometry {
+    pub width: PopupDimension,
+    pub height: PopupDimension,
+    pub x: PopupPosition,
+    pub y: PopupPosition,
+}
+
+impl Default for PopupGeometry {
+    fn default() -> Self {
+        Self {
+            width: PopupDimension::Percent(80),
+            height: PopupDimension::Percent(60),
+            x: PopupPosition::Center,
+            y: PopupPosition::Center,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PopupPaneState {
+    pub geometry: PopupGeometry,
+    pub previous_focus: PaneId,
+}
+
 pub struct NewPane {
     pub pane_id: PaneId,
     pub terminal: TerminalState,
@@ -37,6 +75,9 @@ pub struct Tab {
     pub layout: TileLayout,
     /// Pane viewport state — always present, testable without PTYs.
     pub panes: HashMap<PaneId, PaneState>,
+    /// Terminal panes drawn above the tiled layout.
+    pub popup_panes: HashMap<PaneId, PopupPaneState>,
+    pub focused_popup: Option<PaneId>,
     #[cfg(test)]
     pub runtimes: HashMap<PaneId, TerminalRuntime>,
     pub zoomed: bool,
@@ -190,6 +231,8 @@ impl Tab {
                 root_pane: root_id,
                 layout,
                 panes,
+                popup_panes: HashMap::new(),
+                focused_popup: None,
                 #[cfg(test)]
                 runtimes: HashMap::new(),
                 zoomed: false,
@@ -261,6 +304,60 @@ impl Tab {
                 .with_term(term),
             Some(SplitCommand::Shell { command, extra_env }),
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_popup_command(
+        &mut self,
+        rows: u16,
+        cols: u16,
+        cwd: Option<PathBuf>,
+        command: &str,
+        extra_env: &[(String, String)],
+        term: &str,
+        scrollback_limit_bytes: usize,
+        host_terminal_theme: crate::terminal_theme::TerminalTheme,
+        geometry: PopupGeometry,
+        focus: bool,
+    ) -> std::io::Result<NewPane> {
+        let new_id = PaneId::alloc();
+        let previous_focus = self.focused_pane_id();
+        let actual_cwd =
+            cwd.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
+        let runtime = TerminalRuntime::spawn_shell_command(
+            new_id,
+            rows,
+            cols,
+            actual_cwd.clone(),
+            crate::pane::PaneCommandConfig::new(command, extra_env, term),
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            self.events.clone(),
+            self.render_notify.clone(),
+            self.render_dirty.clone(),
+        )?;
+        let terminal_id = TerminalId::alloc();
+        let terminal = TerminalState::new(terminal_id.clone(), actual_cwd).with_launch_argv(vec![
+            "/bin/sh".into(),
+            "-c".into(),
+            command.to_string(),
+        ]);
+        self.panes.insert(new_id, PaneState::new(terminal_id));
+        self.popup_panes.insert(
+            new_id,
+            PopupPaneState {
+                geometry,
+                previous_focus,
+            },
+        );
+        if focus {
+            self.focused_popup = Some(new_id);
+        }
+        Ok(NewPane {
+            pane_id: new_id,
+            terminal,
+            runtime,
+        })
     }
 
     pub fn split_focused_argv_command(
@@ -379,7 +476,7 @@ impl Tab {
     }
 
     pub fn close_focused(&mut self) -> Option<DetachedPane> {
-        let pane_id = self.layout.focused();
+        let pane_id = self.focused_pane_id();
         self.detach_pane(pane_id)
     }
 
@@ -405,6 +502,10 @@ impl Tab {
     }
 
     fn detach_pane(&mut self, pane_id: PaneId) -> Option<DetachedPane> {
+        if self.popup_panes.contains_key(&pane_id) {
+            return self.detach_popup_pane(pane_id);
+        }
+
         if self.layout.pane_count() <= 1 {
             return None;
         }
@@ -429,6 +530,20 @@ impl Tab {
         Some((pane_id, terminal_id))
     }
 
+    fn detach_popup_pane(&mut self, pane_id: PaneId) -> Option<DetachedPane> {
+        let popup = self.popup_panes.remove(&pane_id)?;
+        let pane = self.panes.remove(&pane_id)?;
+        if self.focused_popup == Some(pane_id) {
+            self.focused_popup = None;
+            if self.popup_panes.contains_key(&popup.previous_focus) {
+                self.focused_popup = Some(popup.previous_focus);
+            } else {
+                self.layout.focus_pane(popup.previous_focus);
+            }
+        }
+        Some((pane_id, pane.attached_terminal_id))
+    }
+
     fn promoted_root_if_needed(&self, closing: PaneId) -> Option<PaneId> {
         if self.root_pane != closing {
             return None;
@@ -440,6 +555,33 @@ impl Tab {
         self.panes
             .get(&pane_id)
             .map(|pane| &pane.attached_terminal_id)
+    }
+
+    pub fn pane_ids(&self) -> Vec<PaneId> {
+        let mut ids = self.layout.pane_ids();
+        ids.extend(self.popup_panes.keys().copied());
+        ids
+    }
+
+    pub fn tiled_pane_ids(&self) -> Vec<PaneId> {
+        self.layout.pane_ids()
+    }
+
+    pub fn focused_pane_id(&self) -> PaneId {
+        self.focused_popup.unwrap_or_else(|| self.layout.focused())
+    }
+
+    pub fn focus_pane(&mut self, pane_id: PaneId) -> bool {
+        if self.popup_panes.contains_key(&pane_id) {
+            self.focused_popup = Some(pane_id);
+            return true;
+        }
+        if self.layout.pane_ids().contains(&pane_id) {
+            self.focused_popup = None;
+            self.layout.focus_pane(pane_id);
+            return true;
+        }
+        false
     }
 
     pub fn cwd_for_pane(

@@ -316,7 +316,7 @@ impl AppState {
 
         let follow_cwd = self.session().and_then(|ws| {
             let tab = ws.active_tab()?;
-            tab.cwd_for_pane(tab.layout.focused(), &self.terminals, terminal_runtimes)
+            tab.cwd_for_pane(tab.focused_pane_id(), &self.terminals, terminal_runtimes)
         });
         let cwd = Some(super::creation::resolve_new_terminal_cwd(
             &self.new_terminal_cwd,

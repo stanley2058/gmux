@@ -2,12 +2,13 @@ use bytes::Bytes;
 
 use crate::api::schema::{
     EventData, EventEnvelope, EventKind, PaneDirection, PaneFocusParams, PaneInfo, PaneListParams,
-    PaneReadParams, PaneReadResult, PaneRenameParams, PaneResizeParams, PaneSendInputParams,
-    PaneSendKeysParams, PaneSendTextParams, PaneSplitParams, PaneTarget, ReadFormat, ReadSource,
-    ResponseResult,
+    PanePopupParams, PaneReadParams, PaneReadResult, PaneRenameParams, PaneResizeParams,
+    PaneSendInputParams, PaneSendKeysParams, PaneSendTextParams, PaneSplitParams, PaneTarget,
+    ReadFormat, ReadSource, ResponseResult,
 };
 use crate::app::{App, Mode};
 use crate::layout::{NavDirection, PaneId};
+use crate::workspace::{PopupDimension, PopupGeometry, PopupPosition};
 
 use super::super::api_helpers::{encode_api_keys, encode_api_text};
 use super::responses::{encode_error, encode_success};
@@ -84,6 +85,86 @@ impl App {
         debug_assert_eq!(target_tab_idx, flat_tab_idx);
         if params.focus {
             self.state.focus_session_tab(ws_idx, target_tab_idx);
+            self.state
+                .record_pane_focus_change(previous_focus, ws_idx, new_pane.pane_id);
+            self.state.mode = Mode::Terminal;
+        }
+        self.terminal_runtimes
+            .insert(new_pane.terminal.id.clone(), new_pane.runtime);
+        self.state
+            .remove_alias_shadowed_by_new_pane(new_pane.pane_id);
+        self.state
+            .terminals
+            .insert(new_pane.terminal.id.clone(), new_pane.terminal);
+        self.schedule_session_save();
+        let pane = self.pane_info(ws_idx, new_pane.pane_id).unwrap();
+        self.emit_event(EventEnvelope {
+            event: EventKind::PaneCreated,
+            data: EventData::PaneCreated { pane: pane.clone() },
+        });
+
+        encode_success(id, ResponseResult::PaneInfo { pane })
+    }
+
+    pub(super) fn handle_pane_popup(&mut self, id: String, params: PanePopupParams) -> String {
+        let target_public_id = params.target_pane_id.clone();
+        let focus = params.focus;
+        let geometry = match popup_geometry_from_params(&params) {
+            Ok(geometry) => geometry,
+            Err(message) => return encode_error(id, "invalid_request", message),
+        };
+        let Some((ws_idx, target_pane_id)) = self.parse_pane_id(&target_public_id) else {
+            return pane_not_found(id, &target_public_id);
+        };
+        let Some(target_entry) = self.state.session_tab_entries().find(|entry| {
+            entry.session_idx == ws_idx && entry.tab.panes.contains_key(&target_pane_id)
+        }) else {
+            return pane_not_found(id, &target_public_id);
+        };
+        let target_tab_idx = target_entry.tab_idx;
+        let Some(flat_tab_idx) = self.state.flattened_tab_index(ws_idx, target_tab_idx) else {
+            return pane_not_found(id, &target_public_id);
+        };
+        let popup_cwd = params.cwd.map(std::path::PathBuf::from).or_else(|| {
+            let follow_cwd = target_entry.tab.cwd_for_pane(
+                target_pane_id,
+                &self.state.terminals,
+                &self.terminal_runtimes,
+            );
+            Some(self.resolve_new_terminal_cwd(follow_cwd))
+        });
+        let command = params
+            .command
+            .unwrap_or_else(|| self.state.default_shell.clone());
+        let (rows, cols) = self.state.estimate_pane_size();
+        let previous_focus = self.state.current_pane_focus_target();
+        let pane_term = self.state.pane_term.clone();
+        let scrollback_limit_bytes = self.state.pane_scrollback_limit_bytes;
+        let host_terminal_theme = self.state.host_terminal_theme;
+        self.state.collapse_to_single_session();
+        let ws_idx = 0;
+        let Some(ws) = self.state.session_mut() else {
+            return pane_not_found(id, &params.target_pane_id);
+        };
+        let new_pane = match ws.spawn_popup_command_in_tab(
+            flat_tab_idx,
+            rows.max(3),
+            cols.max(3),
+            popup_cwd,
+            &command,
+            &[],
+            &pane_term,
+            scrollback_limit_bytes,
+            host_terminal_theme,
+            geometry,
+            focus,
+        ) {
+            Some(Ok(new_pane)) => new_pane,
+            Some(Err(err)) => return encode_error(id, "pane_popup_failed", err.to_string()),
+            None => return pane_not_found(id, &target_public_id),
+        };
+        if focus {
+            self.state.focus_session_tab(ws_idx, flat_tab_idx);
             self.state
                 .record_pane_focus_change(previous_focus, ws_idx, new_pane.pane_id);
             self.state.mode = Mode::Terminal;
@@ -347,6 +428,68 @@ fn pane_not_found(id: String, pane_id: &str) -> String {
     encode_error(id, "pane_not_found", format!("pane {pane_id} not found"))
 }
 
+fn popup_geometry_from_params(params: &PanePopupParams) -> Result<PopupGeometry, String> {
+    let default = PopupGeometry::default();
+    Ok(PopupGeometry {
+        width: match params.width.as_deref() {
+            Some(value) => parse_popup_dimension("width", value)?,
+            None => default.width,
+        },
+        height: match params.height.as_deref() {
+            Some(value) => parse_popup_dimension("height", value)?,
+            None => default.height,
+        },
+        x: match params.x.as_deref() {
+            Some(value) => parse_popup_position("x", value)?,
+            None => default.x,
+        },
+        y: match params.y.as_deref() {
+            Some(value) => parse_popup_position("y", value)?,
+            None => default.y,
+        },
+    })
+}
+
+fn parse_popup_dimension(name: &str, value: &str) -> Result<PopupDimension, String> {
+    let value = value.trim();
+    if let Some(percent) = value.strip_suffix('%') {
+        let percent = percent
+            .parse::<u16>()
+            .map_err(|_| format!("popup {name} must be a cell count or percentage"))?;
+        if !(1..=100).contains(&percent) {
+            return Err(format!("popup {name} percentage must be 1..=100"));
+        }
+        return Ok(PopupDimension::Percent(percent));
+    }
+    let cells = value
+        .parse::<u16>()
+        .map_err(|_| format!("popup {name} must be a cell count or percentage"))?;
+    if cells == 0 {
+        return Err(format!("popup {name} must be greater than zero"));
+    }
+    Ok(PopupDimension::Cells(cells))
+}
+
+fn parse_popup_position(name: &str, value: &str) -> Result<PopupPosition, String> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("c") || value.eq_ignore_ascii_case("center") {
+        return Ok(PopupPosition::Center);
+    }
+    if let Some(percent) = value.strip_suffix('%') {
+        let percent = percent
+            .parse::<u16>()
+            .map_err(|_| format!("popup {name} must be a cell count, percentage, or center"))?;
+        if percent > 100 {
+            return Err(format!("popup {name} percentage must be 0..=100"));
+        }
+        return Ok(PopupPosition::Percent(percent));
+    }
+    let cells = value
+        .parse::<u16>()
+        .map_err(|_| format!("popup {name} must be a cell count, percentage, or center"))?;
+    Ok(PopupPosition::Cells(cells))
+}
+
 fn nav_direction_from_api(direction: PaneDirection) -> NavDirection {
     match direction {
         PaneDirection::Left => NavDirection::Left,
@@ -480,6 +623,153 @@ mod tests {
         };
         assert_eq!(pane.pane_id, public_pane_id);
         assert!(pane.focused);
+    }
+
+    #[test]
+    fn popup_geometry_accepts_cells_percent_and_center() {
+        let geometry = popup_geometry_from_params(&PanePopupParams {
+            target_pane_id: "p_1".into(),
+            cwd: None,
+            focus: true,
+            command: None,
+            width: Some("70%".into()),
+            height: Some("12".into()),
+            x: Some("C".into()),
+            y: Some("25%".into()),
+        })
+        .unwrap();
+
+        assert_eq!(geometry.width, PopupDimension::Percent(70));
+        assert_eq!(geometry.height, PopupDimension::Cells(12));
+        assert_eq!(geometry.x, PopupPosition::Center);
+        assert_eq!(geometry.y, PopupPosition::Percent(25));
+    }
+
+    #[tokio::test]
+    async fn api_pane_popup_creates_focused_non_tiled_pane() {
+        let mut app = app_with_session();
+        let root_pane = app.state.sessions[0].tabs[0].root_pane;
+        let public_root_id = app.public_pane_id(0, root_pane).unwrap();
+
+        let response = app.handle_pane_popup(
+            "req".into(),
+            PanePopupParams {
+                target_pane_id: public_root_id,
+                cwd: None,
+                focus: true,
+                command: Some("true".into()),
+                width: Some("40".into()),
+                height: Some("50%".into()),
+                x: Some("center".into()),
+                y: Some("1".into()),
+            },
+        );
+
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        let ResponseResult::PaneInfo { pane } = success.result else {
+            panic!("expected pane info response");
+        };
+        let popup_pane = app.state.sessions[0].focused_pane_id().unwrap();
+        assert_ne!(popup_pane, root_pane);
+        assert_eq!(app.state.sessions[0].tabs[0].layout.pane_count(), 1);
+        assert!(app.state.sessions[0].tabs[0]
+            .popup_panes
+            .contains_key(&popup_pane));
+        assert_eq!(pane.pane_id, app.public_pane_id(0, popup_pane).unwrap());
+        assert!(pane.focused);
+
+        let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
+        for (_terminal_id, runtime) in runtimes {
+            runtime.shutdown();
+        }
+    }
+
+    #[tokio::test]
+    async fn api_pane_popup_targets_flattened_tab_after_session_collapse() {
+        let mut app = app_with_session();
+        let first = Workspace::test_new("one");
+        let second = Workspace::test_new("two");
+        let target_pane = second.tabs[0].root_pane;
+        app.state.sessions = vec![first, second];
+        app.state.ensure_test_terminals();
+        app.state.active_session = Some(0);
+        app.state.selected_session = 0;
+        let public_target_id = app.public_pane_id(1, target_pane).unwrap();
+
+        let response = app.handle_pane_popup(
+            "req".into(),
+            PanePopupParams {
+                target_pane_id: public_target_id,
+                cwd: None,
+                focus: true,
+                command: Some("true".into()),
+                width: None,
+                height: None,
+                x: None,
+                y: None,
+            },
+        );
+
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        let ResponseResult::PaneInfo { pane } = success.result else {
+            panic!("expected pane info response");
+        };
+        assert_eq!(app.state.sessions.len(), 1);
+        assert_eq!(app.state.sessions[0].active_tab, 1);
+        let (_, popup_pane) = app.parse_pane_id(&pane.pane_id).unwrap();
+        assert!(!app.state.sessions[0].tabs[0]
+            .popup_panes
+            .contains_key(&popup_pane));
+        assert!(app.state.sessions[0].tabs[1]
+            .popup_panes
+            .contains_key(&popup_pane));
+
+        let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
+        for (_terminal_id, runtime) in runtimes {
+            runtime.shutdown();
+        }
+    }
+
+    #[tokio::test]
+    async fn api_pane_popup_exit_removes_popup_and_restores_focus() {
+        let mut app = app_with_session();
+        let root_pane = app.state.sessions[0].tabs[0].root_pane;
+        let public_root_id = app.public_pane_id(0, root_pane).unwrap();
+
+        let response = app.handle_pane_popup(
+            "req".into(),
+            PanePopupParams {
+                target_pane_id: public_root_id,
+                cwd: None,
+                focus: true,
+                command: Some("sleep 60".into()),
+                width: None,
+                height: None,
+                x: None,
+                y: None,
+            },
+        );
+
+        let success: SuccessResponse = serde_json::from_str(&response).unwrap();
+        let ResponseResult::PaneInfo { pane } = success.result else {
+            panic!("expected pane info response");
+        };
+        let (_, popup_pane) = app.parse_pane_id(&pane.pane_id).unwrap();
+        assert_eq!(app.state.sessions[0].focused_pane_id(), Some(popup_pane));
+
+        app.handle_internal_event(crate::events::AppEvent::PaneDied {
+            pane_id: popup_pane,
+        });
+
+        assert!(!app.state.sessions[0].tabs[0]
+            .popup_panes
+            .contains_key(&popup_pane));
+        assert_eq!(app.state.sessions[0].focused_pane_id(), Some(root_pane));
+
+        let runtimes: Vec<_> = app.terminal_runtimes.drain().collect();
+        for (_terminal_id, runtime) in runtimes {
+            runtime.shutdown();
+        }
     }
 
     #[test]

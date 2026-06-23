@@ -111,7 +111,7 @@ impl AppState {
         };
         self.pane_navigation_bias = None;
         if let Some(tab) = self.session_mut().and_then(|ws| ws.tabs.get_mut(tab_idx)) {
-            tab.layout.focus_pane(pane_id);
+            tab.focus_pane(pane_id);
             self.previous_pane_focus = previous;
             self.mark_session_dirty();
             return true;
@@ -359,7 +359,7 @@ impl AppState {
             return Vec::new();
         };
         let mut rows = Vec::new();
-        for pane_id in entry.tab.layout.pane_ids() {
+        for pane_id in entry.tab.pane_ids() {
             let Some(pane) = entry.tab.panes.get(&pane_id) else {
                 continue;
             };
@@ -662,7 +662,7 @@ impl AppState {
                 for pane_id in primary
                     .tabs
                     .iter()
-                    .flat_map(|tab| tab.layout.pane_ids().into_iter())
+                    .flat_map(|tab| tab.pane_ids().into_iter())
                 {
                     primary
                         .public_pane_numbers
@@ -1106,8 +1106,8 @@ impl AppState {
         let Some(tab) = self.session().and_then(|ws| ws.active_tab()) else {
             return;
         };
-        let ids = tab.layout.pane_ids();
-        if let Some(pos) = ids.iter().position(|id| *id == tab.layout.focused()) {
+        let ids = tab.pane_ids();
+        if let Some(pos) = ids.iter().position(|id| *id == tab.focused_pane_id()) {
             let target = if reverse {
                 ids[(pos + ids.len() - 1) % ids.len()]
             } else {
@@ -1159,7 +1159,7 @@ impl AppState {
         }
         self.pane_navigation_bias = None;
         if let Some(tab) = self.session_mut().and_then(|ws| ws.tabs.get_mut(tab_idx)) {
-            tab.layout.focus_pane(target.pane_id);
+            tab.focus_pane(target.pane_id);
             self.previous_pane_focus = current;
             self.mark_session_dirty();
         }
@@ -1184,13 +1184,9 @@ impl AppState {
         self.pane_navigation_bias = None;
         self.mark_session_dirty();
         let terminal_ids = active
-            .and_then(|i| {
-                self.session()
-                    .and_then(|ws| ws.focused_pane_id().map(|pane_id| (i, pane_id)))
-            })
-            .and_then(|(i, pane_id)| self.terminal_id_for_pane(i, pane_id))
-            .into_iter()
-            .collect::<Vec<_>>();
+            .and_then(|i| self.session().map(|ws| (i, ws.active_tab)))
+            .map(|(i, tab_idx)| self.terminal_ids_for_tab(i, tab_idx))
+            .unwrap_or_default();
         let should_close_session = active
             .and_then(|_| self.session_mut())
             .is_some_and(|ws| ws.close_focused());
@@ -1740,9 +1736,32 @@ impl AppState {
             self.selection_autoscroll = None;
         }
 
-        let pane_terminal_id = self.terminal_id_for_pane(ws_idx, pane_id);
+        let pane_cleanup = self
+            .session_tab_entries()
+            .find(|entry| entry.session_idx == ws_idx && entry.tab.panes.contains_key(&pane_id))
+            .map(|entry| {
+                let removes_tab = !entry.tab.popup_panes.contains_key(&pane_id)
+                    && entry.tab.layout.pane_count() <= 1
+                    && entry.session.tabs.len() > 1;
+                let pane_ids = if removes_tab {
+                    entry.tab.panes.keys().copied().collect::<Vec<_>>()
+                } else {
+                    vec![pane_id]
+                };
+                (pane_ids, self.terminal_ids_for_tab(ws_idx, entry.tab_idx))
+            })
+            .unwrap_or_else(|| {
+                (
+                    vec![pane_id],
+                    self.terminal_id_for_pane(ws_idx, pane_id)
+                        .into_iter()
+                        .collect(),
+                )
+            });
+        let (pane_ids_to_clear, pane_terminal_ids) = pane_cleanup;
         let session_terminal_ids = self.terminal_ids_for_session_at(ws_idx);
-        self.pane_id_aliases.retain(|_, alias| *alias != pane_id);
+        self.pane_id_aliases
+            .retain(|_, alias| !pane_ids_to_clear.contains(alias));
         let should_close_session = {
             if self.session_index() != Some(ws_idx) {
                 warn!(
@@ -1772,7 +1791,7 @@ impl AppState {
                 self.mode = Mode::Navigate;
             }
         } else {
-            self.remove_unattached_terminal_ids(pane_terminal_id);
+            self.remove_unattached_terminal_ids(pane_terminal_ids);
         }
     }
 }
@@ -1784,7 +1803,9 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::Workspace;
+    use crate::pane::PaneState;
+    use crate::terminal::{TerminalId, TerminalState};
+    use crate::workspace::{PopupGeometry, PopupPaneState, Workspace};
     use ratatui::layout::Direction;
 
     fn app_with_workspaces(names: &[&str]) -> AppState {
@@ -3116,6 +3137,49 @@ mod tests {
         state.close_tab();
 
         assert!(!state.terminals.contains_key(&terminal_id));
+    }
+
+    #[test]
+    fn pane_died_last_tiled_pane_removes_popup_terminals_from_removed_tab() {
+        let mut state = app_with_workspaces(&["test"]);
+        state.sessions[0].test_add_tab(Some("logs"));
+        state.ensure_test_terminals();
+        let root_pane = state.sessions[0].tabs[0].root_pane;
+        let root_terminal_id = state.terminal_id_for_pane(0, root_pane).unwrap();
+        let popup_pane = PaneId::alloc();
+        let popup_terminal_id = TerminalId::alloc();
+        state.sessions[0].tabs[0]
+            .panes
+            .insert(popup_pane, PaneState::new(popup_terminal_id.clone()));
+        state.sessions[0].tabs[0].popup_panes.insert(
+            popup_pane,
+            PopupPaneState {
+                geometry: PopupGeometry::default(),
+                previous_focus: root_pane,
+            },
+        );
+        let public_number = state.sessions[0].next_public_pane_number;
+        state.sessions[0]
+            .public_pane_numbers
+            .insert(popup_pane, public_number);
+        state.sessions[0].next_public_pane_number += 1;
+        state.terminals.insert(
+            popup_terminal_id.clone(),
+            TerminalState::new(popup_terminal_id.clone(), std::path::PathBuf::from("/tmp")),
+        );
+
+        state.handle_app_event(AppEvent::PaneDied { pane_id: root_pane });
+
+        assert_eq!(state.sessions[0].tabs.len(), 1);
+        assert!(!state.terminals.contains_key(&root_terminal_id));
+        assert!(!state.terminals.contains_key(&popup_terminal_id));
+        assert!(state.terminal_runtime_shutdowns.contains(&root_terminal_id));
+        assert!(state
+            .terminal_runtime_shutdowns
+            .contains(&popup_terminal_id));
+        assert!(!state.sessions[0]
+            .public_pane_numbers
+            .contains_key(&popup_pane));
     }
 
     #[test]

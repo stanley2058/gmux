@@ -531,6 +531,7 @@ fn option_spec_groups() -> &'static [&'static [OptionSpec]] {
         spec::PANE_READ_OPTIONS,
         spec::PANE_RENAME_OPTIONS,
         spec::PANE_SPLIT_OPTIONS,
+        spec::PANE_POPUP_OPTIONS,
         spec::CAPTURE_PANE_OPTIONS,
         spec::SELECT_PANE_OPTIONS,
         spec::RESIZE_PANE_OPTIONS,
@@ -723,6 +724,15 @@ fn complete_pane_subcommand(
             subcommand_index,
             TargetKind::Pane,
             spec::PANE_SPLIT_OPTIONS,
+        ),
+        "popup" => complete_required_first_positional_or_options(
+            current,
+            words,
+            context,
+            current_index,
+            subcommand_index,
+            TargetKind::Pane,
+            spec::PANE_POPUP_OPTIONS,
         ),
         "send-text" | "run" => complete_required_first_positional_or_options(
             current,

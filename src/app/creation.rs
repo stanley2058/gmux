@@ -246,7 +246,6 @@ impl App {
             .flat_map(|entry| {
                 entry
                     .tab
-                    .layout
                     .pane_ids()
                     .into_iter()
                     .filter_map(move |pane_id| self.pane_info(entry.session_idx, pane_id))

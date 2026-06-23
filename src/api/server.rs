@@ -278,6 +278,7 @@ fn api_method_name(method: &Method) -> &'static str {
         Method::TabRename(_) => "tab.rename",
         Method::TabClose(_) => "tab.close",
         Method::PaneSplit(_) => "pane.split",
+        Method::PanePopup(_) => "pane.popup",
         Method::PaneList(_) => "pane.list",
         Method::PaneGet(_) => "pane.get",
         Method::PaneFocus(_) => "pane.focus",

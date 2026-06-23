@@ -321,17 +321,17 @@ fn capture_tab(
     restore_processes: bool,
 ) -> TabSnapshot {
     let mut panes = HashMap::new();
-    for id in tab.panes.keys() {
+    for id in tab.tiled_pane_ids() {
         let cwd = tab
-            .cwd_for_pane(*id, terminals, terminal_runtimes)
+            .cwd_for_pane(id, terminals, terminal_runtimes)
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| "/".into()));
         let label = tab
             .panes
-            .get(id)
+            .get(&id)
             .and_then(|pane| terminals.get(&pane.attached_terminal_id))
             .and_then(|terminal| terminal.manual_label.clone());
         let launch_argv = restore_processes
-            .then(|| capture_pane_launch_argv(tab.panes.get(id), terminal_runtimes))
+            .then(|| capture_pane_launch_argv(tab.panes.get(&id), terminal_runtimes))
             .flatten();
         panes.insert(
             id.raw(),

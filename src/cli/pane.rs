@@ -1,5 +1,5 @@
 use crate::api::schema::{
-    Method, PaneListParams, PaneReadParams, PaneRenameParams, PaneSendInputParams,
+    Method, PaneListParams, PanePopupParams, PaneReadParams, PaneRenameParams, PaneSendInputParams,
     PaneSendKeysParams, PaneSendTextParams, PaneSplitParams, PaneTarget, ReadFormat, ReadSource,
     Request,
 };
@@ -16,6 +16,7 @@ pub(super) fn run_pane_command(args: &[String]) -> std::io::Result<i32> {
         "read" => pane_read(&args[1..]),
         "rename" => pane_rename(&args[1..]),
         "split" => pane_split(&args[1..]),
+        "popup" => pane_popup(&args[1..]),
         "close" => pane_close(&args[1..]),
         "send-text" => pane_send_text(&args[1..]),
         "send-keys" => pane_send_keys(&args[1..]),
@@ -235,6 +236,104 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
     })?)
 }
 
+fn pane_popup(args: &[String]) -> std::io::Result<i32> {
+    let Some(raw_pane_id) = args.first() else {
+        eprintln!(
+            "usage: gmux pane popup <pane_id> [--width N|N%] [--height N|N%] [--x N|N%|C] [--y N|N%|C] [--cwd PATH] [--focus] [--no-focus] [command ...]"
+        );
+        return Ok(2);
+    };
+
+    let pane_id = super::normalize_pane_id(raw_pane_id);
+    let mut cwd = None;
+    let mut focus = true;
+    let mut width = None;
+    let mut height = None;
+    let mut x = None;
+    let mut y = None;
+    let mut command = Vec::new();
+
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--cwd" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --cwd");
+                    return Ok(2);
+                };
+                cwd = Some(value.clone());
+                index += 2;
+            }
+            "--width" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --width");
+                    return Ok(2);
+                };
+                width = Some(value.clone());
+                index += 2;
+            }
+            "--height" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --height");
+                    return Ok(2);
+                };
+                height = Some(value.clone());
+                index += 2;
+            }
+            "--x" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --x");
+                    return Ok(2);
+                };
+                x = Some(value.clone());
+                index += 2;
+            }
+            "--y" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --y");
+                    return Ok(2);
+                };
+                y = Some(value.clone());
+                index += 2;
+            }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
+            "--" => {
+                command.extend(args[index + 1..].iter().cloned());
+                break;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+            _ => {
+                command.extend(args[index..].iter().cloned());
+                break;
+            }
+        }
+    }
+
+    super::print_response(&super::send_request(&Request {
+        id: "cli:pane:popup".into(),
+        method: Method::PanePopup(PanePopupParams {
+            target_pane_id: pane_id,
+            cwd,
+            focus,
+            command: (!command.is_empty()).then(|| command.join(" ")),
+            width,
+            height,
+            x,
+            y,
+        }),
+    })?)
+}
+
 fn pane_close(args: &[String]) -> std::io::Result<i32> {
     let Some(raw_pane_id) = args.first() else {
         eprintln!("usage: gmux pane close <pane_id>");
@@ -298,6 +397,9 @@ fn print_pane_help() {
     eprintln!("  gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]");
     eprintln!(
         "  gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus] [command ...]"
+    );
+    eprintln!(
+        "  gmux pane popup <pane_id> [--width N|N%] [--height N|N%] [--x N|N%|C] [--y N|N%|C] [--cwd PATH] [--focus] [--no-focus] [command ...]"
     );
     eprintln!("  gmux pane close <pane_id>");
     eprintln!("  gmux pane send-text <pane_id> <text>");

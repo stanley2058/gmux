@@ -91,7 +91,7 @@ impl App {
         ws.active_tab = overlay.tab_idx;
         let tab = &mut ws.tabs[overlay.tab_idx];
         if tab.panes.contains_key(&overlay.previous_focus) {
-            tab.layout.focus_pane(overlay.previous_focus);
+            tab.focus_pane(overlay.previous_focus);
         }
         tab.zoomed = overlay.previous_zoomed;
 
@@ -281,6 +281,7 @@ impl App {
             Method::TabRename(params) => return self.handle_tab_rename(request.id, params),
             Method::TabClose(target) => return self.handle_tab_close(request.id, target),
             Method::PaneSplit(params) => return self.handle_pane_split(request.id, params),
+            Method::PanePopup(params) => return self.handle_pane_popup(request.id, params),
             Method::PaneList(params) => return self.handle_pane_list(request.id, params),
             Method::PaneGet(target) => return self.handle_pane_get(request.id, target),
             Method::PaneFocus(params) => return self.handle_pane_focus(request.id, params),

@@ -114,6 +114,7 @@ pub(crate) const PANE_COMMANDS: &[CommandSpec] = &[
     CommandSpec::new("read", "Read pane output"),
     CommandSpec::new("rename", "Rename a pane"),
     CommandSpec::new("split", "Split a pane"),
+    CommandSpec::new("popup", "Open a floating popup pane"),
     CommandSpec::new("close", "Close a pane"),
     CommandSpec::new("send-text", "Send literal text"),
     CommandSpec::new("send-keys", "Send key names"),
@@ -216,6 +217,16 @@ pub(crate) const PANE_SPLIT_OPTIONS: &[OptionSpec] = &[
     ),
     OptionSpec::value(&["--cwd"], "Working directory", ValueKind::Opaque),
     OptionSpec::flag(&["--focus"], "Focus new pane"),
+    OptionSpec::flag(&["--no-focus"], "Leave focus unchanged"),
+];
+
+pub(crate) const PANE_POPUP_OPTIONS: &[OptionSpec] = &[
+    OptionSpec::value(&["--cwd"], "Working directory", ValueKind::Opaque),
+    OptionSpec::value(&["--width"], "Popup width", ValueKind::Opaque),
+    OptionSpec::value(&["--height"], "Popup height", ValueKind::Opaque),
+    OptionSpec::value(&["--x"], "Popup x position", ValueKind::Opaque),
+    OptionSpec::value(&["--y"], "Popup y position", ValueKind::Opaque),
+    OptionSpec::flag(&["--focus"], "Focus popup pane"),
     OptionSpec::flag(&["--no-focus"], "Leave focus unchanged"),
 ];
 

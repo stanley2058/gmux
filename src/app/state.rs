@@ -1381,7 +1381,7 @@ impl AppState {
         if tab_idx != ws.active_tab_index() {
             return false;
         }
-        ws.active_tab().map(|tab| tab.layout.focused()) == Some(pane_id)
+        ws.active_tab().map(|tab| tab.focused_pane_id()) == Some(pane_id)
     }
 }
 

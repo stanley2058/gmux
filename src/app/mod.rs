@@ -1513,7 +1513,7 @@ impl App {
         &self,
         mouse: crossterm::event::MouseEvent,
     ) -> Option<String> {
-        let info = self.state.view.pane_infos.iter().find(|pane| {
+        let info = self.state.view.pane_infos.iter().rev().find(|pane| {
             mouse.column >= pane.inner_rect.x
                 && mouse.column < pane.inner_rect.x + pane.inner_rect.width
                 && mouse.row >= pane.inner_rect.y
@@ -1544,7 +1544,7 @@ impl App {
             return None;
         }
 
-        let info = self.state.view.pane_infos.iter().find(|pane| {
+        let info = self.state.view.pane_infos.iter().rev().find(|pane| {
             mouse.column >= pane.inner_rect.x
                 && mouse.column < pane.inner_rect.x + pane.inner_rect.width
                 && mouse.row >= pane.inner_rect.y
