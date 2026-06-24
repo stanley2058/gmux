@@ -19,6 +19,13 @@ pub(crate) fn is_known_top_level_command(command: &str) -> bool {
     spec::is_top_level_command(command)
 }
 
+pub(super) fn is_help_request(args: &[String]) -> bool {
+    matches!(
+        args,
+        [arg] if matches!(arg.as_str(), "help" | "--help" | "-h")
+    )
+}
+
 pub enum CommandOutcome {
     Handled(i32),
     NotCli,
@@ -106,7 +113,9 @@ fn new_tab_alias(args: &[String]) -> std::io::Result<i32> {
         args.first().map(String::as_str),
         Some("help" | "--help" | "-h")
     ) {
-        eprintln!("usage: gmux new-tab [-n name] [-c cwd] [--focus|--no-focus] [command ...]");
+        eprintln!(
+            "usage: gmux new-tab [-n name] [-c cwd] [--label TEXT] [--focus|--no-focus] [command ...]"
+        );
         return Ok(0);
     }
 
@@ -309,7 +318,7 @@ fn capture_pane_alias(args: &[String]) -> std::io::Result<i32> {
         Some("help" | "--help" | "-h")
     ) {
         eprintln!(
-            "usage: gmux capture-pane [-t pane] [-S lines] [-e|--ansi] [--source visible|recent|recent-unwrapped]"
+            "usage: gmux capture-pane [-t pane] [-S lines] [-e|--ansi] [--raw] [--source visible|recent|recent-unwrapped] [--format text|ansi]"
         );
         return Ok(0);
     }
@@ -848,6 +857,10 @@ fn run_config_command(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn config_reset_keys(args: &[String]) -> std::io::Result<i32> {
+    if is_help_request(args) {
+        eprintln!("usage: gmux config reset-keys");
+        return Ok(0);
+    }
     if !args.is_empty() {
         eprintln!("usage: gmux config reset-keys");
         return Ok(2);
@@ -1035,6 +1048,10 @@ fn session_list(args: &[String], usage: &str) -> std::io::Result<i32> {
 }
 
 fn session_stop(args: &[String]) -> std::io::Result<i32> {
+    if is_help_request(args) {
+        eprintln!("usage: gmux session stop <name> [--json]");
+        return Ok(0);
+    }
     let (name, json) =
         match parse_session_name_and_json(args, "usage: gmux session stop <name> [--json]") {
             Ok(parsed) => parsed,
@@ -1094,6 +1111,10 @@ fn session_rename(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn session_delete(args: &[String]) -> std::io::Result<i32> {
+    if is_help_request(args) {
+        eprintln!("usage: gmux session delete <name> [--json]");
+        return Ok(0);
+    }
     let (name, json) =
         match parse_session_name_and_json(args, "usage: gmux session delete <name> [--json]") {
             Ok(parsed) => parsed,
@@ -1120,6 +1141,10 @@ fn session_delete(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn terminal_attach(args: &[String]) -> std::io::Result<i32> {
+    if is_help_request(args) {
+        eprintln!("usage: gmux terminal attach <terminal_id> [--takeover]");
+        return Ok(0);
+    }
     let (terminal_id, takeover) = match parse_attach_target(
         args,
         "usage: gmux terminal attach <terminal_id> [--takeover]",
@@ -1154,8 +1179,12 @@ pub(super) fn parse_attach_target(args: &[String], usage: &str) -> Result<(Strin
 }
 
 fn wait_output(args: &[String]) -> std::io::Result<i32> {
+    if is_help_request(args) {
+        eprintln!("usage: gmux wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]");
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
-        eprintln!("usage: gmux wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex]");
+        eprintln!("usage: gmux wait output <pane_id> --match <text> [--source visible|recent|recent-unwrapped] [--lines N] [--timeout MS] [--regex] [--raw]");
         return Ok(2);
     };
 

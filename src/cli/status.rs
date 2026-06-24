@@ -62,6 +62,7 @@ fn parse_status_scope_args(
     match args.get(1).map(|arg| arg.as_str()) {
         None => Some((scope, false)),
         Some("--json") if args.len() == 2 => Some((scope, true)),
+        Some("help" | "--help" | "-h") if args.len() == 2 => Some((StatusScope::Help, false)),
         _ => {
             eprintln!("usage: {usage}");
             None

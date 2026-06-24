@@ -82,6 +82,11 @@ pub(super) fn run_completions_command(args: &[String]) -> std::io::Result<i32> {
         _ => {}
     }
 
+    if super::is_help_request(args) {
+        print_completions_help();
+        return Ok(0);
+    }
+
     let Some(shell) = args.first().map(String::as_str) else {
         print_completions_help();
         return Ok(2);
@@ -245,7 +250,13 @@ fn complete_words(
     }
 
     let candidates = match command {
-        "completions" | "completion" => shell_candidates(),
+        "completions" | "completion" => {
+            if current.starts_with('-') {
+                command_global_option_candidates()
+            } else {
+                shell_candidates()
+            }
+        }
         "session" => complete_nested_command(
             current,
             &words,
@@ -311,8 +322,10 @@ fn complete_words(
         ),
         "status" => complete_status(current, &words, current_index, command_index),
         "new" => options_if_option(current, spec::SESSION_NAME_OPTIONS),
-        "attach" | "kill-session" => options_if_option(current, spec::SESSION_TARGET_OPTIONS),
-        "ls" | "list-tabs" | "detach" => options_if_option(current, spec::JSON_OPTIONS),
+        "attach" => options_if_option(current, spec::SESSION_TARGET_OPTIONS),
+        "kill-session" => options_if_option(current, spec::KILL_SESSION_OPTIONS),
+        "ls" => options_if_option(current, spec::JSON_OPTIONS),
+        "list-tabs" | "detach" => options_if_option(current, &[]),
         "new-tab" => options_if_option(current, spec::NEW_TAB_OPTIONS),
         "select-tab" | "kill-tab" => complete_alias_target_or_options(
             current,
@@ -594,6 +607,9 @@ fn complete_nested_command(
     let Some(subcommand) = words.get(subcommand_index).map(String::as_str) else {
         return subcommands;
     };
+    if current_index == subcommand_index && current.starts_with('-') {
+        return command_global_option_candidates();
+    }
     if current_index == subcommand_index
         && !subcommands
             .iter()
@@ -620,7 +636,16 @@ fn complete_session_subcommand(
     subcommand: &str,
 ) -> Vec<CompletionCandidate> {
     match subcommand {
-        "attach" | "stop" | "delete" => complete_required_first_positional_or_options(
+        "attach" => complete_required_first_positional_or_options(
+            current,
+            words,
+            context,
+            current_index,
+            subcommand_index,
+            TargetKind::Session,
+            &[],
+        ),
+        "stop" | "delete" => complete_required_first_positional_or_options(
             current,
             words,
             context,
@@ -653,6 +678,7 @@ fn complete_server_subcommand(
 ) -> Vec<CompletionCandidate> {
     match subcommand {
         "live-handoff" => options_if_option(current, spec::SERVER_LIVE_HANDOFF_OPTIONS),
+        "stop" | "reload-config" => options_if_option(current, &[]),
         _ => Vec::new(),
     }
 }
@@ -666,6 +692,7 @@ fn complete_tab_subcommand(
     subcommand: &str,
 ) -> Vec<CompletionCandidate> {
     match subcommand {
+        "list" => options_if_option(current, &[]),
         "get" | "focus" | "rename" | "close" => complete_required_first_positional_or_options(
             current,
             words,
@@ -689,6 +716,7 @@ fn complete_pane_subcommand(
     subcommand: &str,
 ) -> Vec<CompletionCandidate> {
     match subcommand {
+        "list" => options_if_option(current, &[]),
         "get" | "close" => complete_required_first_positional_or_options(
             current,
             words,
@@ -807,14 +835,17 @@ fn complete_terminal_subcommand(
 }
 
 fn complete_config_subcommand(
-    _current: &str,
+    current: &str,
     _words: &[String],
     _context: &CompletionContext,
     _current_index: usize,
     _subcommand_index: usize,
-    _subcommand: &str,
+    subcommand: &str,
 ) -> Vec<CompletionCandidate> {
-    Vec::new()
+    match subcommand {
+        "reset-keys" => options_if_option(current, &[]),
+        _ => Vec::new(),
+    }
 }
 
 fn complete_status(
@@ -1100,7 +1131,7 @@ fn global_option_candidates() -> Vec<CompletionCandidate> {
 }
 
 fn command_global_option_candidates() -> Vec<CompletionCandidate> {
-    option_candidates(&[spec::GLOBAL_SESSION_OPTION])
+    option_candidates(spec::COMMAND_GLOBAL_OPTIONS)
 }
 
 fn session_command_candidates() -> Vec<CompletionCandidate> {
@@ -1226,6 +1257,55 @@ mod tests {
             complete_words(CompletionShell::Zsh, "pa", vec!["gmux".into(), "pa".into()]);
         let values = values(candidates);
         assert!(values.contains(&"pane".to_string()));
+    }
+
+    #[test]
+    fn every_public_command_completes_help() {
+        for command in spec::PUBLIC_COMMANDS {
+            if !command.completion_required {
+                continue;
+            }
+            let mut words = vec!["gmux".to_string()];
+            words.extend(command.path.iter().map(|part| part.to_string()));
+            words.push("--".to_string());
+            let candidates = complete_words(CompletionShell::Bash, "--", words);
+            let values = values(candidates);
+            assert!(
+                values.contains(&"--help".to_string()),
+                "missing --help completion for {:?}; got {values:?}",
+                command.path
+            );
+        }
+    }
+
+    #[test]
+    fn completion_does_not_offer_stale_json_options() {
+        let list_tabs = values(complete_words(
+            CompletionShell::Bash,
+            "--",
+            vec!["gmux".into(), "list-tabs".into(), "--".into()],
+        ));
+        assert!(!list_tabs.contains(&"--json".to_string()));
+
+        let detach = values(complete_words(
+            CompletionShell::Bash,
+            "--",
+            vec!["gmux".into(), "detach".into(), "--".into()],
+        ));
+        assert!(!detach.contains(&"--json".to_string()));
+
+        let session_attach = values(complete_words(
+            CompletionShell::Bash,
+            "--",
+            vec![
+                "gmux".into(),
+                "session".into(),
+                "attach".into(),
+                "work".into(),
+                "--".into(),
+            ],
+        ));
+        assert!(!session_attach.contains(&"--json".to_string()));
     }
 
     #[test]

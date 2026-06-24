@@ -135,9 +135,22 @@ gmux kill-pane -t <pane>
 gmux send-keys [-t pane] <key> [key ...]
 gmux send-text [-t pane] <text>
 gmux capture-pane [-t pane] [-S lines] [-e]
+gmux pane popup <pane_id> [--width N|N%] [--height N|N%] [--x N|N%|C] [--y N|N%|C] [--cwd PATH] [command ...]
 ```
 
-Scriptable namespaces such as `gmux session`, `gmux tab`, and `gmux pane` remain available for lower-level automation.
+Scriptable namespaces remain available for lower-level automation:
+
+```bash
+gmux session <list|attach|stop|rename|delete>
+gmux tab <list|create|get|focus|rename|close>
+gmux pane <list|get|read|rename|split|popup|close|send-text|send-keys|run>
+gmux wait output <pane_id> --match <text> [--timeout MS]
+gmux terminal attach <terminal_id> [--takeover]
+gmux config reset-keys
+gmux server <stop|live-handoff|reload-config>
+```
+
+Every public command and subcommand supports `--help`, and shell completions are available with `gmux completions <bash|zsh|fish>`.
 
 ## Keybindings
 
@@ -176,6 +189,16 @@ gmux --default-config
 
 gmux supports theme, terminal, remote, mouse, toast, and keybinding settings. Logs are written under `~/.config/gmux/`; in persistent session mode, `gmux-client.log` and `gmux-server.log` are usually the useful files.
 
+Custom keybindings can run shell commands. For example, bind `prefix+alt+g` to open `lazygit` in a popup over the active pane:
+
+```toml
+[[keys.command]]
+key = "prefix+alt+g"
+type = "shell"
+description = "Open lazygit in a popup"
+command = "${GMUX_BIN_PATH:-gmux} pane popup $GMUX_ACTIVE_PANE_ID --width 80% --height 80% -- lazygit"
+```
+
 ## Socket API
 
 The local Unix socket lets scripts create tabs, split panes, send input, read pane output, wait for events, and control sessions without driving the terminal UI.
@@ -187,6 +210,7 @@ gmux capture-pane   # read pane output
 gmux send-keys      # send key names
 gmux send-text      # send literal text
 gmux split-pane     # create another pane
+gmux pane popup     # create a floating pane
 gmux new-tab        # create another tab
 ```
 

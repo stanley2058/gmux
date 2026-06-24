@@ -357,22 +357,27 @@ fn main() -> io::Result<()> {
         println!("       gmux --remote <ssh-target> [--session <name>]");
         println!("       gmux ls [--json]");
         println!("       gmux kill-session [-t name] [--json]");
+        println!("       gmux status [server|client] [--json]");
         println!("       gmux session rename <old> <new> [--json]");
         println!("       gmux detach");
         println!("       gmux list-tabs");
-        println!("       gmux new-tab [-n name] [-c cwd]");
+        println!("       gmux new-tab [-n name] [-c cwd] [--label TEXT]");
         println!("       gmux select-tab [-t tab]");
         println!("       gmux rename-tab [-t tab] <name>");
         println!("       gmux kill-tab [-t tab]");
-        println!("       gmux capture-pane [-t pane] [-S lines] [-e]");
+        println!("       gmux capture-pane [-t pane] [-S lines] [-e|--ansi] [--raw]");
         println!("       gmux select-pane [-L|-R|-U|-D|-t pane]");
         println!("       gmux resize-pane [-L|-R|-U|-D [N]]");
         println!("       gmux send-text [-t pane] <text>");
         println!("       gmux send-keys [-t pane] <key> [key ...]");
         println!("       gmux split-pane [-t pane] [-h|-v] [command ...]");
+        println!("       gmux pane popup <pane_id> [options] [command ...]");
         println!("       gmux kill-pane [-t pane]");
         println!("       gmux server stop");
+        println!("       gmux server live-handoff [options]");
         println!("       gmux server reload-config");
+        println!("       gmux terminal attach <terminal_id> [--takeover]");
+        println!("       gmux wait output <pane_id> --match <text> [options]");
         println!("       gmux completions <bash|zsh|fish>");
         println!("       gmux config <subcommand> ...");
         println!("       gmux tab <subcommand> ...");
@@ -407,8 +412,17 @@ fn main() -> io::Result<()> {
                 "Stop the running server via the API socket",
             ),
             (
+                "gmux server live-handoff",
+                "Hand off live panes to a new local server",
+            ),
+            (
                 "gmux server reload-config",
                 "Reload config.toml in the running server",
+            ),
+            ("gmux terminal attach", "Attach directly to a pane terminal"),
+            (
+                "gmux wait output",
+                "Wait until a pane emits matching output",
             ),
             (
                 "gmux config reset-keys",
@@ -428,6 +442,7 @@ fn main() -> io::Result<()> {
         println!();
         println!("Advanced commands:");
         println!("  {:<32} Run as headless server", "gmux server");
+        println!("  {:<32} Open a floating pane", "gmux pane popup");
         println!();
         println!("Options:");
         println!("  --no-session        Run monolithically (no server/client, escape hatch)");

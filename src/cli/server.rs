@@ -30,6 +30,10 @@ pub(super) fn run_server_command(args: &[String]) -> std::io::Result<Option<i32>
 }
 
 fn server_stop(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux server stop");
+        return Ok(0);
+    }
     if !args.is_empty() {
         eprintln!("usage: gmux server stop");
         return Ok(2);
@@ -39,6 +43,10 @@ fn server_stop(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn server_reload_config(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux server reload-config");
+        return Ok(0);
+    }
     if !args.is_empty() {
         eprintln!("usage: gmux server reload-config");
         return Ok(2);
@@ -51,6 +59,12 @@ fn server_reload_config(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn server_live_handoff(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!(
+            "usage: gmux server live-handoff [--all-sessions] [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]"
+        );
+        return Ok(0);
+    }
     let Some(mut parsed) = parse_live_handoff_args(args) else {
         eprintln!(
             "usage: gmux server live-handoff [--all-sessions] [--import-exe <path>] [--expected-protocol <n>] [--expected-version <version>]"
@@ -200,6 +214,9 @@ fn print_server_help() {
     eprintln!("  gmux server stop           stop the running server via the API socket");
     eprintln!("  gmux server live-handoff   hand off live panes to a new local server");
     eprintln!("    --all-sessions           hand off every running local session");
+    eprintln!("    --import-exe PATH        executable to import after handoff");
+    eprintln!("    --expected-protocol N    require the imported server protocol");
+    eprintln!("    --expected-version TEXT  require the imported server version");
     eprintln!("  gmux server reload-config  reload config.toml in the running server");
 }
 

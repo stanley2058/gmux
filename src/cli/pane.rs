@@ -33,6 +33,10 @@ pub(super) fn run_pane_command(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_list(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane list");
+        return Ok(0);
+    }
     if let Some(other) = args.first() {
         eprintln!("unknown option: {other}");
         return Ok(2);
@@ -45,6 +49,10 @@ fn pane_list(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_get(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane get <pane_id>");
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
         eprintln!("usage: gmux pane get <pane_id>");
         return Ok(2);
@@ -63,6 +71,10 @@ fn pane_get(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_rename(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane rename <pane_id> <label>|--clear");
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
         eprintln!("usage: gmux pane rename <pane_id> <label>|--clear");
         return Ok(2);
@@ -87,8 +99,12 @@ fn pane_rename(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_read(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi] [--raw]");
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
-        eprintln!("usage: gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]");
+        eprintln!("usage: gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi] [--raw]");
         return Ok(2);
     };
 
@@ -164,6 +180,12 @@ fn pane_read(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_split(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!(
+            "usage: gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus] [command ...]"
+        );
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
         eprintln!(
             "usage: gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus] [command ...]"
@@ -237,6 +259,12 @@ fn pane_split(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_popup(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!(
+            "usage: gmux pane popup <pane_id> [--width N|N%] [--height N|N%] [--x N|N%|C] [--y N|N%|C] [--cwd PATH] [--focus] [--no-focus] [command ...]"
+        );
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
         eprintln!(
             "usage: gmux pane popup <pane_id> [--width N|N%] [--height N|N%] [--x N|N%|C] [--y N|N%|C] [--cwd PATH] [--focus] [--no-focus] [command ...]"
@@ -335,6 +363,10 @@ fn pane_popup(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_close(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane close <pane_id>");
+        return Ok(0);
+    }
     let Some(raw_pane_id) = args.first() else {
         eprintln!("usage: gmux pane close <pane_id>");
         return Ok(2);
@@ -353,6 +385,10 @@ fn pane_close(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_send_text(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane send-text <pane_id> <text>");
+        return Ok(0);
+    }
     if args.len() < 2 {
         eprintln!("usage: gmux pane send-text <pane_id> <text>");
         return Ok(2);
@@ -364,6 +400,10 @@ fn pane_send_text(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_send_keys(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane send-keys <pane_id> <key> [key ...]");
+        return Ok(0);
+    }
     if args.len() < 2 {
         eprintln!("usage: gmux pane send-keys <pane_id> <key> [key ...]");
         return Ok(2);
@@ -375,6 +415,10 @@ fn pane_send_keys(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn pane_run(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux pane run <pane_id> <command>");
+        return Ok(0);
+    }
     if args.len() < 2 {
         eprintln!("usage: gmux pane run <pane_id> <command>");
         return Ok(2);
@@ -394,7 +438,7 @@ fn print_pane_help() {
     eprintln!("  gmux pane list");
     eprintln!("  gmux pane get <pane_id>");
     eprintln!("  gmux pane rename <pane_id> <label>|--clear");
-    eprintln!("  gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi]");
+    eprintln!("  gmux pane read <pane_id> [--source visible|recent|recent-unwrapped] [--lines N] [--format text|ansi] [--ansi] [--raw]");
     eprintln!(
         "  gmux pane split <pane_id> --direction right|down [--cwd PATH] [--focus] [--no-focus] [command ...]"
     );

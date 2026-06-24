@@ -27,6 +27,10 @@ pub(super) fn run_tab_command(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_list(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux tab list");
+        return Ok(0);
+    }
     if let Some(other) = args.first() {
         eprintln!("unknown option: {other}");
         return Ok(2);
@@ -39,6 +43,12 @@ fn tab_list(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_create(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!(
+            "usage: gmux tab create [--cwd PATH] [--label TEXT] [--focus] [--no-focus] [command ...]"
+        );
+        return Ok(0);
+    }
     let mut cwd = None;
     let mut focus = false;
     let mut label = None;
@@ -98,6 +108,10 @@ fn tab_create(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_get(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux tab get <tab_id>");
+        return Ok(0);
+    }
     let Some(raw_tab_id) = args.first() else {
         eprintln!("usage: gmux tab get <tab_id>");
         return Ok(2);
@@ -116,6 +130,10 @@ fn tab_get(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_focus(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux tab focus <tab_id>");
+        return Ok(0);
+    }
     let Some(raw_tab_id) = args.first() else {
         eprintln!("usage: gmux tab focus <tab_id>");
         return Ok(2);
@@ -134,6 +152,10 @@ fn tab_focus(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_rename(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux tab rename <tab_id> <label>");
+        return Ok(0);
+    }
     if args.len() < 2 {
         eprintln!("usage: gmux tab rename <tab_id> <label>");
         return Ok(2);
@@ -149,6 +171,10 @@ fn tab_rename(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn tab_close(args: &[String]) -> std::io::Result<i32> {
+    if super::is_help_request(args) {
+        eprintln!("usage: gmux tab close <tab_id>");
+        return Ok(0);
+    }
     let Some(raw_tab_id) = args.first() else {
         eprintln!("usage: gmux tab close <tab_id>");
         return Ok(2);
