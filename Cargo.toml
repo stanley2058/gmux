@@ -1,6 +1,6 @@
 [package]
 name = "gmux"
-version = "0.1.2"
+version = "0.1.4"
 edition = "2021"
 build = "build.rs"
 description = "terminal multiplexer and session manager"
