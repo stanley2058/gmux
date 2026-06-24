@@ -75,6 +75,14 @@ install-hooks:
 build:
     cargo build --release --locked
 
+# Bump Cargo version, run fast tests, commit, and tag a release
+release version:
+    @scripts/release.sh "{{version}}"
+
+# Push the current release commit and tag
+release-push version:
+    @scripts/release_push.sh "{{version}}"
+
 # Build release binary and install it locally
 install:
     cargo build --release --locked

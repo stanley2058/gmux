@@ -54,6 +54,28 @@ jobs:
 
           printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tag matches Cargo version
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cargo_version="$(python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text = Path("Cargo.toml").read_text()
+          match = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', text)
+          if not match:
+              raise SystemExit("Cargo.toml package version not found")
+          print(match.group(1))
+          PY
+          )"
+          tag_version="${TAG#v}"
+          if [ "$tag_version" != "$cargo_version" ]; then
+            printf 'release tag %s does not match Cargo.toml version %s\n' "$TAG" "$cargo_version" >&2
+            exit 1
+          fi
+
       - name: Create manual tag
         if: github.event_name == 'workflow_dispatch'
         env:
