@@ -1,300 +1,309 @@
 ---
 name: gmux
-description: "Control gmux from inside it. Manage workspaces and tabs, split panes, spawn agents, read output, and wait for state changes — all via CLI commands that talk to the running gmux instance over a local unix socket. Use when running inside gmux (GMUX_ENV=1)."
+description: "Control gmux from inside a gmux-managed pane. Manage persistent sessions, tabs, panes, popups, pane output, input, and waits through the installed gmux CLI and its local socket. Use only when GMUX_ENV=1."
 ---
 
-# gmux — agent skill
+# gmux agent skill
 
-before using this skill, check that `GMUX_ENV=1`. if it is not set to `1`, say you are not running inside a gmux-managed pane and stop. do not inspect or control the focused gmux pane from outside gmux.
+Before using this skill, check that `GMUX_ENV=1`. If it is not set to `1`, say you are not running inside a gmux-managed pane and stop. Do not inspect or control the focused gmux pane from outside gmux.
 
-you are running inside gmux, a terminal-native agent multiplexer. gmux gives you workspaces, tabs, and panes — each pane is a real terminal with its own shell, agent, server, or log stream — and you can control all of it from the cli.
+You are running inside gmux, a terminal multiplexer and session manager. A gmux session is owned by a background server. Clients attach to that server, render tabs and panes, and forward input. Detaching closes only the client; pane processes keep running until their session, tab, or pane is closed.
 
-this means you can:
+Use the installed `gmux` binary in `PATH`. Commands talk to the running gmux server through the local socket. Prefer public CLI commands over private socket details, and use `gmux --help` or subcommand help when in doubt.
 
-- see what other panes and agents are doing
-- create tabs for separate subcontexts inside one workspace
-- split panes and run commands in them
-- start servers, watch logs, and run tests in sibling panes
-- wait for specific output before continuing
-- wait for another agent to finish
-- spawn more agent instances
+## core model
 
-the `gmux` binary is available in your PATH. its workspace, tab, pane, and wait commands talk to the running gmux instance over a local unix socket.
+**Sessions** are persistent server namespaces. The default session is used by `gmux`; named sessions use `gmux new -s name`, `gmux attach -t name`, or `gmux --session name`.
 
-use `gmux --help` and the local source for protocol details; this fork does not publish hosted socket API docs.
+**Tabs** are top-level layouts inside a session. Each tab has one or more panes.
 
-## concepts
+**Panes** are real PTYs running shells, commands, servers, logs, editors, agents, or TUIs.
 
-**workspaces** are project contexts. each workspace has one or more tabs. unless manually renamed, a workspace's label follows the first tab's root pane — usually the repo name, otherwise the root pane's current folder name.
+**Popups** are floating panes created over a target pane. Use them for transient tools such as `lazygit`, pagers, scratch shells, or quick commands.
 
-**tabs** are subcontexts inside a workspace. each tab has one or more panes.
+**Ids** are compact public ids for the current live session. Tab ids look like `1:1`; pane ids look like `1-1`. Re-read ids from `gmux tab list`, `gmux pane list`, or command JSON responses before targeting a pane or tab. Do not treat ids as durable after closing tabs or panes.
 
-**panes** are terminal splits inside a tab. each pane runs its own process — a shell, an agent, a server, anything.
+There are no public `workspace` commands and no public `wait agent-status` command in current gmux. Coordinate by reading panes and waiting for output.
 
-**agent status** is detected automatically by gmux. the api exposes one public field for it:
+## safety rules
 
-- `agent_status` — `idle`, `working`, `blocked`, `done`, `unknown`
+- Check `GMUX_ENV=1` before using this skill.
+- Treat the focused pane as yours. Use `gmux pane list` to identify neighboring panes before reading or sending input.
+- Prefer `--no-focus` when creating helper panes unless the task requires focus to move.
+- Read before you write to a pane you did not create.
+- Use `pane read` or `capture-pane` for existing output. Use `wait output` for future output you expect next.
+- Parse new ids from JSON responses instead of guessing them.
 
-`done` means the agent finished, but you have not looked at that finished pane yet.
+## discover context
 
-plain shells still exist as panes, but gmux's sidebar agent section intentionally focuses on detected agents rather than listing every shell.
-
-**ids** — workspace ids look like `1`, `2`. tab ids look like `1:1`, `1:2`, `2:1`. pane ids look like `1-1`, `1-2`, `2-1`. these are compact public ids for the current live session.
-
-important: ids can compact when tabs, panes, or workspaces are closed. do not treat them as durable ids. re-read ids from `workspace list`, `tab list`, `pane list`, or create/split responses when you need a current id. do not guess that an older `1-3` is still the same pane later.
-
-## discover yourself
-
-see what panes exist and which one is focused:
+List panes and find the focused pane:
 
 ```bash
 gmux pane list
 ```
 
-the focused pane is yours. other panes are your neighbors.
-
-list workspaces:
+List tabs:
 
 ```bash
-gmux workspace list
+gmux tab list
 ```
 
-## tab management
-
-list tabs in the current workspace:
+Show session or client/server status:
 
 ```bash
-gmux tab list --workspace 1
+gmux status
+gmux status --json
+gmux status server --json
+gmux status client --json
 ```
 
-create a new tab:
+Useful environment variables inside panes:
+
+- `GMUX_ENV=1` means the process is running inside gmux.
+- `GMUX_ACTIVE_PANE_ID` is set for shell commands launched by gmux keybindings.
+- `GMUX_ACTIVE_TAB_ID` is set for shell commands launched by gmux keybindings.
+- `GMUX_BIN_PATH` points keybinding commands at the active gmux binary when available.
+
+## sessions
+
+Start or attach the default persistent session:
 
 ```bash
-gmux tab create --workspace 1
+gmux
 ```
 
-without `--label`, the new tab keeps the default numbered tab name.
-
-create and name it in one step:
+Create or attach a named session:
 
 ```bash
-gmux tab create --workspace 1 --label "logs"
+gmux new -s work
+gmux attach -t work
+gmux --session work
 ```
 
-rename it:
+List and stop sessions:
 
 ```bash
-gmux tab rename 1:2 "logs"
+gmux ls
+gmux ls --json
+gmux kill-session -t work
+gmux kill-session -t work --json
 ```
 
-focus it:
+Manage stopped sessions:
 
 ```bash
+gmux session list
+gmux session stop work --json
+gmux session rename work api --json
+gmux session delete old-name --json
+```
+
+Use top-level `gmux attach -t work` to attach to an existing named session.
+
+Detach the current client without stopping panes:
+
+```bash
+gmux detach
+```
+
+## tabs
+
+Use tmux-style aliases for common interactive actions:
+
+```bash
+gmux list-tabs
+gmux new-tab -n logs -c /path/to/project
+gmux select-tab -t 2
+gmux rename-tab -t 2 logs
+gmux kill-tab -t 2
+```
+
+Use scriptable commands when you need JSON responses and exact ids:
+
+```bash
+gmux tab list
+gmux tab create --cwd /path/to/project --label logs --no-focus
+gmux tab create --label tests --focus cargo test
+gmux tab get 1:2
 gmux tab focus 1:2
-```
-
-close it:
-
-```bash
+gmux tab rename 1:2 logs
 gmux tab close 1:2
 ```
 
-## read another pane
+`gmux tab create` prints JSON on success. The new tab is at `result.tab`, and its root pane is at `result.root_pane`.
 
-see what is on another pane's screen:
+## panes
 
-```bash
-gmux pane read 1-1 --source recent --lines 50
-```
-
-- `--source visible` = current viewport
-- `--source recent` = recent scrollback as rendered in the pane
-- `--source recent-unwrapped` = recent terminal text with soft wraps joined back together
-
-## split a pane and run a command
-
-split your pane to the right and keep focus on your current pane:
+Use tmux-style aliases for the focused or targeted pane:
 
 ```bash
-gmux pane split 1-2 --direction right --no-focus
+gmux capture-pane -S 80
+gmux capture-pane -t 1-2 -S 80 --source recent-unwrapped
+gmux split-pane -h -t 1-2 cargo test
+gmux split-pane -v -t 1-2 npm run dev
+gmux select-pane -L
+gmux select-pane -t 1-3
+gmux resize-pane -R 5
+gmux send-text -t 1-3 "hello"
+gmux send-keys -t 1-3 Enter
+gmux kill-pane -t 1-3
 ```
 
-that prints json with the new pane nested at `result.pane.pane_id`. parse that value, then run a command in that pane:
+Use scriptable commands when you need exact ids, JSON responses, or less ambiguous behavior:
 
 ```bash
-NEW_PANE=$(gmux pane split 1-2 --direction right --no-focus | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
-gmux pane run "$NEW_PANE" "npm run dev"
+gmux pane list
+gmux pane get 1-2
+gmux pane rename 1-2 logs
+gmux pane rename 1-2 --clear
+gmux pane close 1-3
 ```
 
-split downward instead:
+Read pane output:
 
 ```bash
-gmux pane split 1-2 --direction down --no-focus
+gmux pane read 1-2 --source recent --lines 80
+gmux pane read 1-2 --source recent-unwrapped --lines 80
+gmux pane read 1-2 --source visible --format ansi
+gmux pane read 1-2 --source visible --raw
 ```
+
+Read sources:
+
+- `visible` reads the current viewport.
+- `recent` reads recent scrollback as rendered in the pane.
+- `recent-unwrapped` reads recent terminal text with soft wraps joined back together.
+
+Read formats:
+
+- `--format text` is plain text and strips ANSI by default.
+- `--format ansi` or `--ansi` returns a rendered ANSI snapshot.
+- `--raw` returns ANSI without stripping it.
+
+Split panes with scriptable commands:
+
+```bash
+gmux pane split 1-2 --direction right --cwd /path/to/project --no-focus cargo test
+gmux pane split 1-2 --direction down --no-focus npm run dev
+```
+
+`gmux pane split` prints JSON on success. The new pane id is at `result.pane.pane_id`.
+
+Create a popup pane:
+
+```bash
+gmux pane popup 1-2 --width 80% --height 80% --cwd /path/to/project lazygit
+gmux pane popup 1-2 --width 100 --height 30 --x C --y C --no-focus bash
+```
+
+Send input:
+
+```bash
+gmux pane send-text 1-3 "echo hello"
+gmux pane send-keys 1-3 Enter
+gmux pane run 1-3 "echo hello"
+```
+
+`pane send-text` sends literal text without Enter. `pane send-keys` sends key names. `pane run` sends text followed by a real `Enter` key.
 
 ## wait for output
 
-block until specific text appears in a pane. useful for waiting on servers, builds, and tests.
-
-for `--source recent`, matching uses unwrapped recent terminal text, so pane width and soft wrapping do not break matches. `pane read --source recent` still shows the pane as rendered. if you want to inspect the same transcript that the waiter matches, use `pane read --source recent-unwrapped`.
+Wait until a pane emits matching output:
 
 ```bash
-gmux wait output 1-3 --match "ready on port 3000" --timeout 30000
+gmux wait output 1-3 --match "ready" --timeout 30000
 ```
 
-with regex:
+Use a regex:
 
 ```bash
 gmux wait output 1-3 --match "server.*ready" --regex --timeout 30000
 ```
 
-if it times out, exit code is `1`.
-
-## wait for an agent status
-
-block until another agent reaches a specific status:
+Choose the source when needed:
 
 ```bash
-gmux wait agent-status 1-1 --status done --timeout 60000
+gmux wait output 1-3 --source recent-unwrapped --lines 120 --match "test result" --timeout 60000
 ```
 
-use this when you want the same `done` / `idle` distinction the UI shows.
+For `--source recent`, output matching uses unwrapped recent terminal text, so pane width and soft wrapping do not break matches. If you want to inspect the same transcript the waiter matches, use `gmux pane read <pane_id> --source recent-unwrapped`.
 
-## send text or keys to a pane
+If a wait times out, the command exits nonzero.
 
-send text without pressing Enter:
+## server and config
+
+Reload config in the running server:
 
 ```bash
-gmux pane send-text 1-1 "hello from claude"
+gmux server reload-config
 ```
 
-press Enter or other keys:
+Stop the running server through the API socket:
 
 ```bash
-gmux pane send-keys 1-1 Enter
+gmux server stop
 ```
 
-`pane run` sends the text and then a real `Enter` key in one request:
+Use live handoff only when explicitly needed:
 
 ```bash
-gmux pane run 1-1 "echo hello"
+gmux server live-handoff
+gmux server live-handoff --all-sessions
 ```
 
-## workspace management
-
-create a new workspace:
+Back up `config.toml` and remove custom keybindings:
 
 ```bash
-gmux workspace create --cwd /path/to/project
-```
-
-without `--label`, the new workspace keeps the default cwd-based name.
-
-create and name one in one step:
-
-```bash
-gmux workspace create --cwd /path/to/project --label "api server"
-```
-
-create one without focusing it:
-
-```bash
-gmux workspace create --no-focus
-```
-
-focus a workspace:
-
-```bash
-gmux workspace focus 2
-```
-
-rename:
-
-```bash
-gmux workspace rename 1 "api server"
-```
-
-close:
-
-```bash
-gmux workspace close 2
-```
-
-## close a pane
-
-```bash
-gmux pane close 1-3
+gmux config reset-keys
 ```
 
 ## recipes
 
-### run a server and wait until it is ready
+### inspect the current gmux session
 
 ```bash
-NEW_PANE=$(gmux pane split 1-2 --direction right --no-focus | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
-gmux pane run "$NEW_PANE" "npm run dev"
+gmux status --json
+gmux tab list
+gmux pane list
+```
+
+### run tests in a helper pane
+
+```bash
+NEW_PANE=$(gmux pane split 1-2 --direction down --no-focus cargo test | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
+gmux wait output "$NEW_PANE" --match "test result" --timeout 60000
+gmux pane read "$NEW_PANE" --source recent --lines 40
+```
+
+### start a server and wait until it is ready
+
+```bash
+NEW_PANE=$(gmux pane split 1-2 --direction right --no-focus npm run dev | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
 gmux wait output "$NEW_PANE" --match "ready" --timeout 30000
-gmux pane read "$NEW_PANE" --source recent --lines 20
+gmux pane read "$NEW_PANE" --source recent --lines 30
 ```
 
-### run tests in a separate pane and inspect the result
-
-```bash
-gmux pane split 1-2 --direction down --no-focus
-gmux pane run 1-3 "cargo test"
-gmux wait output 1-3 --match "test result" --timeout 60000
-gmux pane read 1-3 --source recent --lines 30
-```
-
-### check what another agent is working on
+### coordinate with a sibling pane
 
 ```bash
 gmux pane list
-gmux pane read 1-1 --source recent --lines 80
+gmux pane read 1-3 --source recent --lines 80
+gmux wait output 1-3 --match "done" --timeout 120000
+gmux pane read 1-3 --source recent-unwrapped --lines 120
 ```
 
-### watch another pane robustly
-
-use this pattern when you need to coordinate with a sibling pane:
+### open a transient popup tool
 
 ```bash
-# inspect what is already there
-gmux pane read 1-3 --source recent --lines 40
-
-# wait only for the next output you expect
-gmux wait output 1-3 --match "ready" --timeout 30000
-
-# if you need to inspect the same transcript the waiter matched,
-# read the unwrapped recent text directly
-gmux pane read 1-3 --source recent-unwrapped --lines 40
+gmux pane popup 1-2 --width 80% --height 80% --cwd /path/to/project lazygit
 ```
 
-### spawn a new agent and give it a task
+## command output notes
 
-```bash
-gmux pane split 1-2 --direction right --no-focus
-gmux pane run 1-3 "claude"
-gmux wait output 1-3 --match ">" --timeout 15000
-gmux pane run 1-3 "review the test coverage in src/api/"
-```
-
-### coordinate with another agent
-
-```bash
-gmux wait agent-status 1-1 --status done --timeout 120000
-gmux pane read 1-1 --source recent --lines 100
-```
-
-## notes
-
-- `workspace list`, `workspace create`, `tab list`, `tab create`, `tab get`, `tab focus`, `tab rename`, `tab close`, `pane list`, `pane get`, `pane split`, `wait output`, and `wait agent-status` print json on success.
-- `pane read` prints text, not json.
-- `pane read --format ansi` or `pane read --ansi` returns a rendered ANSI snapshot for TUI feedback loops.
-- `pane read --source recent-unwrapped` is useful when you want to inspect the same unwrapped transcript that `wait output --source recent` matches against.
-- `pane send-text`, `pane send-keys`, and `pane run` print nothing on success.
-- parse ids from `workspace create`, `tab create`, and `pane split` responses when you need new ids. `workspace create` returns `result.workspace`, `result.tab`, and `result.root_pane`. `tab create` returns `result.tab` and `result.root_pane`. for `pane split`, the new pane id is at `result.pane.pane_id`.
-- use `pane read` for current output that already exists. use `wait output` for future output you expect next.
-- `--no-focus` on split, tab create, and workspace create keeps your current terminal context focused.
-- without `--label`, workspace create keeps cwd-based naming and tab create keeps numbered naming.
-- `--label` on tab create and workspace create applies the custom name immediately.
-- if you are running inside gmux, the `GMUX_ENV` environment variable is set to `1`.
+- `gmux tab list`, `gmux tab create`, `gmux tab get`, `gmux tab focus`, `gmux tab rename`, `gmux tab close`, `gmux pane list`, `gmux pane get`, `gmux pane split`, `gmux pane popup`, `gmux pane close`, `gmux pane rename`, and `gmux wait output` print JSON on success.
+- `gmux status --json`, `gmux ls --json`, and session commands with `--json` print JSON.
+- `gmux pane read` and `gmux capture-pane` print pane text, not JSON.
+- `gmux pane send-text`, `gmux pane send-keys`, and `gmux pane run` print nothing on success.
+- `gmux tab create` returns `result.tab` and `result.root_pane`.
+- `gmux pane split` and `gmux pane popup` return the created pane at `result.pane`.
+- Use `--help` on any command or subcommand to confirm current installed behavior.
