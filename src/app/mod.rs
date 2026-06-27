@@ -1320,7 +1320,9 @@ impl App {
                     }
                 }
                 crate::raw_input::RawInputEvent::Paste(text) => {
-                    if self.state.mode == Mode::Terminal {
+                    if self.handle_copy_mode_paste(&text) {
+                        result.visual_change = true;
+                    } else if self.state.mode == Mode::Terminal {
                         if let Some(runtime) = self
                             .state
                             .focused_runtime_in_session(&self.terminal_runtimes)

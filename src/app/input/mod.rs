@@ -88,6 +88,9 @@ impl App {
     }
 
     pub(super) async fn handle_paste(&mut self, text: String) {
+        if self.handle_copy_mode_paste(&text) {
+            return;
+        }
         if self.state.mode != Mode::Terminal {
             return;
         }

@@ -44,6 +44,10 @@ impl App {
             }
         }
     }
+
+    pub(crate) fn handle_copy_mode_paste(&mut self, text: &str) -> bool {
+        self.state.paste_copy_mode_search(text)
+    }
 }
 
 impl AppState {
@@ -234,6 +238,17 @@ impl AppState {
                 }
             }
         }
+    }
+
+    fn paste_copy_mode_search(&mut self, text: &str) -> bool {
+        if self.mode != Mode::Copy || !self.copy_mode_search.active {
+            return false;
+        }
+
+        self.copy_mode_search
+            .query
+            .extend(text.chars().filter(|ch| *ch == '\t' || !ch.is_control()));
+        true
     }
 
     fn exit_copy_mode(&mut self, terminal_runtimes: &TerminalRuntimeRegistry, copy: bool) {
@@ -1177,6 +1192,26 @@ mod tests {
         assert_eq!(app.state.copy_mode_search.matches.len(), 1);
         assert_eq!(app.state.copy_mode_search.current_match, Some(0));
         assert!(!app.state.copy_mode_search.active);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_search_accepts_paste() {
+        let (mut app, _) = app_with_copy_screen(b"alpha\r\nbeta\r\ngamma\r\n");
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Char('/'), KeyModifiers::empty()));
+        app.handle_paste("beta\n".to_string()).await;
+        assert_eq!(app.state.copy_mode_search.query, "beta");
+        app.handle_copy_mode_key(TerminalKey::new(KeyCode::Enter, KeyModifiers::empty()));
+
+        let copy_mode = app.state.copy_mode.expect("copy mode");
+        assert_eq!(copy_mode.cursor_row, 1);
+        assert_eq!(copy_mode.cursor_col, 0);
+        assert_eq!(app.state.copy_mode_search.last_query, "beta");
     }
 
     #[tokio::test]
