@@ -794,10 +794,10 @@ impl AppState {
             .unwrap_or(0);
 
         if let Some(metrics) = self.pane_scroll_metrics(terminal_runtimes, copy_mode.pane_id) {
-            if absolute_row < viewport_top {
-                viewport_top = absolute_row;
-            } else if absolute_row >= viewport_top.saturating_add(pane_height) {
-                viewport_top = absolute_row.saturating_add(1).saturating_sub(pane_height);
+            let viewport_bottom = viewport_top.saturating_add(pane_height).saturating_sub(1);
+            let should_center = absolute_row < viewport_top || absolute_row >= viewport_bottom;
+            if should_center {
+                viewport_top = absolute_row.saturating_sub(pane_height / 2);
             }
             viewport_top = viewport_top.min(metrics.max_offset_from_bottom);
             self.set_pane_scroll_offset(
@@ -1269,6 +1269,45 @@ mod tests {
 
         assert_eq!(copy_mode_cursor_absolute_row(&app, pane_id), 3);
         assert_eq!(app.state.copy_mode.expect("copy mode").cursor_col, 0);
+    }
+
+    #[tokio::test]
+    async fn copy_mode_search_centers_lower_match_instead_of_hint_row() {
+        let mut text = String::new();
+        for row in 0..32 {
+            if row == 15 {
+                text.push_str("needle row\r\n");
+            } else {
+                text.push_str(&format!("row {row:02}\r\n"));
+            }
+        }
+        let (mut app, pane_id) = app_with_copy_scrollback(text.as_bytes());
+        app.state.enter_copy_mode(&app.terminal_runtimes);
+
+        let metrics = copy_mode_scroll_metrics(&app, pane_id);
+        app.state.set_pane_scroll_offset(
+            &app.terminal_runtimes,
+            pane_id,
+            metrics.max_offset_from_bottom.saturating_sub(5),
+        );
+        if let Some(copy_mode) = app.state.copy_mode.as_mut() {
+            copy_mode.cursor_row = 0;
+            copy_mode.cursor_col = 0;
+        }
+
+        enter_copy_mode_search(&mut app, "needle");
+
+        let pane_height = app
+            .state
+            .pane_info_by_id(pane_id)
+            .expect("pane info")
+            .inner_rect
+            .height;
+        assert_eq!(copy_mode_cursor_absolute_row(&app, pane_id), 15);
+        assert_eq!(
+            app.state.copy_mode.expect("copy mode").cursor_row,
+            pane_height / 2
+        );
     }
 
     #[tokio::test]
