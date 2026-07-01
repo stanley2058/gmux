@@ -567,8 +567,7 @@ impl AppState {
             return None;
         }
         let ((start_row, _), (end_row, _)) = selection.ordered_cells();
-        (start_row..=end_row).fold(Some(0u16), |longest, row| {
-            let longest = longest?;
+        (start_row..=end_row).try_fold(0u16, |longest, row| {
             let row = usize::try_from(row).ok()?;
             let text = self.copy_mode_absolute_row_text(terminal_runtimes, copy_mode, info, row)?;
             Some(longest.max(display_width_for_text(&text).saturating_sub(1)))
