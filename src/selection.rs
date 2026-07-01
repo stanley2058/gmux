@@ -41,6 +41,8 @@ pub struct Selection {
     cursor: (u32, u16),
     /// Selection phase.
     phase: Phase,
+    /// Whether selection is rectangular instead of stream/line based.
+    rectangle: bool,
 }
 
 impl Selection {
@@ -58,7 +60,19 @@ impl Selection {
             anchor,
             cursor: anchor,
             phase: Phase::Anchored,
+            rectangle: false,
         }
+    }
+
+    pub(crate) fn rectangle_anchor(
+        pane_id: PaneId,
+        viewport_row: u16,
+        col: u16,
+        metrics: Option<ScrollMetrics>,
+    ) -> Self {
+        let mut selection = Self::anchor(pane_id, viewport_row, col, metrics);
+        selection.rectangle = true;
+        selection
     }
 
     /// Create an active selection from an explicit viewport-row range.
@@ -75,6 +89,7 @@ impl Selection {
             anchor: (row, start_col),
             cursor: (row, end_col),
             phase: Phase::Dragging,
+            rectangle: false,
         }
     }
 
@@ -94,6 +109,7 @@ impl Selection {
             anchor: (anchor_row, anchor_col),
             cursor: (cursor_row, cursor_col),
             phase: Phase::Dragging,
+            rectangle: false,
         }
     }
 
@@ -197,6 +213,9 @@ impl Selection {
     fn ordered(&self) -> ((u32, u16), (u32, u16)) {
         let (ar, ac) = self.anchor;
         let (cr, cc) = self.cursor;
+        if self.rectangle {
+            return ((ar.min(cr), ac.min(cc)), (ar.max(cr), ac.max(cc)));
+        }
         if ar < cr || (ar == cr && ac <= cc) {
             ((ar, ac), (cr, cc))
         } else {
@@ -208,6 +227,10 @@ impl Selection {
         self.ordered()
     }
 
+    pub(crate) fn is_rectangle(&self) -> bool {
+        self.rectangle
+    }
+
     /// Check whether a pane-relative cell (row, col) is inside the selection.
     pub fn contains(&self, viewport_row: u16, col: u16, metrics: Option<ScrollMetrics>) -> bool {
         if !self.is_visible() {
@@ -217,6 +240,9 @@ impl Selection {
         let ((sr, sc), (er, ec)) = self.ordered();
         if row < sr || row > er {
             return false;
+        }
+        if self.rectangle {
+            return col >= sc && col <= ec;
         }
         if sr == er {
             col >= sc && col <= ec
@@ -459,6 +485,19 @@ mod tests {
         assert!(sel.contains(4, 0, None));
         assert!(sel.contains(4, 10, None));
         assert!(!sel.contains(4, 11, None));
+    }
+
+    #[test]
+    fn rectangle_contains_only_column_bounds_on_middle_rows() {
+        let mut sel = Selection::rectangle_anchor(PaneId::from_raw(0), 4, 10, None);
+        sel.cursor = (2, 5);
+        sel.phase = Phase::Dragging;
+
+        assert_eq!(sel.ordered_cells(), ((2, 5), (4, 10)));
+        assert!(!sel.contains(3, 4, None));
+        assert!(sel.contains(3, 5, None));
+        assert!(sel.contains(3, 10, None));
+        assert!(!sel.contains(3, 11, None));
     }
 
     #[test]

@@ -97,7 +97,7 @@ pub(super) fn render_copy_mode_overlay(app: &AppState, frame: &mut Frame, area: 
             Span::styled(" move  ", dim),
             Span::styled("/ n/N", key),
             Span::styled(" search  ", dim),
-            Span::styled("v/space", key),
+            Span::styled("v/space ctrl+v", key),
             Span::styled(format!(" {select}  "), dim),
             Span::styled("y/enter", key),
             Span::styled(" copy  ", dim),
