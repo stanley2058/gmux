@@ -96,7 +96,31 @@ if count != 1:
 path.write_text(updated)
 PY
 
-cargo generate-lockfile
+python3 - "$version" <<'PY'
+from pathlib import Path
+import sys
+
+version = sys.argv[1]
+path = Path("Cargo.lock")
+lines = path.read_text().splitlines(keepends=True)
+in_package = False
+in_gmux = False
+
+for index, line in enumerate(lines):
+    stripped = line.rstrip("\n")
+    if stripped == "[[package]]":
+        in_package = True
+        in_gmux = False
+    elif in_package and stripped == 'name = "gmux"':
+        in_gmux = True
+    elif in_gmux and stripped.startswith("version = "):
+        newline = "\n" if line.endswith("\n") else ""
+        lines[index] = f'version = "{version}"{newline}'
+        path.write_text("".join(lines))
+        break
+else:
+    raise SystemExit("Cargo.lock gmux package version not found")
+PY
 
 lock_version="$(python3 - <<'PY'
 from pathlib import Path
